@@ -75,6 +75,11 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
     }
 
+    // System Logs: Staff only
+    match /system_logs/{logId} {
+      allow read, write: if isStaff();
+    }
+
     // Mail: Publicly creatable for triggering emails, staff readable/writable
     match /mail/{mailId} {
       allow create: if true;

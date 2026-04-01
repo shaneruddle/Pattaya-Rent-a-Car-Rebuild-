@@ -62,6 +62,7 @@ export interface Booking {
   status: 'Paid' | 'Pending';
   amount?: number;
   notes?: string;
+  requestedCarType?: string;
 }
 
 export interface Transaction {

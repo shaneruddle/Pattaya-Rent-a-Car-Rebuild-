@@ -98,7 +98,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     end.setHours(slot === 'AM' ? 14 : 20, 0, 0, 0);
     
     setFormData({
-      carId,
+      carId: carId === 'unassigned' ? '' : carId,
       customerName: '',
       email: '',
       mobileNumber: '',
@@ -114,7 +114,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   useEffect(() => {
     if (newBookingTrigger && newBookingTrigger > 0) {
-      handleSlotClick(cars[0]?.id || '', new Date(), 'AM');
+      handleSlotClick('unassigned', new Date(), 'AM');
     }
   }, [newBookingTrigger]);
 
@@ -237,11 +237,35 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     const newEnd = addDays(newStart, duration);
 
     try {
+      const newCarId = carId === 'unassigned' ? '' : carId;
       await updateDoc(doc(db, 'bookings', draggedBooking.id), {
-        carId,
+        carId: newCarId,
         startDate: newStart.toISOString(),
         endDate: newEnd.toISOString()
       });
+
+      const car = cars.find(c => c.id === newCarId);
+      const oldCar = cars.find(c => c.id === draggedBooking.carId);
+      
+      let logMessage = `Rescheduled booking for ${draggedBooking.customerName}`;
+      if (draggedBooking.carId !== newCarId) {
+        const from = oldCar?.name || 'Unassigned';
+        const to = car?.name || 'Unassigned';
+        logMessage = `Moved booking for ${draggedBooking.customerName} from ${from} to ${to}`;
+      }
+
+      await logSystemActivity(
+        'Update Booking (Timeline Drag)',
+        logMessage,
+        'Bookings',
+        { 
+          bookingId: draggedBooking.id, 
+          customerName: draggedBooking.customerName,
+          fromCarId: draggedBooking.carId,
+          toCarId: newCarId
+        }
+      );
+
       toast.success('Booking rescheduled');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `bookings/${draggedBooking.id}`);
@@ -282,7 +306,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     return {
       left: `${(startDayIdx * 2 + startSlot) * 36}px`,
       width: `${Math.max(totalSlots, 1) * 36}px`,
-      backgroundColor: booking.status === 'Paid' ? '#10B981' : '#FF6321'
+      backgroundColor: (!booking.carId || booking.carId === 'unassigned') ? '#EAB308' : (booking.status === 'Paid' ? '#10B981' : '#FF6321')
     };
   };
 
@@ -291,11 +315,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       <div className="flex-1 overflow-auto custom-scrollbar relative">
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
-          <div className="flex sticky top-0 z-10 bg-white/40 backdrop-blur-xl">
-            <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-20 p-4 flex items-center justify-between backdrop-blur-md">
+          <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
+            <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
               <span className="font-serif italic text-sm text-[#1A1A1A]">Car Fleet</span>
               <button
-                onClick={() => handleSlotClick(cars[0]?.id || '', new Date(), 'AM')}
+                onClick={() => handleSlotClick('unassigned', new Date(), 'AM')}
                 className="w-8 h-8 bg-brand-orange text-white rounded-full hover:bg-brand-orange/90 transition-all flex items-center justify-center shadow-lg shadow-brand-orange/20 active:translate-y-[1px]"
                 title="New Booking"
               >
@@ -319,13 +343,72 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
           {/* Timeline Body */}
           <div className="relative">
+            {/* Unassigned Row */}
+            <div className="flex group h-6 bg-brand-orange/5">
+              <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
+                <div className="w-1 h-full absolute left-0 bg-brand-orange" />
+                <AlertCircle size={10} className="shrink-0 text-brand-orange" />
+                <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned Bookings</span>
+              </div>
+              <div className="flex relative">
+                {daysInMonth.map(day => (
+                  <React.Fragment key={day.toISOString()}>
+                    <div
+                      className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
+                      onClick={() => handleSlotClick('unassigned', day, 'AM')}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => handleDrop(e, 'unassigned', day, 'AM')}
+                    />
+                    <div
+                      className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
+                      onClick={() => handleSlotClick('unassigned', day, 'PM')}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => handleDrop(e, 'unassigned', day, 'PM')}
+                    />
+                  </React.Fragment>
+                ))}
+
+                {/* Unassigned Bookings */}
+                {bookings.filter(b => !b.carId || b.carId === '').map(booking => {
+                  const style = getBookingStyle(booking);
+                  if (!style) return null;
+                  return (
+                    <div
+                      key={booking.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e as any, booking)}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredBooking({ 
+                          booking, 
+                          x: rect.left, 
+                          y: rect.top 
+                        });
+                      }}
+                      onMouseLeave={() => setHoveredBooking(null)}
+                      onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
+                      className="absolute h-4 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                      style={{
+                        ...style,
+                        color: 'white'
+                      }}
+                    >
+                      <span className="text-[8px] font-bold truncate leading-none">
+                        {booking.customerName}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {cars.map(car => {
               const typeStyles = getCarTypeStyles(car.type || car.category || '');
               const Icon = typeStyles.icon;
               
               return (
                 <div key={car.id} className="flex group h-6">
-                  <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-10 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
+                  <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
                     <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
                     <Icon size={10} className={cn("shrink-0", typeStyles.color)} />
                     <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">{car.name}</span>
@@ -362,7 +445,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                             const rect = e.currentTarget.getBoundingClientRect();
                             setHoveredBooking({ 
                               booking, 
-                              x: rect.left + rect.width / 2, 
+                              x: rect.left, 
                               y: rect.top 
                             });
                           }}
@@ -411,18 +494,23 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             style={{
               left: hoveredBooking.x,
               top: hoveredBooking.y - 10,
-              transform: 'translateX(-50%) translateY(-100%)'
+              transform: 'translateY(-100%)'
             }}
           >
-            <div className="bg-white/90 backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl p-4 min-w-[240px]">
+            <div className="bg-white/90 backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h4 className="text-sm font-bold text-[#1A1A1A]">{hoveredBooking.booking.customerName}</h4>
                   <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{hoveredBooking.booking.email || 'No email'}</p>
+                  <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
+                    {hoveredBooking.booking.carId 
+                      ? cars.find(c => c.id === hoveredBooking.booking.carId)?.name 
+                      : (hoveredBooking.booking.requestedCarType || 'Unassigned')}
+                  </p>
                 </div>
                 <span className={cn(
                   "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                  hoveredBooking.booking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                  (!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : (hoveredBooking.booking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600")
                 )}>
                   {hoveredBooking.booking.status}
                 </span>
@@ -454,7 +542,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               </div>
 
               {/* Arrow */}
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
+              <div className="absolute bottom-0 left-4 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
             </div>
           </motion.div>
         )}
@@ -476,7 +564,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     {showDeleteConfirm ? 'Confirm Deletion' : (modalMode === 'view' ? 'Booking Details' : (editingBooking ? 'Edit Booking' : 'New Booking'))}
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1 ml-1">
-                    {cars.find(c => c.id === formData.carId)?.name} • {cars.find(c => c.id === formData.carId)?.plateNumber}
+                    {formData.carId ? (
+                      <>
+                        {cars.find(c => c.id === formData.carId)?.name} • {cars.find(c => c.id === formData.carId)?.plateNumber}
+                      </>
+                    ) : (
+                      <span className="text-brand-orange">Unassigned Vehicle</span>
+                    )}
                   </p>
                 </div>
                 <button 
@@ -570,7 +664,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       <div className="h-[52px] flex items-center">
                         <span className={cn(
                           "px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full border border-white/40 shadow-sm",
-                          editingBooking.status === 'Paid' ? "bg-emerald-500 text-white" : "bg-brand-orange text-white"
+                          (!editingBooking.carId || editingBooking.carId === 'unassigned') ? "bg-yellow-500 text-white" : (editingBooking.status === 'Paid' ? "bg-emerald-500 text-white" : "bg-brand-orange text-white")
                         )}>
                           {editingBooking.status}
                         </span>

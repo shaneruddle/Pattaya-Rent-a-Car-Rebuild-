@@ -237,7 +237,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         {/* Status Dot */}
                         <div className={cn(
                           "w-3 h-3 rounded-full shrink-0 shadow-sm",
-                          booking.status === 'Paid' ? "bg-green-500" : "bg-orange-500"
+                          (!booking.carId || booking.carId === 'unassigned') ? "bg-yellow-500" : (booking.status === 'Paid' ? "bg-green-500" : "bg-orange-500")
                         )} />
 
                         {/* Time */}
@@ -251,7 +251,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                           <div className="flex items-center gap-2 min-w-0">
                             <CarIcon size={14} className="text-brand-orange/60 shrink-0" />
                             <span className="font-bold text-sm text-[#1A1A1A] truncate">
-                              {car ? `${car.name} (${car.plateNumber})` : 'Unknown Vehicle'}
+                              {car ? `${car.name} (${car.plateNumber})` : <span className="text-brand-orange italic">Unassigned Vehicle</span>}
                             </span>
                           </div>
                           
@@ -267,9 +267,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         <div className="flex items-center gap-2">
                           <div className={cn(
                             "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all",
-                            booking.status === 'Paid' 
-                              ? "bg-green-100/80 text-green-600 border border-green-200/50" 
-                              : "bg-orange-100/80 text-orange-600 border border-orange-200/50"
+                            (!booking.carId || booking.carId === 'unassigned')
+                              ? "bg-yellow-100/80 text-yellow-600 border border-yellow-200/50"
+                              : (booking.status === 'Paid' 
+                                ? "bg-green-100/80 text-green-600 border border-green-200/50" 
+                                : "bg-orange-100/80 text-orange-600 border border-orange-200/50")
                           )}>
                             {booking.status}
                           </div>
@@ -365,7 +367,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Status</p>
                     <div className={cn(
                       "inline-flex px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                      viewingBooking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                      (!viewingBooking.carId || viewingBooking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : (viewingBooking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600")
                     )}>
                       {viewingBooking.status}
                     </div>
@@ -399,7 +401,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Vehicle</p>
                       <p className="font-bold text-[#1A1A1A]">
-                        {cars.find(c => c.id === viewingBooking.carId)?.name || 'Unknown Vehicle'}
+                        {cars.find(c => c.id === viewingBooking.carId)?.name || <span className="text-brand-orange italic">Unassigned Vehicle</span>}
                       </p>
                     </div>
                   </div>
@@ -555,11 +557,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Vehicle</label>
                         <select
-                          required
-                          value={editingBooking.carId}
+                          value={editingBooking.carId || ''}
                           onChange={(e) => setEditingBooking({ ...editingBooking, carId: e.target.value })}
                           className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
                         >
+                          <option value="">Unassigned</option>
                           {cars.map(car => (
                             <option key={car.id} value={car.id}>{car.name} ({car.plateNumber})</option>
                           ))}

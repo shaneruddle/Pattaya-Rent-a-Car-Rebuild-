@@ -581,7 +581,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     setIsSubmitting(true);
     try {
       const bookingData = {
-        carId: selectedCar.id,
+        carId: '',
+        requestedCarType: selectedCar.name,
         customerName: `${formData.firstName} ${formData.lastName}`,
         mobileNumber: formData.mobile,
         email: formData.email,
