@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Basic helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "info@pattayarentacar.com" && request.auth.token.email_verified == true);
+    }
+
+    function isStaff() {
+      return isAuthenticated() &&
+        (request.auth.token.email.endsWith("@pattayarentacar.com") || isAdmin());
+    }
+
+    // Cars: Publicly readable, staff writable
+    match /cars/{carId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Website Cars: Publicly readable, staff writable
+    match /website_cars/{carId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Bookings: Publicly creatable, staff readable/writable
+    match /bookings/{bookingId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+
+    // Transactions & Accounts: Staff only
+    match /transactions/{transactionId} {
+      allow read, write: if isStaff();
+    }
+    match /accounts/{accountId} {
+      allow read, write: if isStaff();
+    }
+
+    // Settings: Staff only
+    match /settings/{settingId} {
+      allow read, write: if isStaff();
+    }
+
+    // Pricing: Publicly readable, staff writable
+    match /pricing/{pricingId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Enquiries: Publicly creatable, staff readable/writable
+    match /enquiries/{enquiryId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+
+    // Users: Self only
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Vehicle Logs: Staff only
+    match /vehicle_logs/{logId} {
+      allow read, write: if isStaff();
+    }
+
+    // Customers: Staff only, but allow public create for new bookings
+    match /customers/{customerId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+
+    // Mail: Publicly creatable for triggering emails, staff readable/writable
+    match /mail/{mailId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+  }
+}

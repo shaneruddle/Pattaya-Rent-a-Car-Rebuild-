@@ -1,0 +1,233 @@
+{
+  "entities": {
+    "Car": {
+      "title": "Car",
+      "description": "A rental car in the fleet.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The car's make and model." },
+        "plateNumber": { "type": "string", "description": "The car's license plate number." },
+        "type": { "type": "string", "description": "The category of the car (e.g., Sedan, SUV, Economy, Truck)." },
+        "category": { "type": "string", "enum": ["Car", "Motorbike", "Other"], "description": "Vehicle category." },
+        "make": { "type": "string", "description": "Vehicle make (e.g., Toyota)." },
+        "makeLogoUrl": { "type": "string", "description": "URL to the make's logo." },
+        "model": { "type": "string", "description": "Vehicle model (e.g., Vios)." },
+        "yearOfManufacture": { "type": "integer", "description": "Year of manufacture." },
+        "insuranceExpiry": { "type": "string", "format": "date", "description": "Insurance expiry date." },
+        "taxExpiry": { "type": "string", "format": "date", "description": "Tax expiry date." },
+        "owner": { "type": "string", "description": "Who owns the vehicle." },
+        "currentKms": { "type": "integer", "description": "Current mileage." },
+        "lastOilChangeKms": { "type": "integer", "description": "Mileage at last oil change." },
+        "lastOilChangeDate": { "type": "string", "format": "date", "description": "Date of last oil change." },
+        "order": { "type": "integer", "description": "The display order of the car." },
+        "pricePerDay": { "type": "number", "description": "Daily rental price in THB." },
+        "imageUrl": { "type": "string", "description": "URL to the car image." },
+        "seats": { "type": "integer", "description": "Number of seats." },
+        "transmission": { "type": "string", "description": "Transmission type (Auto/Manual)." },
+        "engine": { "type": "string", "description": "Engine capacity." },
+        "fuel": { "type": "string", "description": "Fuel type." },
+        "modelYear": { "type": "string", "description": "Model year range." },
+        "isActive": { "type": "boolean", "description": "Whether the vehicle is currently active in the fleet." },
+        "audio": { "type": "string", "description": "Audio system details." }
+      },
+      "required": ["name", "plateNumber", "type", "order", "category", "make", "model", "yearOfManufacture"]
+    },
+    "VehicleLog": {
+      "title": "VehicleLog",
+      "description": "Activity, maintenance, or notes for a vehicle.",
+      "type": "object",
+      "properties": {
+        "carId": { "type": "string", "description": "The ID of the car." },
+        "type": { "type": "string", "enum": ["Activity", "Maintenance", "Note"], "description": "The type of log entry." },
+        "date": { "type": "string", "format": "date-time", "description": "The date of the log entry." },
+        "user": { "type": "string", "description": "The user who created the log." },
+        "description": { "type": "string", "description": "A description of the entry." },
+        "details": { "type": "object", "description": "Optional structured details about changes." }
+      },
+      "required": ["carId", "type", "date", "user", "description"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer who rents vehicles.",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string", "description": "Customer's first name." },
+        "lastName": { "type": "string", "description": "Customer's last name." },
+        "email": { "type": "string", "format": "email", "description": "Customer's unique email address." },
+        "mobileNumber": { "type": "string", "description": "Customer's contact number." },
+        "address": { "type": "string", "description": "Customer's physical address." },
+        "dob": { "type": "string", "format": "date", "description": "Customer's date of birth." },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        }
+      },
+      "required": ["firstName", "email"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A rental reservation for a car.",
+      "type": "object",
+      "properties": {
+        "carId": { "type": "string", "description": "The ID of the car being rented." },
+        "customerName": { "type": "string", "description": "The name of the customer." },
+        "email": { "type": "string", "format": "email", "description": "The email of the customer." },
+        "mobileNumber": { "type": "string", "description": "The customer's contact number." },
+        "startDate": { "type": "string", "format": "date-time", "description": "The start date and time of the booking." },
+        "endDate": { "type": "string", "format": "date-time", "description": "The end date and time of the booking." },
+        "status": { "type": "string", "enum": ["Paid", "Pending"], "description": "The payment status of the booking." },
+        "amount": { "type": "number", "description": "The total rental amount." },
+        "notes": { "type": "string", "description": "Additional notes for the booking." }
+      },
+      "required": ["carId", "customerName", "startDate", "endDate", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "An income or expense record.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["Income", "Expense", "Transfer"], "description": "The type of transaction." },
+        "amount": { "type": "number", "description": "The transaction amount." },
+        "date": { "type": "string", "format": "date-time", "description": "The date of the transaction." },
+        "category": { "type": "string", "description": "The category (e.g., Rental, Maintenance, Rent)." },
+        "carId": { "type": "string", "description": "Optional car ID associated with the transaction." },
+        "accountId": { "type": "string", "description": "The account associated with the transaction." },
+        "toAccountId": { "type": "string", "description": "The destination account for transfers." },
+        "description": { "type": "string", "description": "A brief description of the transaction." }
+      },
+      "required": ["type", "amount", "date", "accountId"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "A bank account or cash fund.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the account." },
+        "balance": { "type": "number", "description": "The current balance of the account." }
+      },
+      "required": ["name", "balance"]
+    },
+    "PricingRule": {
+      "title": "PricingRule",
+      "description": "A pricing rule for a car type and duration.",
+      "type": "object",
+      "properties": {
+        "carType": { "type": "string", "description": "The category of the car." },
+        "rates": {
+          "type": "object",
+          "description": "A map of duration tiers to daily rates.",
+          "properties": {
+            "1-3": { "type": "number" },
+            "4-7": { "type": "number" },
+            "8-14": { "type": "number" },
+            "15-29": { "type": "number" },
+            "30+": { "type": "number" }
+          }
+        }
+      },
+      "required": ["carType", "rates"]
+    },
+    "Mail": {
+      "title": "Mail",
+      "description": "A document used to trigger an email via the Firebase Trigger Email extension.",
+      "type": "object",
+      "properties": {
+        "to": { "type": "string", "description": "Recipient email address." },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "text": { "type": "string" },
+            "html": { "type": "string" }
+          }
+        }
+      },
+      "required": ["to", "message"]
+    },
+    "WebsiteCar": {
+      "title": "WebsiteCar",
+      "description": "A vehicle displayed on the public website.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "yearRange": { "type": "string" },
+        "pricePerDay": { "type": "number" },
+        "priceMonthly": { "type": "number" },
+        "engineSize": { "type": "string" },
+        "fuelType": { "type": "string" },
+        "transmission": { "type": "string" },
+        "passengers": { "type": "integer" },
+        "airCon": { "type": "boolean" },
+        "audio": { "type": "string" },
+        "displayOrder": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "mainImage": { "type": "string" },
+        "shadowImage": { "type": "string" },
+        "realImages": { "type": "array", "items": { "type": "string" } },
+        "slug": { "type": "string" },
+        "priceGridVehicle": { "type": "string" }
+      },
+      "required": ["name", "displayOrder", "isActive"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "A log of system-wide activity.",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "description": "The action performed (e.g., 'Booking Created')." },
+        "description": { "type": "string", "description": "A detailed description of what changed." },
+        "user": { "type": "string", "description": "The email or name of the user who performed the action." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the action occurred." },
+        "category": { "type": "string", "description": "The area of the system (e.g., 'Bookings', 'Fleet', 'CRM')." },
+        "metadata": { "type": "object", "description": "Optional additional data about the change." }
+      },
+      "required": ["action", "description", "user", "timestamp", "category"]
+    }
+  },
+  "firestore": {
+    "/cars/{carId}": {
+      "schema": "Car",
+      "description": "Collection of rental cars."
+    },
+    "/vehicle_logs/{logId}": {
+      "schema": "VehicleLog",
+      "description": "Activity and maintenance logs for vehicles."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of car rental bookings."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Collection of financial transactions."
+    },
+    "/accounts/{accountId}": {
+      "schema": "Account",
+      "description": "Collection of bank accounts and cash funds."
+    },
+    "/pricing/{pricingId}": {
+      "schema": "PricingRule",
+      "description": "Collection of pricing rules."
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Collection of customer profiles."
+    },
+    "/mail/{mailId}": {
+      "schema": "Mail",
+      "description": "Collection used for triggering emails."
+    },
+    "/website_cars/{carId}": {
+      "schema": "WebsiteCar",
+      "description": "Collection of vehicles displayed on the public website."
+    },
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Collection of system-wide activity logs."
+    }
+  }
+}

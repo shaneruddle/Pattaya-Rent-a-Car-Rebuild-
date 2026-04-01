@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@import "react-day-picker/dist/style.css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-brand-orange: #FF6321;
+  --color-warm-bg: #F5F5F0;
+  --color-glass-surface: rgba(255, 255, 255, 0.6);
+  --color-glass-border: rgba(255, 255, 255, 0.4);
+}
+
+@layer base {
+  body {
+    @apply bg-warm-bg text-[#1A1A1A] font-sans antialiased;
+  }
+
+  .glass-card {
+    @apply bg-glass-surface backdrop-blur-xl border border-glass-border shadow-sm;
+  }
+
+  .glass-modal {
+    @apply bg-white/80 backdrop-blur-2xl border border-white/40 shadow-2xl;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+  }
+}
