@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, Timestamp, where, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
-import { Transaction, Account, Car } from '../types';
-import { format, startOfDay, endOfDay, isSameDay, parseISO } from 'date-fns';
+import { Transaction, Account, Car, Booking } from '../types';
+import { format, startOfDay, endOfDay, isSameDay, parseISO, isWithinInterval } from 'date-fns';
 import { 
   Plus, 
   ArrowUpRight, 
@@ -18,7 +18,8 @@ import {
   MoreVertical,
   Trash2,
   Edit2,
-  X
+  X,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -26,6 +27,7 @@ import { toast } from 'sonner';
 
 interface FinanceProps {
   cars: Car[];
+  bookings: Booking[];
   preFill?: {
     type: 'Income' | 'Expense';
     amount: number;
@@ -36,11 +38,12 @@ interface FinanceProps {
   onClearPreFill?: () => void;
 }
 
-export const Finance: React.FC<FinanceProps> = ({ cars, preFill, onClearPreFill }) => {
+export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onClearPreFill }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDepositsModal, setShowDepositsModal] = useState(false);
   const [modalType, setModalType] = useState<'Income' | 'Expense' | 'Transfer' | 'AccountEdit' | 'TransactionEdit'>('Income');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
@@ -440,6 +443,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars, preFill, onClearPreFill 
             >
               <ArrowRightLeft size={16} /> Transfer
             </button>
+            <button 
+              onClick={() => setShowDepositsModal(true)}
+              className="h-12 px-8 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2"
+            >
+              <ShieldCheck size={16} /> Deposits
+            </button>
           </div>
         </header>
 
@@ -793,6 +802,89 @@ export const Finance: React.FC<FinanceProps> = ({ cars, preFill, onClearPreFill 
           </div>
         )}
       </AnimatePresence>
+
+      {/* Deposits Modal */}
+      <AnimatePresence>
+        {showDepositsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDepositsModal(false)}
+              className="absolute inset-0 bg-warm-bg/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white/60 backdrop-blur-xl border border-white/40 shadow-2xl w-full max-w-4xl overflow-hidden rounded-[40px]"
+            >
+              <div className="p-6 border-b border-white/20 flex justify-between items-center bg-white/40 backdrop-blur-xl">
+                <h2 className="font-serif italic text-2xl text-gray-900">Vehicle Deposits</h2>
+                <button 
+                  onClick={() => setShowDepositsModal(false)} 
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-white/40 hover:bg-brand-orange hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto max-h-[70vh]">
+                <div className="grid grid-cols-1 gap-4">
+                  {cars.map(car => {
+                    const now = new Date();
+                    const currentBooking = bookings.find(b => 
+                      b.carId === car.id && 
+                      isWithinInterval(now, { 
+                        start: parseISO(b.startDate), 
+                        end: parseISO(b.endDate) 
+                      })
+                    );
+
+                    return (
+                      <div key={car.id} className="bg-white/40 border border-white/60 p-6 rounded-3xl flex items-center justify-between group hover:bg-white/60 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-brand-orange/10 rounded-2xl flex items-center justify-center border border-brand-orange/20">
+                            <CarIcon size={24} className="text-brand-orange" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-[#141414]">{car.name}</h4>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40">{car.plateNumber}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-12">
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mb-1">Current Renter</p>
+                            <p className={cn(
+                              "text-sm font-bold",
+                              currentBooking ? "text-[#141414]" : "text-[#141414]/20 italic"
+                            )}>
+                              {currentBooking ? currentBooking.customerName : 'No active rental'}
+                            </p>
+                          </div>
+
+                          <div className="text-right min-w-[120px]">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mb-1">Deposit Held</p>
+                            <p className={cn(
+                              "text-lg font-bold",
+                              (currentBooking?.deposit || 0) > 0 ? "text-emerald-600" : "text-[#141414]/20"
+                            )}>
+                              ฿{(currentBooking?.deposit || 0).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {showDeleteConfirm && (

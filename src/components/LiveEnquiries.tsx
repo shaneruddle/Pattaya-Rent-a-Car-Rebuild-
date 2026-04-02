@@ -21,7 +21,8 @@ import {
   Truck,
   ArrowRight,
   Loader2,
-  DollarSign
+  DollarSign,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -418,6 +419,28 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
                         className="w-full bg-black/5 border-none p-4 rounded-2xl text-sm focus:bg-black/10 outline-none transition-all font-bold"
                         value={formData.endDate?.slice(0, 16)}
                         onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Financials */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Total Amount (THB)</label>
+                      <input
+                        type="number"
+                        className="w-full bg-black/5 border-none p-4 rounded-2xl text-sm focus:bg-black/10 outline-none transition-all font-bold"
+                        value={formData.amount || 0}
+                        onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Deposit Held (THB)</label>
+                      <input
+                        type="number"
+                        className="w-full bg-black/5 border-none p-4 rounded-2xl text-sm focus:bg-black/10 outline-none transition-all font-bold"
+                        value={formData.deposit || 0}
+                        onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
                       />
                     </div>
                   </div>

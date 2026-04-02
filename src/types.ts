@@ -69,6 +69,7 @@ export interface Booking {
     lng: number;
   };
   deliveryNotes?: string;
+  deposit?: number;
 }
 
 export interface Transaction {
@@ -126,4 +127,13 @@ export interface SystemLog {
   timestamp: string; // ISO string
   category: 'Bookings' | 'Fleet' | 'Website' | 'CRM' | 'Finance' | 'Pricing' | 'System';
   metadata?: any;
+}
+
+export interface AIKnowledgeBase {
+  id: string;
+  question: string;
+  answer: string;
+  updatedAt: any;
+  updatedBy?: string;
+  isActive: boolean;
 }

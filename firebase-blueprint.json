@@ -195,6 +195,31 @@
         "metadata": { "type": "object", "description": "Optional additional data about the change." }
       },
       "required": ["action", "description", "user", "timestamp", "category"]
+    },
+    "AIKnowledgeBase": {
+      "title": "AIKnowledgeBase",
+      "description": "A question and answer pair used to train the AI assistant.",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string", "description": "The question or trigger phrase." },
+        "answer": { "type": "string", "description": "The detailed response the AI should provide." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the entry was last updated." },
+        "updatedBy": { "type": "string", "description": "The user who last updated the entry." },
+        "isActive": { "type": "boolean", "description": "Whether the entry is currently active." }
+      },
+      "required": ["question", "answer", "isActive"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "System-wide configuration settings, including OAuth tokens.",
+      "type": "object",
+      "properties": {
+        "tokens": {
+          "type": "object",
+          "description": "OAuth tokens for external services (e.g., Gmail)."
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -237,6 +262,14 @@
     "/system_logs/{logId}": {
       "schema": "SystemLog",
       "description": "Collection of system-wide activity logs."
+    },
+    "/ai_knowledge_base/{entryId}": {
+      "schema": "AIKnowledgeBase",
+      "description": "Collection of custom training data for the AI assistant."
+    },
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "System configuration settings."
     }
   }
 }

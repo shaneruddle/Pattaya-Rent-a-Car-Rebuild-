@@ -296,6 +296,7 @@ const Calendar: React.FC<CalendarProps> = ({
 };
 
 export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) => {
+  console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);

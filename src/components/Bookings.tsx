@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Booking, Car } from '../types';
 import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getYear, isValid, differenceInDays } from 'date-fns';
-import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, CheckCircle2, Mail, Phone, FileText, DollarSign } from 'lucide-react';
+import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, CheckCircle2, Mail, Phone, FileText, DollarSign, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { LocationPicker } from './LocationPicker';
@@ -446,6 +446,13 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                     </div>
                   </div>
                   <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Deposit Held</p>
+                    <div className="flex items-center gap-1 text-xl font-bold text-emerald-600">
+                      <span className="text-sm font-medium">฿</span>
+                      {viewingBooking.deposit?.toLocaleString() || '0'}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Duration</p>
                     <div className="text-sm font-medium text-[#1A1A1A]/60">
                       {differenceInDays(parseISO(viewingBooking.endDate), parseISO(viewingBooking.startDate))} Days
@@ -608,14 +615,25 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Total Amount (฿)</label>
-                      <input
-                        type="number"
-                        value={editingBooking.amount || 0}
-                        onChange={(e) => setEditingBooking({ ...editingBooking, amount: Number(e.target.value) })}
-                        className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Total Amount (฿)</label>
+                        <input
+                          type="number"
+                          value={editingBooking.amount || 0}
+                          onChange={(e) => setEditingBooking({ ...editingBooking, amount: Number(e.target.value) })}
+                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Deposit Held (฿)</label>
+                        <input
+                          type="number"
+                          value={editingBooking.deposit || 0}
+                          onChange={(e) => setEditingBooking({ ...editingBooking, deposit: Number(e.target.value) })}
+                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">

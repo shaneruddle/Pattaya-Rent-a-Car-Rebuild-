@@ -7,6 +7,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase SDK
+console.log('firebase.ts: Initializing Firebase SDK');
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
@@ -81,7 +82,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  if (errInfo.error.includes('Rate exceeded') || errInfo.error.includes('RESOURCE_EXHAUSTED')) {
+    console.warn('Firestore Rate Limit Exceeded:', errInfo);
+  } else {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  }
+  
   throw new Error(JSON.stringify(errInfo));
 }
 

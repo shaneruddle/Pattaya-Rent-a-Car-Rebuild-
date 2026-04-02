@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -29,6 +29,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     mobileNumber: '',
     status: 'Pending',
     amount: 0,
+    deposit: 0,
     notes: '',
     deliveryAddress: '',
     deliveryNotes: '',
@@ -806,6 +807,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                   </div>
 
                   <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Deposit Held</p>
+                    <p className="text-2xl font-bold text-emerald-600 bg-white/40 p-4 rounded-2xl border border-white/60">
+                      {editingBooking.deposit ? `${editingBooking.deposit.toLocaleString()} THB` : '0 THB'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Notes</p>
                     <p className="text-sm text-gray-700 bg-white/40 p-4 rounded-2xl border border-white/60 min-h-[100px] leading-relaxed">
                       {editingBooking.notes || 'No notes provided.'}
@@ -951,6 +959,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
                           value={formData.amount}
                           onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                          <ShieldCheck size={12} /> Deposit Held (THB)
+                        </label>
+                        <input
+                          type="number"
+                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
+                          value={formData.deposit}
+                          onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
                         />
                       </div>
                       <div className="space-y-2">

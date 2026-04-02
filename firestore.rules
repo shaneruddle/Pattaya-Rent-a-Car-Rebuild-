@@ -8,12 +8,17 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (request.auth.token.email == "info@pattayarentacar.com" && request.auth.token.email_verified == true);
+        request.auth.token.email_verified == true &&
+        'email' in request.auth.token &&
+        request.auth.token.email.lower() == "info@pattayarentacar.com";
     }
 
     function isStaff() {
       return isAuthenticated() &&
-        (request.auth.token.email.endsWith("@pattayarentacar.com") || isAdmin());
+        'email' in request.auth.token &&
+        (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$") || 
+         request.auth.token.email.lower() == "gift@pattayarentacar.com" ||
+         isAdmin());
     }
 
     // Cars: Publicly readable, staff writable
@@ -78,6 +83,17 @@ service cloud.firestore {
     // System Logs: Staff only
     match /system_logs/{logId} {
       allow read, write: if isStaff();
+    }
+
+    // System Config: Staff only
+    match /system_config/{configId} {
+      allow read, write: if isStaff();
+    }
+
+    // AI Knowledge Base: Publicly readable, staff writable
+    match /ai_knowledge_base/{entryId} {
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     // Mail: Publicly creatable for triggering emails, staff readable/writable

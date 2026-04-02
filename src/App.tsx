@@ -23,6 +23,8 @@ import { Bookings } from './components/Bookings';
 import { WebsiteFleetManager } from './components/WebsiteFleetManager';
 import { CRM } from './components/CRM';
 import { Logs } from './components/Logs';
+import { AITraining } from './components/AITraining';
+import { TrafficInsights } from './components/TrafficInsights';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
@@ -36,6 +38,7 @@ import { Helmet } from 'react-helmet-async';
 import { SystemLog } from './types';
 
 export default function App() {
+  console.log('App: Rendering top-level component');
   return (
     <LanguageProvider>
       <Helmet>
@@ -54,6 +57,7 @@ export default function App() {
 }
 
 function AppContent() {
+  console.log('AppContent: Initializing');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
@@ -61,7 +65,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'website_fleet' | 'crm' | 'bookings' | 'logs' | 'enquiries'>('timeline');
+  const [currentView, setCurrentView] = useState<'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'website_fleet' | 'crm' | 'bookings' | 'logs' | 'enquiries' | 'ai_training' | 'traffic_insights'>('timeline');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
 
   // Filtering State
@@ -69,13 +73,17 @@ function AppContent() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [newBookingTrigger, setNewBookingTrigger] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const isStaff = useMemo(() => {
-    return user?.email?.endsWith('@pattayarentacar.com') || user?.email === 'info@pattayarentacar.com';
+    const email = user?.email?.toLowerCase();
+    return email?.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
 
   useEffect(() => {
+    console.log('AppContent: Setting up auth listener');
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('AppContent: Auth state changed:', !!user);
       setUser(user);
       setLoading(false);
       if (user) setShowLogin(false);
@@ -84,7 +92,10 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (!user || !isStaff) return;
+    if (!user || !isStaff) {
+      console.log('Not attaching listeners: user=', !!user, 'isStaff=', isStaff);
+      return;
+    }
 
     console.log('Fetching data for user:', user.email);
 
@@ -95,6 +106,7 @@ function AppContent() {
       setCars(carsData.sort((a, b) => (a.order || 0) - (b.order || 0)));
     }, (error) => {
       console.error('Error fetching cars:', error);
+      setLastError(`Cars: ${error.message}`);
       handleFirestoreError(error, OperationType.LIST, 'cars');
     });
 
@@ -105,6 +117,7 @@ function AppContent() {
       setBookings(bookingsData);
     }, (error) => {
       console.error('Error fetching bookings:', error);
+      setLastError(`Bookings: ${error.message}`);
       handleFirestoreError(error, OperationType.LIST, 'bookings');
     });
 
@@ -115,6 +128,7 @@ function AppContent() {
       setLogs(logsData);
     }, (error) => {
       console.error('Error fetching logs:', error);
+      setLastError(`Logs: ${error.message}`);
       handleFirestoreError(error, OperationType.LIST, 'system_logs');
     });
 
@@ -187,6 +201,8 @@ function AppContent() {
 
     return result;
   }, [bookings, cars, searchQuery, statusFilter, typeFilter]);
+
+  console.log('AppContent: Auth state:', { loading, user: !!user, isStaff });
 
   if (loading) {
     return (
@@ -286,9 +302,10 @@ function AppContent() {
         />
         <main className="flex-1 flex flex-col min-w-0">
           {user && (
-            <div className="fixed bottom-4 left-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
+            <div className="fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
               <p className="font-bold text-brand-orange mb-1">Diagnostic Info</p>
               <p>User: {user?.email}</p>
+              <p>Verified: {user?.emailVerified ? '✅ Yes' : '❌ No'}</p>
               <p>Staff: {isStaff ? '✅ Yes' : '❌ No'}</p>
               <p>Cars: {cars.length}</p>
               <p>Bookings: {bookings.filter(b => b.carId && b.carId !== '').length}</p>
@@ -307,6 +324,11 @@ function AppContent() {
               {bookings.length > filteredBookings.length && (
                 <p className="text-red-500 font-bold mt-1">
                   ⚠️ {bookings.length - filteredBookings.length} bookings filtered out
+                </p>
+              )}
+              {lastError && (
+                <p className="text-red-500 font-bold mt-1">
+                  ❌ {lastError}
                 </p>
               )}
             </div>
@@ -346,6 +368,7 @@ function AppContent() {
           ) : currentView === 'finance' ? (
             <Finance 
               cars={cars} 
+              bookings={bookings}
               preFill={financePreFill} 
               onClearPreFill={() => setFinancePreFill(null)} 
             />
@@ -363,6 +386,10 @@ function AppContent() {
             <CRM />
           ) : currentView === 'logs' ? (
             <Logs logs={logs} />
+          ) : currentView === 'ai_training' ? (
+            <AITraining />
+          ) : currentView === 'traffic_insights' ? (
+            <TrafficInsights />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <BookingEngine onLoginClick={() => {}} />

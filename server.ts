@@ -1,4 +1,14 @@
 
+import "dotenv/config";
+import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
+
+// Set environment variables BEFORE importing firebase-admin to ensure correct project context
+const projectId = firebaseConfig.projectId;
+const databaseId = firebaseConfig.firestoreDatabaseId;
+
+process.env.GOOGLE_CLOUD_PROJECT = projectId;
+process.env.GCLOUD_PROJECT = projectId;
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
@@ -7,117 +17,365 @@ import path from "path";
 import { fileURLToPath } from "url";
 import * as XLSX from "xlsx";
 import { format, parse, isValid } from "date-fns";
-import "dotenv/config";
+import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { google } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const SCOPES = [
+  "https://www.googleapis.com/auth/webmasters.readonly",
+  "https://www.googleapis.com/auth/analytics.readonly",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile"
+];
+
+console.log(`Initializing Firestore. Project: ${projectId}, Database: ${databaseId || '(default)'}`);
+
+// Initialize Firebase Admin App
+if (admin.apps.length === 0) {
+  admin.initializeApp({
+    projectId: projectId
+  });
+}
+
+// Initialize Firestore using the explicit databaseId
+// If databaseId is "(default)" or empty, use the default database
+const firestore = admin.firestore(databaseId && databaseId !== '(default)' ? databaseId : undefined);
+console.log(`Firestore instance created for database: ${databaseId || '(default)'}`);
+
+// Google OAuth Setup
+const oauth2Client = new OAuth2Client(
+  process.env.GOOGLE_OAUTH_CLIENT_ID,
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+  process.env.GOOGLE_OAUTH_REDIRECT_URI
+);
+
+async function getStoredTokens() {
+  try {
+    const doc = await firestore.collection('system_config').doc('google_oauth_tokens').get();
+    if (doc.exists) {
+      return doc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching tokens from Firestore:", error);
+    return null;
+  }
+}
+
+async function saveTokens(tokens: any) {
+  try {
+    await firestore.collection('system_config').doc('google_oauth_tokens').set({
+      ...tokens,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error saving tokens to Firestore:", error);
+  }
+}
+
+async function deleteTokens() {
+  try {
+    await firestore.collection('system_config').doc('google_oauth_tokens').delete();
+  } catch (error) {
+    console.error("Error deleting tokens from Firestore:", error);
+  }
+}
+
+console.log(`Firestore initialized. Using database: ${databaseId || '(default)'}`);
+
+// Cache for pricing data
+let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
-  // Pricing Cache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } }
+  // Google OAuth Routes
+  app.get("/api/auth/google/url", (req, res) => {
+    const url = oauth2Client.generateAuthUrl({
+      access_type: "offline",
+      scope: SCOPES,
+      prompt: "consent"
+    });
+    res.json({ url });
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    const { code } = req.query;
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      oauth2Client.setCredentials(tokens);
+      await saveTokens(tokens);
+      res.redirect("/?google_auth=success");
+    } catch (error) {
+      console.error("Error getting tokens:", error);
+      res.redirect("/?google_auth=error");
+    }
+  });
+
+  app.get("/api/auth/google/status", async (req, res) => {
+    const tokens = await getStoredTokens();
+    res.json({ authenticated: !!tokens });
+  });
+
+  app.post("/api/auth/google/logout", async (req, res) => {
+    await deleteTokens();
+    res.json({ success: true });
+  });
+
+  // Search Console API Route
+  app.get("/api/seo/search-data", async (req, res) => {
+    const tokens = await getStoredTokens();
+    if (!tokens) {
+      return res.status(401).json({ error: "Not authenticated with Google" });
+    }
+
+    try {
+      oauth2Client.setCredentials(tokens);
+      const searchconsole = google.searchconsole({ version: "v1", auth: oauth2Client });
+      
+      // Get data for the last 30 days
+      const endDate = new Date().toISOString().split('T')[0];
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const response = await searchconsole.searchanalytics.query({
+        siteUrl: "https://pattayarentacar.com/",
+        requestBody: {
+          startDate,
+          endDate,
+          dimensions: ["query"],
+          rowLimit: 20
+        }
+      });
+
+      res.json({ data: response.data.rows || [] });
+    } catch (error: any) {
+      console.error("Error fetching Search Console data:", error);
+      if (error.code === 401) {
+        await deleteTokens();
+      }
+      res.status(500).json({ error: "Failed to fetch SEO data", details: error.message });
+    }
+  });
+
+  // Analytics API Route
+  app.get("/api/seo/analytics-data", async (req, res) => {
+    const tokens = await getStoredTokens();
+    if (!tokens) {
+      return res.status(401).json({ error: "Not authenticated with Google" });
+    }
+
+    try {
+      oauth2Client.setCredentials(tokens);
+      const analyticsdata = google.analyticsdata({ version: "v1beta", auth: oauth2Client });
+      
+      // We need the Property ID from the user, but for now we'll try to list properties
+      // or assume one if we can. Actually, it's better to ask for it or let the user configure it.
+      // For this demo, we'll just return a placeholder or try to fetch if we have a property ID in env.
+      const propertyId = process.env.GOOGLE_ANALYTICS_PROPERTY_ID;
+      if (!propertyId) {
+        return res.status(400).json({ error: "Google Analytics Property ID not configured" });
+      }
+
+      const [response] = await analyticsdata.properties.runReport({
+        property: `properties/${propertyId}`,
+        requestBody: {
+          dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+          dimensions: [{ name: "sessionMedium" }],
+          metrics: [{ name: "activeUsers" }, { name: "sessions" }, { name: "bounceRate" }]
+        }
+      });
+
+      res.json({ data: response });
+    } catch (error: any) {
+      console.error("Error fetching Analytics data:", error);
+      res.status(500).json({ error: "Failed to fetch Analytics data", details: error.message });
+    }
+  });
+
+  // CSV Import Route for Knowledge Base
+  app.post("/api/knowledge-base/import-csv", async (req, res) => {
+    const { data } = req.body;
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({ error: "Invalid data format. Expected an array of objects." });
+    }
+
+    try {
+      console.log(`Importing ${data.length} entries to knowledge base...`);
+      const batch = firestore.batch();
+      const collection = firestore.collection('ai_knowledge_base');
+
+      for (const entry of data) {
+        if (entry.question && entry.answer) {
+          const docRef = collection.doc();
+          batch.set(docRef, {
+            question: entry.question,
+            answer: entry.answer,
+            isActive: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      }
+
+      await batch.commit();
+      console.log("CSV import successful");
+      res.json({ success: true, count: data.length });
+    } catch (error: any) {
+      console.error("Error importing CSV:", error);
+      res.status(500).json({ error: "Failed to import CSV data", details: error.message });
+    }
+  });
+
+  // Debug route to check Firestore connection
+  app.get("/api/debug/firestore", async (req, res) => {
+    try {
+      const testDoc = firestore.collection('system_config').doc('test_connection');
+      await testDoc.set({ timestamp: Date.now(), status: 'ok' });
+      const doc = await testDoc.get();
+      res.json({ 
+        success: true, 
+        data: doc.data(),
+        configProjectId: firebaseConfig.projectId,
+        configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+        envProjectId: process.env.GOOGLE_CLOUD_PROJECT,
+        envGcloudProject: process.env.GCLOUD_PROJECT
+      });
+    } catch (error: any) {
+      console.error("Firestore debug error:", error);
+      res.status(500).json({ 
+        error: error.message, 
+        stack: error.stack,
+        configProjectId: firebaseConfig.projectId,
+        configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+        envProjectId: process.env.GOOGLE_CLOUD_PROJECT,
+        envGcloudProject: process.env.GCLOUD_PROJECT
+      });
+    }
+  });
+
+  app.post("/api/auth/google/disconnect", async (req, res) => {
+    res.json({ success: true });
+  });
+
+  // Removed Gmail Auth Callback
+
+  // Removed Gmail Sync Route
+
   let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
   let lastFetchTime = 0;
   let isFetching = false;
+  let currentFetchPromise: Promise<any> | null = null;
   const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes cache for pricing data
 
   async function fetchAllPricingData(spreadsheetId: string, retries = 5): Promise<any> {
-    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
-    console.log(`Fetching spreadsheet from: ${url} (Retries left: ${retries})`);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
+    if (currentFetchPromise) {
+      console.log('Using existing fetch promise for pricing data');
+      return currentFetchPromise;
+    }
 
-    try {
-      const response = await fetch(url, { 
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Connection': 'keep-alive'
-        }
-      });
+    const fetchTask = async (currentRetries: number): Promise<any> => {
+      const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+      console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
       
-      if (!response.ok) {
-        if ((response.status === 503 || response.status === 429) && retries > 0) {
-          const delay = Math.pow(2, 6 - retries) * 1000; // Exponential backoff
-          console.warn(`Google returned ${response.status}, retrying in ${delay}ms... ${retries} attempts left`);
-          await new Promise(r => setTimeout(r, delay));
-          return fetchAllPricingData(spreadsheetId, retries - 1);
-        }
-        throw new Error(`Google Sheets API returned ${response.status}: ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel')) {
-        console.error(`Invalid content type: ${contentType}`);
-        throw new Error('The spreadsheet is not public or the ID is incorrect. Please ensure "Anyone with the link" can view it.');
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      console.log(`Successfully downloaded spreadsheet (${arrayBuffer.byteLength} bytes)`);
-      
-      const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-      
-      const allData: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } = {};
-
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      try {
+        const response = await axios.get(url, {
+          timeout: 60000, // 60 seconds timeout
+          responseType: 'arraybuffer',
+          headers: {
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
+          // Allow redirects
+          maxRedirects: 5,
+          validateStatus: (status) => status < 400, // Consider 4xx/5xx as errors
+        });
         
-        if (rows.length < 2) continue;
-
-        // Parse headers (durations) - Row 0, starting from index 1
-        const headers = rows[0].slice(1).map(h => parseFloat(h)).filter(h => !isNaN(h));
+        const contentType = response.headers['content-type'] || '';
+        console.log(`Successfully downloaded spreadsheet (${response.data.byteLength} bytes), Content-Type: ${contentType}`);
         
-        // Parse data rows
-        const data: { [date: string]: number[] } = {};
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          const dateVal = row[0];
-          if (!dateVal) continue;
+        if (!contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel')) {
+          // If we get HTML, it's likely a login page or error page
+          if (contentType.includes('text/html')) {
+            const html = Buffer.from(response.data).toString('utf8');
+            if (html.includes('Service Login') || html.includes('Sign in')) {
+              throw new Error('The spreadsheet is not public. Please ensure "Anyone with the link" can view it.');
+            }
+          }
+          throw new Error(`Invalid content type: ${contentType}. Expected a spreadsheet.`);
+        }
+
+        const workbook = XLSX.read(new Uint8Array(response.data), { type: 'array' });
+        
+        const allData: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } = {};
+
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
           
-          let parsedDate: Date | null = null;
-          if (typeof dateVal === 'number') {
-            // Excel date to JS date
-            parsedDate = new Date((dateVal - 25569) * 86400 * 1000);
-          } else if (typeof dateVal === 'string') {
-            const formats = ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd", "dd/MM/yyyy"];
-            for (const fmt of formats) {
-              const d = parse(dateVal.trim(), fmt, new Date());
-              if (isValid(d)) {
-                parsedDate = d;
-                break;
+          if (rows.length < 2) continue;
+
+          // Parse headers (durations) - Row 0, starting from index 1
+          const headers = rows[0].slice(1).map(h => parseFloat(h)).filter(h => !isNaN(h));
+          
+          // Parse data rows
+          const data: { [date: string]: number[] } = {};
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const dateVal = row[0];
+            if (!dateVal) continue;
+            
+            let parsedDate: Date | null = null;
+            if (typeof dateVal === 'number') {
+              // Excel date to JS date
+              parsedDate = new Date((dateVal - 25569) * 86400 * 1000);
+            } else if (typeof dateVal === 'string') {
+              const formats = ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd", "dd/MM/yyyy"];
+              for (const fmt of formats) {
+                const d = parse(dateVal.trim(), fmt, new Date());
+                if (isValid(d)) {
+                  parsedDate = d;
+                  break;
+                }
+              }
+            }
+
+            if (parsedDate && isValid(parsedDate)) {
+              const key = format(parsedDate, "yyyy-MM-dd");
+              const rates = row.slice(1).map(r => parseFloat(r)).filter(r => !isNaN(r));
+              if (rates.length > 0) {
+                data[key] = rates;
               }
             }
           }
 
-          if (parsedDate && isValid(parsedDate)) {
-            const key = format(parsedDate, "yyyy-MM-dd");
-            const rates = row.slice(1).map(r => parseFloat(r)).filter(r => !isNaN(r));
-            if (rates.length > 0) {
-              data[key] = rates;
-            }
-          }
+          allData[sheetName.toLowerCase()] = { headers, data };
         }
 
-        allData[sheetName.toLowerCase()] = { headers, data };
-      }
+        return allData;
+      } catch (error: any) {
+        const isTimeout = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+        const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET';
+        const isRateLimit = error.response?.status === 429 || error.response?.status === 503;
 
-      return allData;
-    } catch (error: any) {
-      if (retries > 0 && (error.name === 'AbortError' || error.message.includes('Premature close') || error.message.includes('fetch failed') || error.message.includes('Invalid response body'))) {
-        const delay = Math.pow(2, 6 - retries) * 1000;
-        console.warn(`Fetch error (${error.message}), retrying in ${delay}ms... ${retries} attempts left`);
-        await new Promise(r => setTimeout(r, delay));
-        return fetchAllPricingData(spreadsheetId, retries - 1);
+        if (currentRetries > 0 && (isTimeout || isNetworkError || isRateLimit)) {
+          const delay = Math.pow(2, 6 - currentRetries) * 1000;
+          console.warn(`Fetch error (${error.message}), retrying in ${delay}ms... ${currentRetries} attempts left`);
+          await new Promise(r => setTimeout(r, delay));
+          return fetchTask(currentRetries - 1);
+        }
+        throw error;
       }
-      throw error;
+    };
+
+    currentFetchPromise = fetchTask(retries);
+    try {
+      const result = await currentFetchPromise;
+      return result;
     } finally {
-      clearTimeout(timeoutId);
+      currentFetchPromise = null;
     }
   }
 
@@ -150,7 +408,7 @@ async function startServer() {
     }
   });
 
-  // Pre-fetch pricing data on startup with a small delay
+  // Pre-fetch pricing data on startup with a longer delay and better error handling
   const DEFAULT_SPREADSHEET_ID = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
   setTimeout(() => {
     console.log('Starting initial pricing data pre-fetch...');
@@ -163,7 +421,7 @@ async function startServer() {
       .catch(err => {
         console.warn('Failed to pre-fetch initial pricing data:', err.message || err);
       });
-  }, 5000);
+  }, 15000); // Wait 15 seconds after startup to avoid hitting rate limits immediately
 
   app.get("/api/reviews", async (req, res) => {
     console.log('GET /api/reviews hit');

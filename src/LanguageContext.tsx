@@ -10,6 +10,7 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  console.log('LanguageProvider: Rendering');
   const [language, setLanguage] = useState<Language>('en');
 
   const t = (path: string, params?: Record<string, any>): any => {

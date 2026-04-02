@@ -52,11 +52,22 @@ export const PricingManager: React.FC = () => {
     setIsSyncing(true);
     try {
       const response = await fetch(`/api/pricing/sheet?spreadsheetId=${sheetConfig.spreadsheetId}`);
-      if (response.ok) {
+      const contentType = response.headers.get("content-type");
+      
+      if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
-        setSheetData(data);
+        if (response.ok) {
+          setSheetData(data);
+        } else {
+          toast.error(data.error || 'Failed to fetch Google Sheet data');
+        }
       } else {
-        toast.error('Failed to fetch Google Sheet data');
+        const text = await response.text();
+        if (text.includes("Rate exceeded")) {
+          toast.error("Too many requests. Please wait a moment before refreshing pricing data.");
+        } else {
+          toast.error("Failed to fetch pricing data. Please try again later.");
+        }
       }
     } catch (error) {
       console.error('Error fetching sheet data:', error);

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useLanguage } from '../LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Loader2, Bot } from 'lucide-react';
@@ -10,6 +12,7 @@ export const AIAssistant: React.FC = () => {
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [knowledgeBase, setKnowledgeBase] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<any>(null);
 
@@ -19,41 +22,68 @@ export const AIAssistant: React.FC = () => {
     }
   }, [messages]);
 
+  useEffect(() => {
+    const fetchKnowledgeBase = async () => {
+      try {
+        const q = query(collection(db, 'ai_knowledge_base'), where('isActive', '==', true));
+        const snapshot = await getDocs(q);
+        const pairs = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return `Question: ${data.question}\nAnswer: ${data.answer}`;
+        }).join('\n\n');
+        setKnowledgeBase(pairs);
+      } catch (error) {
+        console.error('Error fetching AI knowledge base:', error);
+      }
+    };
+    fetchKnowledgeBase();
+  }, []);
+
   const initChat = () => {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
     chatRef.current = ai.chats.create({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-pro-preview",
       config: {
-        systemInstruction: `You are the Pattaya Rent a Car AI Assistant. 
+        tools: [{ googleSearch: {} }],
+        systemInstruction: `You are the Pattaya Rent a Car AI Assistant, an expert in car rentals in Pattaya, Thailand. 
         
-        PRIMARY GOAL: Always guide the user towards using our real-time booking engine at the top of the page to check live availability and exact pricing for their dates.
+        PRIMARY GOAL: Be helpful and informative while always guiding the user towards using our real-time booking engine at the top of the page to check live availability and exact pricing for their dates.
 
         ACCURACY GUIDELINES:
-        - Only provide information listed in the "Business Facts" below.
+        - Only provide information listed in the "Business Facts" and "FAQ" below.
         - If you are unsure about a specific price or availability, state that "Our live booking engine above has the most up-to-date rates and availability for your specific dates."
         - Do not make up car models or prices that are not mentioned.
 
         BUSINESS FACTS:
-        - Established: 2005 (Pattaya's most trusted).
-        - Location: Pattaya and Jomtien area.
-        - Delivery: FREE delivery and collection anywhere in Pattaya/Jomtien.
-        - Insurance: ALL rentals include comprehensive First Class Insurance.
-        - Support: 24/7 Roadside Assistance included.
-        - Pricing: No hidden fees. The price in the booking engine is the final price.
+        - Established: 2005 (Pattaya's most trusted and longest-running rental service).
+        - Location: Main office in Pattaya. We serve the entire Pattaya and Jomtien area.
+        - Delivery: FREE delivery and collection anywhere in Pattaya/Jomtien for rentals of 3 days or more. For shorter rentals, a small fee may apply or pick up at office.
+        - Insurance: ALL rentals include comprehensive First Class Insurance (Commercial Rental Insurance). This covers the vehicle, passengers, and third parties.
+        - Roadside Assistance: 24/7 Roadside Assistance included at no extra cost.
+        - Pricing: No hidden fees. The price in the booking engine includes insurance and taxes.
         - Requirements: 
-          1. Valid Driving License (Thai or International Permit).
-          2. Passport.
-          3. Security Deposit (Credit card or Cash).
-        - Fleet Categories: Compact cars (e.g., Toyota Yaris), Sedans (e.g., Toyota Vios/Altis), SUVs (e.g., Toyota Fortuner), and Minivans.
-        - Long Term: We offer special rates for rentals over 30 days.
+          1. Valid Driving License: Must be a Thai license or an International Driving Permit (IDP) along with your home country license.
+          2. Passport: Original passport required for verification.
+          3. Security Deposit: Required for all rentals. Can be paid in Cash (THB or major currencies) or via Credit Card pre-authorization.
+        - Fleet Details:
+          * Compact/Economy: Toyota Yaris, Honda Brio (Ideal for city driving).
+          * Sedans: Toyota Vios, Honda City, Toyota Altis, Honda Civic.
+          * SUVs: Toyota Fortuner, Isuzu MU-X (Great for families and longer trips).
+          * Minivans: Toyota Innova, Toyota Alphard (For large groups).
+        - Long Term: Special discounted rates for rentals over 30 days. Contact us for a custom quote if not shown in the engine.
+        - Fuel Policy: Level to Level (Return with the same amount of fuel as received).
 
-        FAQ REFERENCE (Source of Truth):
+        FAQ REFERENCE:
         - Documents: Thai or International Driving Permit, Passport, and Security Deposit.
-        - Insurance: Comprehensive First Class Insurance covers passengers and third parties.
-        - Delivery: Free in Pattaya/Jomtien. Delivery to other areas available for a small fee.
-        - Deposit: 5,000 to 10,000 THB (Cash or Credit Card).
+        - Insurance: First Class Insurance covers accidents. Standard excess (deductible) applies, usually 5,000 THB.
+        - Delivery: Free in Pattaya/Jomtien. Delivery to Bangkok or Suvarnabhumi Airport is available for an additional fee (approx 2,000-2,500 THB).
+        - Deposit: 5,000 THB for small cars, 10,000 THB for SUVs/Luxury cars.
         - Driving Area: Anywhere in Thailand. Prohibited to leave Thailand.
-        - Accidents: Contact our 24/7 support immediately.
+        - Accidents: Contact our 24/7 support immediately. Do not move the car unless instructed by police or our team.
+        - Child Seats: Available upon request for a small daily fee.
+
+        CUSTOM STAFF TRAINING (Priority Knowledge):
+        ${knowledgeBase || 'No custom training data available yet.'}
 
         CONVERSION STRATEGY:
         - In almost every response, mention that the user can see all available cars and prices by selecting their dates in the search bar at the top of the page.
@@ -63,8 +93,8 @@ export const AIAssistant: React.FC = () => {
 
         TONE & STYLE:
         - Professional, welcoming, and concise.
-        - Use bullet points for readability when listing requirements.
-        - Current Language: ${language}. ALWAYS respond in ${language}.`,
+        - Use bullet points for readability when listing requirements or features.
+        - Current Language: ${language}. ALWAYS respond in ${language}. If the user speaks a different language, switch to that language but keep the business facts accurate.`,
       },
     });
   };
