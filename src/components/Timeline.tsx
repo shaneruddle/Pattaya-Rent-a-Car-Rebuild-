@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { DayPicker, DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
+import { LocationPicker } from './LocationPicker';
 
 interface TimelineProps {
   cars: Car[];
@@ -28,7 +29,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     mobileNumber: '',
     status: 'Pending',
     amount: 0,
-    notes: ''
+    notes: '',
+    deliveryAddress: '',
+    deliveryNotes: '',
+    deliveryLocation: undefined
   });
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -69,7 +73,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       ...formData,
       customerName: `${customer.firstName} ${customer.lastName || ''}`.trim(),
       email: customer.email,
-      mobileNumber: customer.mobileNumber || ''
+      mobileNumber: customer.mobileNumber || '',
+      deliveryAddress: customer.location?.address || formData.deliveryAddress,
+      deliveryLocation: customer.location ? { lat: customer.location.lat, lng: customer.location.lng } : formData.deliveryLocation
     });
     setShowCustomerSuggestions(false);
   };
@@ -106,7 +112,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       endDate: end.toISOString(),
       status: 'Pending',
       amount: 0,
-      notes: ''
+      notes: '',
+      deliveryAddress: '',
+      deliveryNotes: '',
+      deliveryLocation: undefined
     });
     setDateRange({ from: start, to: end });
     setIsModalOpen(true);
@@ -120,7 +129,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   const handleBookingClick = (booking: Booking) => {
     setEditingBooking(booking);
-    setFormData({ ...booking });
+    setFormData({ 
+      ...booking,
+      deliveryAddress: booking.deliveryAddress || '',
+      deliveryNotes: booking.deliveryNotes || '',
+      deliveryLocation: booking.deliveryLocation
+    });
     setModalMode('view');
     setShowDeleteConfirm(false);
     setDateRange({ 
@@ -142,6 +156,20 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       if (editingBooking) {
         await updateDoc(doc(db, 'bookings', editingBooking.id), dataToSave);
         
+        // Update customer location in CRM if email exists
+        if (dataToSave.email && dataToSave.deliveryLocation) {
+          const customerQuery = query(collection(db, 'customers'), where('email', '==', dataToSave.email));
+          const customerSnapshot = await getDocs(customerQuery);
+          if (!customerSnapshot.empty) {
+            await updateDoc(doc(db, 'customers', customerSnapshot.docs[0].id), {
+              location: {
+                ...dataToSave.deliveryLocation,
+                address: dataToSave.deliveryAddress
+              }
+            });
+          }
+        }
+
         const car = cars.find(c => c.id === dataToSave.carId);
         await logSystemActivity(
           'Update Booking (Timeline)',
@@ -169,11 +197,26 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 lastName,
                 email: dataToSave.email,
                 mobileNumber: dataToSave.mobileNumber || '',
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                location: dataToSave.deliveryLocation ? {
+                  ...dataToSave.deliveryLocation,
+                  address: dataToSave.deliveryAddress
+                } : undefined
               });
               toast.success('New customer added to CRM');
             } catch (err) {
               console.error("Error adding customer to CRM:", err);
+            }
+          } else {
+            // Update existing customer location if provided
+            if (dataToSave.deliveryLocation) {
+              const customerDoc = customerSnapshot.docs[0];
+              await updateDoc(doc(db, 'customers', customerDoc.id), {
+                location: {
+                  ...dataToSave.deliveryLocation,
+                  address: dataToSave.deliveryAddress
+                }
+              });
             }
           }
         }
@@ -219,6 +262,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   // Drag and Drop Logic (Simplified for this dashboard)
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
+  const [dropPreview, setDropPreview] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
 
   const [hoveredBooking, setHoveredBooking] = useState<{ booking: Booking; x: number; y: number } | null>(null);
 
@@ -227,14 +271,23 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     e.dataTransfer.setData('bookingId', booking.id);
   };
 
+  const handleDragEnd = () => {
+    setDraggedBooking(null);
+    setDropPreview(null);
+  };
+
   const handleDrop = async (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
+    setDropPreview(null);
     if (!draggedBooking) return;
 
-    const duration = differenceInDays(parseISO(draggedBooking.endDate), parseISO(draggedBooking.startDate));
+    const start = parseISO(draggedBooking.startDate);
+    const end = parseISO(draggedBooking.endDate);
+    const durationMs = end.getTime() - start.getTime();
+
     const newStart = new Date(date);
     newStart.setHours(slot === 'AM' ? 8 : 14, 0, 0, 0);
-    const newEnd = addDays(newStart, duration);
+    const newEnd = new Date(newStart.getTime() + durationMs);
 
     try {
       const newCarId = carId === 'unassigned' ? '' : carId;
@@ -310,6 +363,33 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     };
   };
 
+  const getDropPreviewStyle = (preview: { carId: string; date: Date; slot: 'AM' | 'PM' }, booking: Booking) => {
+    const start = parseISO(booking.startDate);
+    const end = parseISO(booking.endDate);
+    const durationMs = end.getTime() - start.getTime();
+    
+    const previewStart = new Date(preview.date);
+    previewStart.setHours(preview.slot === 'AM' ? 8 : 14, 0, 0, 0);
+    const previewEnd = new Date(previewStart.getTime() + durationMs);
+
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+
+    if (previewEnd < monthStart || previewStart > monthEnd) return null;
+
+    const visibleStart = previewStart < monthStart ? monthStart : previewStart;
+    const visibleEnd = previewEnd > monthEnd ? monthEnd : previewEnd;
+
+    const startDayIdx = differenceInDays(visibleStart, monthStart);
+    const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
+    const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
+
+    return {
+      left: `${(startDayIdx * 2 + startSlot) * 36}px`,
+      width: `${Math.max(totalSlots, 1) * 36}px`,
+    };
+  };
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-warm-bg">
       <div className="flex-1 overflow-auto custom-scrollbar relative">
@@ -318,13 +398,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
             <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
               <span className="font-serif italic text-sm text-[#1A1A1A]">Car Fleet</span>
-              <button
-                onClick={() => handleSlotClick('unassigned', new Date(), 'AM')}
-                className="w-8 h-8 bg-brand-orange text-white rounded-full hover:bg-brand-orange/90 transition-all flex items-center justify-center shadow-lg shadow-brand-orange/20 active:translate-y-[1px]"
-                title="New Booking"
-              >
-                <Plus size={14} />
-              </button>
             </div>
             <div className="flex">
               {daysInMonth.map(day => (
@@ -356,19 +429,33 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     <div
                       className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'AM')}
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'AM' });
+                      }}
+                      onDragLeave={() => setDropPreview(null)}
                       onDrop={(e) => handleDrop(e, 'unassigned', day, 'AM')}
                     />
                     <div
                       className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'PM')}
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'PM' });
+                      }}
+                      onDragLeave={() => setDropPreview(null)}
                       onDrop={(e) => handleDrop(e, 'unassigned', day, 'PM')}
                     />
                   </React.Fragment>
                 ))}
 
                 {/* Unassigned Bookings */}
+                {dropPreview && dropPreview.carId === 'unassigned' && draggedBooking && (
+                  <div
+                    className="absolute h-4 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                    style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
+                  />
+                )}
                 {bookings.filter(b => !b.carId || b.carId === '').map(booking => {
                   const style = getBookingStyle(booking);
                   if (!style) return null;
@@ -377,12 +464,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       key={booking.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e as any, booking)}
+                      onDragEnd={handleDragEnd}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setHoveredBooking({ 
                           booking, 
                           x: rect.left, 
-                          y: rect.top 
+                          y: rect.bottom 
                         });
                       }}
                       onMouseLeave={() => setHoveredBooking(null)}
@@ -420,19 +508,33 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         <div
                           className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'AM')}
-                          onDragOver={(e) => e.preventDefault()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'AM' });
+                          }}
+                          onDragLeave={() => setDropPreview(null)}
                           onDrop={(e) => handleDrop(e, car.id, day, 'AM')}
                         />
                         <div
                           className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'PM')}
-                          onDragOver={(e) => e.preventDefault()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'PM' });
+                          }}
+                          onDragLeave={() => setDropPreview(null)}
                           onDrop={(e) => handleDrop(e, car.id, day, 'PM')}
                         />
                       </React.Fragment>
                     ))}
 
                     {/* Bookings for this car */}
+                    {dropPreview && dropPreview.carId === car.id && draggedBooking && (
+                      <div
+                        className="absolute h-4 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                        style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
+                      />
+                    )}
                     {bookings.filter(b => b.carId === car.id).map(booking => {
                       const style = getBookingStyle(booking);
                       if (!style) return null;
@@ -441,12 +543,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           key={booking.id}
                           draggable
                           onDragStart={(e) => handleDragStart(e as any, booking)}
+                          onDragEnd={handleDragEnd}
                           onMouseEnter={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             setHoveredBooking({ 
                               booking, 
                               x: rect.left, 
-                              y: rect.top 
+                              y: rect.bottom 
                             });
                           }}
                           onMouseLeave={() => setHoveredBooking(null)}
@@ -493,8 +596,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             className="fixed z-[200] pointer-events-none"
             style={{
               left: hoveredBooking.x,
-              top: hoveredBooking.y - 10,
-              transform: 'translateY(-100%)'
+              top: hoveredBooking.y + 10,
+              transform: 'translateY(0)'
             }}
           >
             <div className="bg-white/90 backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
@@ -542,7 +645,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               </div>
 
               {/* Arrow */}
-              <div className="absolute bottom-0 left-4 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
+              <div className="absolute top-0 left-4 -translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/90" />
             </div>
           </motion.div>
         )}
@@ -660,6 +763,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.mobileNumber || 'N/A'}</p>
                     </div>
                     <div className="space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Vehicle</p>
+                      <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">
+                        {editingBooking.carId 
+                          ? cars.find(c => c.id === editingBooking.carId)?.name || 'Unknown Car'
+                          : (editingBooking.requestedCarType || 'Unassigned')}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Status</p>
                       <div className="h-[52px] flex items-center">
                         <span className={cn(
@@ -700,6 +811,39 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       {editingBooking.notes || 'No notes provided.'}
                     </p>
                   </div>
+
+                  {editingBooking.deliveryAddress && (
+                    <div className="space-y-4 pt-4 border-t border-white/20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-brand-orange/10 flex items-center justify-center">
+                          <TruckIcon size={16} className="text-brand-orange" />
+                        </div>
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Delivery Details</h4>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Delivery Address</p>
+                          <p className="text-sm font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.deliveryAddress}</p>
+                        </div>
+                        {editingBooking.deliveryLocation && (
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Location Map</p>
+                            <LocationPicker 
+                              location={editingBooking.deliveryLocation} 
+                              onChange={() => {}} 
+                              disabled={true} 
+                            />
+                          </div>
+                        )}
+                        {editingBooking.deliveryNotes && (
+                          <div className="p-4 bg-brand-orange/5 border border-brand-orange/10 rounded-2xl">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-2">Delivery Notes (Internal)</p>
+                            <p className="text-sm text-gray-700 italic leading-relaxed">{editingBooking.deliveryNotes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex gap-4 pt-4">
                     <button
@@ -810,6 +954,26 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                          <CarIconType size={12} /> Assigned Vehicle
+                        </label>
+                        <div className="relative">
+                          <select
+                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all appearance-none pr-10"
+                            value={formData.carId || ''}
+                            onChange={e => setFormData({ ...formData, carId: e.target.value })}
+                          >
+                            <option value="">Unassigned</option>
+                            {cars.map(car => (
+                              <option key={car.id} value={car.id}>
+                                {car.name} • {car.plateNumber}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none opacity-40" size={16} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Status</label>
                         <div className="flex gap-2">
                           {['Paid', 'Pending'].map(s => (
@@ -873,6 +1037,59 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     />
                   </div>
 
+                  <div className="space-y-6 pt-6 border-t border-white/20">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-brand-orange/10 flex items-center justify-center">
+                        <TruckIcon size={16} className="text-brand-orange" />
+                      </div>
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Delivery Details</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Delivery Address</label>
+                          <input
+                            type="text"
+                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
+                            value={formData.deliveryAddress}
+                            onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                            placeholder="Enter delivery address..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Delivery Notes (Internal)</label>
+                          <textarea
+                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm focus:border-brand-orange outline-none transition-all h-32 resize-none"
+                            value={formData.deliveryNotes}
+                            onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
+                            placeholder="Add internal notes for delivery..."
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between ml-4">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Pin Location on Map</label>
+                          {editingBooking?.deliveryLocation && (
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, deliveryLocation: editingBooking.deliveryLocation })}
+                              className="text-[8px] font-bold uppercase tracking-widest text-brand-orange hover:underline"
+                            >
+                              Reset Location
+                            </button>
+                          )}
+                        </div>
+                        <LocationPicker 
+                          location={formData.deliveryLocation} 
+                          onChange={(loc) => setFormData({ ...formData, deliveryLocation: loc })} 
+                        />
+                        <p className="text-[8px] text-gray-400 italic ml-4 mt-1">Click on the map or drag the pin to set delivery location</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="flex gap-4 pt-4">
                     {editingBooking && (
                       <button
@@ -896,18 +1113,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
           </div>
         )}
       </AnimatePresence>
-
-      {/* Floating Action Button */}
-      <button
-        onClick={() => handleSlotClick(cars[0]?.id || '', new Date(), 'AM')}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-brand-orange text-white rounded-full shadow-2xl shadow-brand-orange/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group border-4 border-white/40 backdrop-blur-md"
-        title="New Booking"
-      >
-        <Plus size={28} className="group-hover:rotate-90 transition-transform duration-300" />
-        <span className="absolute right-full mr-4 bg-white/60 backdrop-blur-xl border border-white/40 text-gray-900 px-4 py-2 text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none rounded-2xl shadow-xl translate-x-4 group-hover:translate-x-0">
-          New Booking
-        </span>
-      </button>
     </div>
   );
 };

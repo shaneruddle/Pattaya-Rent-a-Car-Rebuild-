@@ -119,15 +119,6 @@ export const Header: React.FC<HeaderProps> = ({
               ))}
             </select>
           </div>
-
-          <div className="w-px h-8 bg-white/40 mx-2" />
-
-          <button
-            onClick={onNewBooking}
-            className="bg-brand-orange text-white px-6 h-10 rounded-full font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 active:translate-y-[2px] active:shadow-none"
-          >
-            <Plus size={16} /> New Booking
-          </button>
         </div>
       </div>
 

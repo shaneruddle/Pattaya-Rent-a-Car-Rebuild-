@@ -4,6 +4,7 @@ import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getY
 import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, CheckCircle2, Mail, Phone, FileText, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { LocationPicker } from './LocationPicker';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -25,6 +26,9 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
 
   const filteredBookings = useMemo(() => {
     return bookings.filter(booking => {
+      // Only show bookings with an assigned car in this view
+      if (!booking.carId || booking.carId === '' || booking.carId === 'unassigned') return false;
+
       const car = cars.find(c => c.id === booking.carId);
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch = 
@@ -623,6 +627,38 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         className="w-full p-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 resize-none"
                         placeholder="Add any special requests or notes..."
                       />
+                    </div>
+
+                    {/* Delivery Section */}
+                    <div className="space-y-4 pt-4 border-t border-[#1A1A1A]/5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange">Delivery Information</p>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Delivery Address</label>
+                        <input
+                          type="text"
+                          value={editingBooking.deliveryAddress || ''}
+                          onChange={(e) => setEditingBooking({ ...editingBooking, deliveryAddress: e.target.value })}
+                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                          placeholder="Enter delivery address..."
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Delivery Notes</label>
+                        <textarea
+                          value={editingBooking.deliveryNotes || ''}
+                          onChange={(e) => setEditingBooking({ ...editingBooking, deliveryNotes: e.target.value })}
+                          className="w-full h-20 p-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 resize-none"
+                          placeholder="Delivery instructions..."
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Pin Location</label>
+                        <LocationPicker 
+                          location={editingBooking.deliveryLocation} 
+                          onChange={(loc) => setEditingBooking({ ...editingBooking, deliveryLocation: loc })}
+                          height="250px"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

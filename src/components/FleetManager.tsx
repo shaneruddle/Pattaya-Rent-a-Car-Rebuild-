@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, storage, logSystemActivity } from '../firebase';
 import { Car, VehicleLog } from '../types';
-import { format, parseISO, addMonths } from 'date-fns';
+import { format, parseISO, addMonths, differenceInDays, startOfDay } from 'date-fns';
 import { 
   Search, 
   Filter, 
@@ -27,7 +27,8 @@ import {
   ChevronRight,
   ChevronDown,
   Save,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -239,6 +240,37 @@ export const FleetManager: React.FC = () => {
     }
   };
 
+  const getExpiryStatus = (dateStr: string | undefined) => {
+    if (!dateStr) return null;
+    try {
+      const expiryDate = parseISO(dateStr);
+      const today = startOfDay(new Date());
+      const diff = differenceInDays(expiryDate, today);
+      
+      if (diff < 0) return 'expired';
+      if (diff <= 30) return 'soon';
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const handleQuickLog = async (type: string, expiryDate: string) => {
+    if (!selectedCar) return;
+    try {
+      await addDoc(collection(db, 'vehicle_logs'), {
+        carId: selectedCar.id,
+        type: 'Maintenance',
+        date: new Date().toISOString(),
+        user: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown',
+        description: `${type} processed for expiry date: ${safeFormatDate(expiryDate, 'dd MMM yyyy')}`
+      });
+      toast.success(`${type} logged successfully`);
+    } catch (error) {
+      toast.error('Failed to log renewal');
+    }
+  };
+
   const filteredCars = cars.filter(car => 
     car.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     car.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -409,6 +441,86 @@ export const FleetManager: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Upcoming Expiries Alerts */}
+                {(getExpiryStatus(selectedCar.insuranceExpiry) || getExpiryStatus(selectedCar.taxExpiry)) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {getExpiryStatus(selectedCar.insuranceExpiry) && (
+                      <div className={cn(
+                        "p-4 rounded-2xl flex items-center justify-between border",
+                        getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' 
+                          ? "bg-red-50 border-red-200" 
+                          : "bg-orange-50 border-orange-200"
+                      )}>
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className={getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' ? "text-red-500" : "text-orange-500"} size={20} />
+                          <div>
+                            <p className={cn(
+                              "text-xs font-bold uppercase tracking-wider",
+                              getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' ? "text-red-700" : "text-orange-700"
+                            )}>
+                              Insurance {getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' ? 'Expired' : 'Expiring Soon'}
+                            </p>
+                            <p className={cn(
+                              "text-[10px] font-medium",
+                              getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' ? "text-red-600" : "text-orange-600"
+                            )}>
+                              {getExpiryStatus(selectedCar.insuranceExpiry) === 'expired' ? 'Expired on' : 'Expires on'} {safeFormatDate(selectedCar.insuranceExpiry, 'dd MMM yyyy')}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleQuickLog('Insurance Renewal', selectedCar.insuranceExpiry!)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors",
+                            getExpiryStatus(selectedCar.insuranceExpiry) === 'expired'
+                              ? "bg-red-100 hover:bg-red-200 text-red-700"
+                              : "bg-orange-100 hover:bg-orange-200 text-orange-700"
+                          )}
+                        >
+                          Log Renewal
+                        </button>
+                      </div>
+                    )}
+                    {getExpiryStatus(selectedCar.taxExpiry) && (
+                      <div className={cn(
+                        "p-4 rounded-2xl flex items-center justify-between border",
+                        getExpiryStatus(selectedCar.taxExpiry) === 'expired' 
+                          ? "bg-red-50 border-red-200" 
+                          : "bg-orange-50 border-orange-200"
+                      )}>
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className={getExpiryStatus(selectedCar.taxExpiry) === 'expired' ? "text-red-500" : "text-orange-500"} size={20} />
+                          <div>
+                            <p className={cn(
+                              "text-xs font-bold uppercase tracking-wider",
+                              getExpiryStatus(selectedCar.taxExpiry) === 'expired' ? "text-red-700" : "text-orange-700"
+                            )}>
+                              Tax {getExpiryStatus(selectedCar.taxExpiry) === 'expired' ? 'Expired' : 'Expiring Soon'}
+                            </p>
+                            <p className={cn(
+                              "text-[10px] font-medium",
+                              getExpiryStatus(selectedCar.taxExpiry) === 'expired' ? "text-red-600" : "text-orange-600"
+                            )}>
+                              {getExpiryStatus(selectedCar.taxExpiry) === 'expired' ? 'Expired on' : 'Expires on'} {safeFormatDate(selectedCar.taxExpiry, 'dd MMM yyyy')}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleQuickLog('Tax Renewal', selectedCar.taxExpiry!)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors",
+                            getExpiryStatus(selectedCar.taxExpiry) === 'expired'
+                              ? "bg-red-100 hover:bg-red-200 text-red-700"
+                              : "bg-orange-100 hover:bg-orange-200 text-orange-700"
+                          )}
+                        >
+                          Log Renewal
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Edit Form / Logs Tabs */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

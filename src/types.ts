@@ -63,6 +63,12 @@ export interface Booking {
   amount?: number;
   notes?: string;
   requestedCarType?: string;
+  deliveryAddress?: string;
+  deliveryLocation?: {
+    lat: number;
+    lng: number;
+  };
+  deliveryNotes?: string;
 }
 
 export interface Transaction {

@@ -81,7 +81,16 @@
         "endDate": { "type": "string", "format": "date-time", "description": "The end date and time of the booking." },
         "status": { "type": "string", "enum": ["Paid", "Pending"], "description": "The payment status of the booking." },
         "amount": { "type": "number", "description": "The total rental amount." },
-        "notes": { "type": "string", "description": "Additional notes for the booking." }
+        "notes": { "type": "string", "description": "Additional notes for the booking." },
+        "deliveryAddress": { "type": "string", "description": "The delivery address for the vehicle." },
+        "deliveryLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "deliveryNotes": { "type": "string", "description": "Internal notes for the delivery." }
       },
       "required": ["carId", "customerName", "startDate", "endDate", "status"]
     },

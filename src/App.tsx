@@ -23,6 +23,7 @@ import { Bookings } from './components/Bookings';
 import { WebsiteFleetManager } from './components/WebsiteFleetManager';
 import { CRM } from './components/CRM';
 import { Logs } from './components/Logs';
+import { LiveEnquiries } from './components/LiveEnquiries';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -60,7 +61,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'website_fleet' | 'crm' | 'bookings' | 'logs'>('timeline');
+  const [currentView, setCurrentView] = useState<'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'website_fleet' | 'crm' | 'bookings' | 'logs' | 'enquiries'>('timeline');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
 
   // Filtering State
@@ -290,7 +291,8 @@ function AppContent() {
               <p>User: {user?.email}</p>
               <p>Staff: {isStaff ? '✅ Yes' : '❌ No'}</p>
               <p>Cars: {cars.length}</p>
-              <p>Bookings: {bookings.length}</p>
+              <p>Bookings: {bookings.filter(b => b.carId && b.carId !== '').length}</p>
+              <p>Enquiries: {bookings.filter(b => !b.carId || b.carId === '').length}</p>
               <p>Logs: {logs.length}</p>
               <p>Filtered: {filteredBookings.length}</p>
               {(() => {
@@ -353,6 +355,8 @@ function AppContent() {
             <FleetManager />
           ) : currentView === 'bookings' ? (
             <Bookings bookings={bookings} cars={cars} />
+          ) : currentView === 'enquiries' ? (
+            <LiveEnquiries bookings={bookings} cars={cars} />
           ) : currentView === 'website_fleet' ? (
             <WebsiteFleetManager />
           ) : currentView === 'crm' ? (

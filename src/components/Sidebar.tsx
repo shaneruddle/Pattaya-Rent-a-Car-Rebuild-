@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Car } from '../types';
 import { logOut } from '../firebase';
@@ -8,8 +8,8 @@ import { cn } from '../lib/utils';
 interface SidebarProps {
   user: any;
   onNewBooking?: () => void;
-  currentView: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs';
-  onViewChange: (view: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs') => void;
+  currentView: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs' | 'enquiries';
+  onViewChange: (view: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs' | 'enquiries') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentView, onViewChange }) => {
@@ -51,6 +51,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
                 )}
               >
                 <Calendar size={18} /> Timeline
+              </button>
+              <button
+                onClick={() => onViewChange('enquiries')}
+                className={cn(
+                  "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                  currentView === 'enquiries' 
+                    ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                    : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-white/60"
+                )}
+              >
+                <Mail size={18} /> Live Enquiries
               </button>
               <button
                 onClick={() => onViewChange('bookings')}
@@ -143,12 +154,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
             </div>
 
             <div className="mb-8">
-              <button
-                onClick={onNewBooking}
-                className="w-full bg-brand-orange text-white h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 active:translate-y-[2px] active:shadow-none"
-              >
-                <CalendarPlus size={18} /> New Booking
-              </button>
             </div>
           </div>
         )}
@@ -164,6 +169,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
               title="Timeline"
             >
               <Calendar size={20} />
+            </button>
+            <button 
+              onClick={() => onViewChange('enquiries')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'enquiries' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
+              )}
+              title="Live Enquiries"
+            >
+              <Mail size={20} />
             </button>
             <button 
               onClick={() => onViewChange('bookings')}

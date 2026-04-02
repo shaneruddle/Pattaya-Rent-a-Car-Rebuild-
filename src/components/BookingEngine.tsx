@@ -25,7 +25,8 @@ import {
   Settings,
   Zap,
   Fuel,
-  Search
+  Search,
+  Truck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ import { useLanguage } from '../LanguageContext';
 import { Helmet } from 'react-helmet-async';
 import { AIAssistant } from './AIAssistant';
 import { Language } from '../translations';
+import { LocationPicker } from './LocationPicker';
 
 interface BookingEngineProps {
   onLoginClick: () => void;
@@ -347,7 +349,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     lastName: '',
     email: '',
     mobile: '',
-    comments: ''
+    comments: '',
+    requireDelivery: false,
+    deliveryAddress: '',
+    deliveryLocation: undefined as { lat: number; lng: number } | undefined,
+    deliveryNotes: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -590,7 +596,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         endDate: format(selectedRange.to, "yyyy-MM-dd") + 'T' + dropOffTime,
         status: 'Pending',
         notes: formData.comments,
-        amount: calculateTotal(selectedCar)
+        amount: calculateTotal(selectedCar),
+        deliveryAddress: formData.requireDelivery ? formData.deliveryAddress : '',
+        deliveryLocation: formData.requireDelivery ? formData.deliveryLocation : null,
+        deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : ''
       };
 
       // Save to bookings collection
@@ -618,6 +627,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             <p><strong>Dates:</strong> ${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}</p>
             <p><strong>Times:</strong> ${pickUpTime} to ${dropOffTime}</p>
             <p><strong>Total Amount:</strong> THB ${bookingData.amount.toLocaleString()}</p>
+            ${bookingData.deliveryAddress ? `
+              <hr />
+              <h4>Delivery Requested</h4>
+              <p><strong>Address:</strong> ${bookingData.deliveryAddress}</p>
+              ${bookingData.deliveryLocation ? `<p><strong>Location:</strong> ${bookingData.deliveryLocation.lat}, ${bookingData.deliveryLocation.lng}</p>` : ''}
+              <p><strong>Delivery Notes:</strong> ${bookingData.deliveryNotes}</p>
+              <p><a href="https://www.google.com/maps?q=${bookingData.deliveryLocation?.lat},${bookingData.deliveryLocation?.lng}">View on Google Maps</a></p>
+            ` : ''}
+            <hr />
             <p><strong>Comments:</strong></p>
             <p>${bookingData.notes.replace(/\n/g, '<br>')}</p>
           `,
@@ -1233,6 +1251,84 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       value={formData.comments}
                       onChange={e => setFormData({...formData, comments: e.target.value})}
                     />
+
+                    {/* Delivery Section */}
+                    <div className="space-y-6 pt-6 border-t border-black/5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextVal = !formData.requireDelivery;
+                          setFormData({ 
+                            ...formData, 
+                            requireDelivery: nextVal,
+                            deliveryLocation: (nextVal && !formData.deliveryLocation) 
+                              ? { lat: 12.914909448882886, lng: 100.86727314994509 } 
+                              : formData.deliveryLocation
+                          });
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between p-6 rounded-2xl border-2 transition-all group",
+                          formData.requireDelivery 
+                            ? "bg-brand-orange/5 border-brand-orange" 
+                            : "bg-black/5 border-transparent hover:bg-black/10"
+                        )}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
+                            formData.requireDelivery ? "bg-brand-orange text-white" : "bg-black/10 text-black/40"
+                          )}>
+                            <Truck size={24} />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-xs font-bold uppercase tracking-widest text-black">I require delivery</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-black/40">We deliver to your location in Pattaya</p>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                          formData.requireDelivery ? "bg-brand-orange border-brand-orange" : "border-black/10"
+                        )}>
+                          {formData.requireDelivery && <Check size={14} className="text-white" />}
+                        </div>
+                      </button>
+
+                      <AnimatePresence>
+                        {formData.requireDelivery && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="space-y-6 overflow-hidden"
+                          >
+                            <div className="space-y-4">
+                              <input 
+                                type="text" 
+                                placeholder="Delivery Address" 
+                                required={formData.requireDelivery}
+                                className="w-full px-6 py-4 bg-black/5 rounded-2xl focus:outline-none focus:bg-black/10 transition-all font-bold uppercase tracking-widest text-[10px]"
+                                value={formData.deliveryAddress}
+                                onChange={e => setFormData({...formData, deliveryAddress: e.target.value})}
+                              />
+                              <textarea 
+                                placeholder="Delivery Notes (e.g. Hotel name, Room number)" 
+                                className="w-full px-6 py-4 bg-black/5 rounded-2xl focus:outline-none focus:bg-black/10 transition-all font-bold uppercase tracking-widest text-[10px] h-24 resize-none"
+                                value={formData.deliveryNotes}
+                                onChange={e => setFormData({...formData, deliveryNotes: e.target.value})}
+                              />
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Pin your location on the map</p>
+                                <LocationPicker 
+                                  location={formData.deliveryLocation} 
+                                  onChange={(loc) => setFormData({ ...formData, deliveryLocation: loc })}
+                                  height="300px"
+                                />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                     
                     <div className="text-[10px] font-bold uppercase tracking-widest text-black/20 mb-8 leading-relaxed">
                       {t('bookingModal.disclaimer')}
