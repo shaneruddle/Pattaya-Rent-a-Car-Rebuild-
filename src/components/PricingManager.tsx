@@ -5,6 +5,8 @@ import { PricingRule } from '../types';
 import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { usePricing } from '../contexts/PricingContext';
+
 interface SheetConfig {
   spreadsheetId: string;
   enabled: boolean;
@@ -13,6 +15,7 @@ interface SheetConfig {
 const DURATION_TIERS = ['1-3', '4-7', '8-14', '15-29', '30+'];
 
 export const PricingManager: React.FC = () => {
+  const { sheetPricing, loading: pricingLoading, refreshPricing } = usePricing();
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -20,7 +23,6 @@ export const PricingManager: React.FC = () => {
     spreadsheetId: '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo',
     enabled: true
   });
-  const [sheetData, setSheetData] = useState<any>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -40,48 +42,23 @@ export const PricingManager: React.FC = () => {
       }
     });
 
-    fetchSheetData();
-
     return () => {
       unsubscribe();
       unsubscribeSettings();
     };
   }, []);
 
-  const fetchSheetData = async () => {
+  const handleSync = async () => {
     setIsSyncing(true);
-    try {
-      const response = await fetch(`/api/pricing/sheet?spreadsheetId=${sheetConfig.spreadsheetId}`);
-      const contentType = response.headers.get("content-type");
-      
-      if (contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        if (response.ok) {
-          setSheetData(data);
-        } else {
-          toast.error(data.error || 'Failed to fetch Google Sheet data');
-        }
-      } else {
-        const text = await response.text();
-        if (text.includes("Rate exceeded")) {
-          toast.error("Too many requests. Please wait a moment before refreshing pricing data.");
-        } else {
-          toast.error("Failed to fetch pricing data. Please try again later.");
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching sheet data:', error);
-      toast.error('Error connecting to pricing API');
-    } finally {
-      setIsSyncing(false);
-    }
+    await refreshPricing();
+    setIsSyncing(false);
   };
 
   const saveSheetConfig = async () => {
     try {
       await setDoc(doc(db, 'settings', 'pricing'), sheetConfig);
       toast.success('Google Sheet configuration saved');
-      fetchSheetData();
+      handleSync();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'settings/pricing');
     }
@@ -242,7 +219,7 @@ export const PricingManager: React.FC = () => {
           </div>
           <div className="flex flex-wrap gap-4">
             <button
-              onClick={fetchSheetData}
+              onClick={handleSync}
               disabled={isSyncing}
               className="bg-white/40 backdrop-blur-md border border-white/60 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm active:translate-y-[2px]"
             >
@@ -325,13 +302,13 @@ export const PricingManager: React.FC = () => {
             <div className="bg-white/40 backdrop-blur-md p-8 rounded-3xl border border-white/60 border-dashed relative overflow-hidden group">
               <div className="absolute -right-4 -top-4 w-24 h-24 bg-brand-orange/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
               <h3 className="font-bold uppercase tracking-widest text-[10px] mb-6 flex items-center gap-2 text-[#1A1A1A]/60">
-                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Status: <span className={sheetData ? "text-green-600" : "text-red-600"}>{sheetData ? 'Connected' : 'Not Connected'}</span>
+                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Status: <span className={sheetPricing ? "text-green-600" : "text-red-600"}>{sheetPricing ? 'Connected' : 'Not Connected'}</span>
               </h3>
-              {sheetData ? (
+              {sheetPricing ? (
                 <div className="space-y-4 relative z-10">
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Tabs Found</p>
-                    <p className="text-sm font-bold text-[#1A1A1A]">{Object.keys(sheetData).join(', ')}</p>
+                    <p className="text-sm font-bold text-[#1A1A1A]">{Object.keys(sheetPricing).join(', ')}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Sync Status</p>

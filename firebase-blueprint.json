@@ -220,6 +220,26 @@
         },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "User": {
+      "title": "User",
+      "description": "A staff user with specific roles.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "A system setting.",
+      "type": "object",
+      "properties": {
+        "spreadsheetId": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
@@ -270,6 +290,14 @@
     "/system_config/{configId}": {
       "schema": "SystemConfig",
       "description": "System configuration settings."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of staff users."
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Collection of system settings."
     }
   }
 }

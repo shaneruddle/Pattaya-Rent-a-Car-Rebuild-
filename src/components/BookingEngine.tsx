@@ -35,6 +35,7 @@ import { WhyChooseUs, GoogleReviews, EnquiryForm, Footer } from './HomeSections'
 import { FAQ } from './FAQ';
 import { AboutUs, ContactUs, LongTermHire } from './Pages';
 import { useLanguage } from '../LanguageContext';
+import { usePricing } from '../contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
 import { AIAssistant } from './AIAssistant';
 import { Language } from '../translations';
@@ -295,15 +296,18 @@ const Calendar: React.FC<CalendarProps> = ({
   );
 };
 
+
 export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) => {
   console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
+  const { sheetPricing, loading: pricingLoading } = usePricing();
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
-  const [sheetPricing, setSheetPricing] = useState<{ [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term'>('landing');
+
+  console.log('BookingEngine: Current state - loading:', loading, 'view:', view, 'cars count:', cars.length);
 
   const getSeoMetadata = () => {
     switch (view) {
@@ -411,57 +415,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     }, (error) => {
       console.error('BookingEngine: Pricing fetch error:', error);
     });
-
-    // Fetch Google Sheet Pricing
-    const fetchSheetPricing = async (retries = 3) => {
-      try {
-        console.log(`BookingEngine: Fetching sheet pricing... (Retries left: ${retries})`);
-        const response = await fetch('/api/pricing/sheet');
-        if (response.ok) {
-          const data = await response.json();
-          setSheetPricing(data);
-          console.log('BookingEngine: Sheet pricing fetched successfully');
-        } else if (response.status === 503 && retries > 0) {
-          console.warn(`Server is busy fetching pricing, retrying in 3s... (${retries} left)`);
-          await new Promise(r => setTimeout(r, 3000));
-          return fetchSheetPricing(retries - 1);
-        } else {
-          // Try to parse error message from server
-          let errorMessage = 'Failed to fetch pricing data';
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } catch (e) {
-            // If not JSON, use status text
-            errorMessage = response.statusText || errorMessage;
-          }
-          
-          console.error('Error fetching sheet pricing:', errorMessage);
-          
-          // Show toast for significant errors
-          if (errorMessage.toLowerCase().includes('timeout') || 
-              errorMessage.toLowerCase().includes('access denied') ||
-              errorMessage.toLowerCase().includes('not found')) {
-            toast.error('Pricing Data Error', {
-              description: errorMessage,
-              duration: 5000
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching sheet pricing:', error);
-        // If it's a TypeError "Failed to fetch", it's likely a network issue or server down
-        if (error instanceof TypeError && error.message === 'Failed to fetch') {
-          console.warn('Network error or server unreachable while fetching pricing');
-          if (retries > 0) {
-            console.log('Retrying in 5s due to network error...');
-            await new Promise(r => setTimeout(r, 5000));
-            return fetchSheetPricing(retries - 1);
-          }
-        }
-      }
-    };
-    fetchSheetPricing();
 
     const handleClickOutside = (event: MouseEvent) => {
       if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {

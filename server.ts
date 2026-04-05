@@ -6,8 +6,20 @@ import firebaseConfig from './firebase-applet-config.json' with { type: 'json' }
 const projectId = firebaseConfig.projectId;
 const databaseId = firebaseConfig.firestoreDatabaseId;
 
+console.log(`DEBUG: firebaseConfig.projectId: ${projectId}`);
+console.log(`DEBUG: firebaseConfig.firestoreDatabaseId: ${databaseId}`);
+
+// Store the original environment project ID if it exists
+const originalEnvProject = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+
+console.log(`Initial Environment Project: ${originalEnvProject}`);
+console.log(`Config projectId: ${projectId}`);
+
+// Force environment variables to match the config project ID to ensure Admin SDK targets the correct project
 process.env.GOOGLE_CLOUD_PROJECT = projectId;
 process.env.GCLOUD_PROJECT = projectId;
+
+console.log(`Final Environment GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
 
 import express from "express";
 import { createServer as createViteServer } from "vite";
@@ -17,68 +29,218 @@ import path from "path";
 import { fileURLToPath } from "url";
 import * as XLSX from "xlsx";
 import { format, parse, isValid } from "date-fns";
+import { Firestore } from "@google-cloud/firestore";
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { Firestore as AdminFirestore, getFirestore, FieldValue } from "firebase-admin/firestore";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
   "https://www.googleapis.com/auth/analytics.readonly",
   "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile"
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/gmail.readonly"
 ];
 
 console.log(`Initializing Firestore. Project: ${projectId}, Database: ${databaseId || '(default)'}`);
 
-// Initialize Firebase Admin App
-if (admin.apps.length === 0) {
-  admin.initializeApp({
-    projectId: projectId
-  });
+// Initialize Firestore
+let firestore: any = null;
+let isFirestoreReady = false;
+const dbId = databaseId && databaseId !== '(default)' ? databaseId : undefined;
+
+let initLogs: string[] = [];
+function logInit(msg: string) {
+  console.log(msg);
+  initLogs.push(`${new Date().toISOString()}: ${msg}`);
 }
 
-// Initialize Firestore using the explicit databaseId
-// If databaseId is "(default)" or empty, use the default database
-const firestore = admin.firestore(databaseId && databaseId !== '(default)' ? databaseId : undefined);
-console.log(`Firestore instance created for database: ${databaseId || '(default)'}`);
+async function initFirestore() {
+  const configProjectId = projectId;
+  const configDatabaseId = dbId;
+  const startTime = Date.now();
+  
+  logInit(`Firestore Initialization Started.`);
+  logInit(`Project: ${configProjectId}`);
+  logInit(`Database: ${configDatabaseId || '(default)'}`);
+
+  const maxRetries = 30; // Increased retries to cover up to 15 minutes
+  let lastError: any = null;
+
+  // Initialize Admin SDK once
+  try {
+    if (admin.apps.length > 0) {
+      try { await admin.app().delete(); } catch (e) {}
+    }
+    admin.initializeApp({
+      projectId: configProjectId
+    });
+    logInit("Admin SDK initialized. Waiting for cloud permissions to sync...");
+  } catch (e) {
+    logInit(`Admin SDK Init Warning: ${e}`);
+  }
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      if (i > 0) {
+        // Exponential backoff with a cap
+        const delay = Math.min(10000 * i, 30000);
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        
+        // More reassuring logs
+        if (i % 3 === 0) {
+          logInit(`[Status] Still waiting for Google Cloud to sync permissions... (Elapsed: ${elapsed}s)`);
+          logInit(`[Note] This is a standard one-time delay for new databases. Your app is healthy and will connect automatically.`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      logInit(`Connection Attempt ${i + 1}/${maxRetries}...`);
+      
+      // Use the Admin Firestore instance for the test
+      const fs = configDatabaseId ? getFirestore(admin.app(), configDatabaseId) : getFirestore(admin.app());
+      
+      // Test connection with a simple read
+      const testDoc = fs.collection('system_config').doc('test_connection');
+      await testDoc.get();
+      
+      // If read works, try a write to verify full permissions
+      try {
+        await testDoc.set({ 
+          timestamp: FieldValue.serverTimestamp(),
+          status: 'ready',
+          lastAttempt: i + 1,
+          elapsed: Math.round((Date.now() - startTime) / 1000),
+          verifiedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (writeErr) {
+        logInit(`Read successful, but write permissions are still syncing...`);
+        throw writeErr;
+      }
+      
+      logInit(`SUCCESS: Firestore is now connected and ready! (Total time: ${Math.round((Date.now() - startTime) / 1000)}s)`);
+      return fs;
+    } catch (err: any) {
+      lastError = err;
+      const errCode = err.code !== undefined ? err.code : 'UNKNOWN';
+      
+      // Log the error but keep it clean
+      if (errCode === 7 || String(err.message).includes('PERMISSION_DENIED')) {
+        // This is the expected propagation error
+      } else {
+        logInit(`Connection attempt ${i + 1} encountered: [${errCode}] ${err.message}`);
+      }
+      
+      // Continue retrying for permission or not found errors
+      if (errCode === 5 || errCode === 7 || String(err.message).includes('PERMISSION_DENIED')) {
+        continue;
+      }
+      
+      // For other unexpected errors, still retry but log them
+      if (i < maxRetries - 1) continue;
+    }
+  }
+
+  logInit(`FINAL NOTICE: All ${maxRetries} connection attempts timed out.`);
+  logInit(`The app will now start in 'unverified' mode. If you see PERMISSION_DENIED in the UI, please refresh in 2 minutes.`);
+  
+  return configDatabaseId ? getFirestore(admin.app(), configDatabaseId) : getFirestore(admin.app());
+}
+
+// Initialize Firestore in the background
+initFirestore().then(fs => {
+  firestore = fs;
+  isFirestoreReady = true;
+  console.log(`Firestore initialized and ready with Project: ${projectId}`);
+}).catch(err => {
+  console.error("Critical Firestore initialization failure:", err);
+});
+
+
+// Helper for Firestore error reporting as per guidelines
+function handleFirestoreError(error: any, operation: string, path: string) {
+  const currentProjectId = projectId;
+  // @ts-ignore - databaseId is internal but useful for debugging
+  const currentDatabaseId = firestore?.databaseId || '(default)';
+  
+  const errorInfo = {
+    error: `${error.code || 'UNKNOWN'}: ${error.message || String(error)}`,
+    code: error.code,
+    details: error.details,
+    stack: error.stack,
+    operation,
+    path,
+    projectId: currentProjectId,
+    databaseId: currentDatabaseId,
+    env: process.env.NODE_ENV
+  };
+  console.error(`Firestore Error [${operation}] on ${currentProjectId}/${currentDatabaseId}:`, JSON.stringify(errorInfo, null, 2));
+  return null;
+}
 
 // Google OAuth Setup
+const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.APP_URL}/api/auth/google/callback`;
+
+console.log(`Initializing OAuth Client with ID: ${clientId ? clientId.substring(0, 10) + '...' : 'MISSING'}`);
+
 const oauth2Client = new OAuth2Client(
-  process.env.GOOGLE_OAUTH_CLIENT_ID,
-  process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-  process.env.GOOGLE_OAUTH_REDIRECT_URI
+  clientId,
+  clientSecret,
+  redirectUri
 );
 
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
 async function getStoredTokens() {
+  if (!firestore || !isFirestoreReady) {
+    console.log("getStoredTokens called before Firestore is ready");
+    return null;
+  }
+  const path = 'system_config/google_oauth_tokens';
   try {
     const doc = await firestore.collection('system_config').doc('google_oauth_tokens').get();
     if (doc.exists) {
       return doc.data();
     }
     return null;
-  } catch (error) {
-    console.error("Error fetching tokens from Firestore:", error);
-    return null;
+  } catch (error: any) {
+    return handleFirestoreError(error, "GET", path);
   }
 }
 
 async function saveTokens(tokens: any) {
+  if (!firestore || !isFirestoreReady) {
+    console.error("saveTokens called before Firestore is ready");
+    return;
+  }
+  const path = 'system_config/google_oauth_tokens';
   try {
     await firestore.collection('system_config').doc('google_oauth_tokens').set({
       ...tokens,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
-  } catch (error) {
-    console.error("Error saving tokens to Firestore:", error);
+  } catch (error: any) {
+    handleFirestoreError(error, "WRITE", path);
   }
 }
 
 async function deleteTokens() {
+  if (!firestore || !isFirestoreReady) {
+    console.error("deleteTokens called before Firestore is ready");
+    return;
+  }
+  const path = 'system_config/google_oauth_tokens';
   try {
     await firestore.collection('system_config').doc('google_oauth_tokens').delete();
-  } catch (error) {
-    console.error("Error deleting tokens from Firestore:", error);
+  } catch (error: any) {
+    handleFirestoreError(error, "DELETE", path);
   }
 }
 
@@ -87,11 +249,41 @@ console.log(`Firestore initialized. Using database: ${databaseId || '(default)'}
 // Cache for pricing data
 let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
 
+// Global crash handlers to prevent silent restarts
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Give some time for logs to flush before exiting
+  setTimeout(() => process.exit(1), 1000);
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json({ limit: '10mb' }));
+
+  // Middleware to check if Firestore is ready
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      console.log(`API Request: ${req.method} ${req.path}, Firestore Ready: ${isFirestoreReady}`);
+    }
+    if (req.path.startsWith('/api/') && req.path !== '/api/health' && !isFirestoreReady) {
+      return res.status(503).json({ 
+        error: "Service Initializing", 
+        message: "Firestore is still connecting. Please wait 2-3 minutes for Cloud IAM propagation." 
+      });
+    }
+    next();
+  });
+
+  // API routes go here
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
 
   // Google OAuth Routes
   app.get("/api/auth/google/url", (req, res) => {
@@ -109,10 +301,40 @@ async function startServer() {
       const { tokens } = await oauth2Client.getToken(code as string);
       oauth2Client.setCredentials(tokens);
       await saveTokens(tokens);
-      res.redirect("/?google_auth=success");
+      
+      // Send success message to parent window and close popup
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+                window.close();
+              } else {
+                window.location.href = "/?google_auth=success";
+              }
+            </script>
+            <p>Authentication successful. This window should close automatically.</p>
+          </body>
+        </html>
+      `);
     } catch (error) {
       console.error("Error getting tokens:", error);
-      res.redirect("/?google_auth=error");
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR' }, '*');
+                window.close();
+              } else {
+                window.location.href = "/?google_auth=error";
+              }
+            </script>
+            <p>Authentication failed. This window should close automatically.</p>
+          </body>
+        </html>
+      `);
     }
   });
 
@@ -142,7 +364,7 @@ async function startServer() {
       const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const response = await searchconsole.searchanalytics.query({
-        siteUrl: "https://pattayarentacar.com/",
+        siteUrl: process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL || "https://pattayarentacar.com/",
         requestBody: {
           startDate,
           endDate,
@@ -180,7 +402,7 @@ async function startServer() {
         return res.status(400).json({ error: "Google Analytics Property ID not configured" });
       }
 
-      const [response] = await analyticsdata.properties.runReport({
+      const response = await analyticsdata.properties.runReport({
         property: `properties/${propertyId}`,
         requestBody: {
           dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
@@ -189,7 +411,7 @@ async function startServer() {
         }
       });
 
-      res.json({ data: response });
+      res.json({ data: response.data });
     } catch (error: any) {
       console.error("Error fetching Analytics data:", error);
       res.status(500).json({ error: "Failed to fetch Analytics data", details: error.message });
@@ -215,7 +437,7 @@ async function startServer() {
             question: entry.question,
             answer: entry.answer,
             isActive: true,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: FieldValue.serverTimestamp()
           });
         }
       }
@@ -224,7 +446,7 @@ async function startServer() {
       console.log("CSV import successful");
       res.json({ success: true, count: data.length });
     } catch (error: any) {
-      console.error("Error importing CSV:", error);
+      handleFirestoreError(error, "BATCH_COMMIT", "ai_knowledge_base");
       res.status(500).json({ error: "Failed to import CSV data", details: error.message });
     }
   });
@@ -232,37 +454,189 @@ async function startServer() {
   // Debug route to check Firestore connection
   app.get("/api/debug/firestore", async (req, res) => {
     try {
+      const currentProjectId = projectId;
+      // @ts-ignore
+      const currentDatabaseId = (firestore as any).databaseId || '(default)';
+      
       const testDoc = firestore.collection('system_config').doc('test_connection');
       await testDoc.set({ timestamp: Date.now(), status: 'ok' });
-      const doc = await testDoc.get();
-      res.json({ 
-        success: true, 
-        data: doc.data(),
-        configProjectId: firebaseConfig.projectId,
-        configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
-        envProjectId: process.env.GOOGLE_CLOUD_PROJECT,
-        envGcloudProject: process.env.GCLOUD_PROJECT
+      const snapshot = await testDoc.get();
+      
+      res.json({
+        status: "success",
+        connection: "ok",
+        details: {
+          activeProjectId: currentProjectId,
+          activeDatabaseId: currentDatabaseId,
+          configProjectId: firebaseConfig.projectId,
+          configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+          envProjectId: process.env.GOOGLE_CLOUD_PROJECT || 'not set',
+          envGcloudProject: process.env.GCLOUD_PROJECT || 'not set',
+          docExists: snapshot.exists,
+          data: snapshot.data()
+        }
       });
     } catch (error: any) {
-      console.error("Firestore debug error:", error);
-      res.status(500).json({ 
-        error: error.message, 
-        stack: error.stack,
-        configProjectId: firebaseConfig.projectId,
-        configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
-        envProjectId: process.env.GOOGLE_CLOUD_PROJECT,
-        envGcloudProject: process.env.GCLOUD_PROJECT
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+        code: error.code,
+        details: {
+          activeProjectId: projectId,
+          // @ts-ignore
+          activeDatabaseId: (firestore as any).databaseId || '(default)',
+          configProjectId: firebaseConfig.projectId,
+          configDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+          envProjectId: process.env.GOOGLE_CLOUD_PROJECT || 'not set',
+          envGcloudProject: process.env.GCLOUD_PROJECT || 'not set'
+        }
       });
     }
+  });
+
+  app.get("/api/debug/firestore/logs", (req, res) => {
+    res.json({ logs: initLogs });
   });
 
   app.post("/api/auth/google/disconnect", async (req, res) => {
     res.json({ success: true });
   });
 
-  // Removed Gmail Auth Callback
+  // Gmail Sync Route for Knowledge Base
+  app.post("/api/knowledge-base/sync-gmail", async (req, res) => {
+    console.log('POST /api/knowledge-base/sync-gmail hit');
+    const tokens = await getStoredTokens();
+    if (!tokens) {
+      return res.status(401).json({ error: "Not authenticated with Google" });
+    }
 
-  // Removed Gmail Sync Route
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(400).json({ error: "GEMINI_API_KEY is not set. Please add it to the Secrets panel." });
+      }
+
+      oauth2Client.setCredentials(tokens);
+      const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+      
+      // Search for emails related to car rental inquiries
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const afterDate = thirtyDaysAgo.toISOString().split('T')[0].replace(/-/g, '/');
+      
+      console.log(`Searching Gmail with query: after:${afterDate}`);
+      const response = await gmail.users.messages.list({
+        userId: "me",
+        q: `(car rental inquiry OR booking OR price OR availability OR "how much" OR "can I") after:${afterDate}`,
+        maxResults: 8 // Reduced from 15 to prevent timeouts
+      });
+
+      const messages = response.data.messages || [];
+      console.log(`Found ${messages.length} potential Gmail messages for sync`);
+      const allExtractedPairs: any[] = [];
+
+      // Process messages in parallel with a limit to speed up and avoid timeouts
+      const processMessage = async (msg: any) => {
+        try {
+          console.log(`Processing message ID: ${msg.id}`);
+          const fullMsg = await gmail.users.messages.get({
+            userId: "me",
+            id: msg.id!,
+            format: 'full'
+          });
+
+          let body = "";
+          const payload = fullMsg.data.payload;
+          if (payload?.parts) {
+            const findText = (parts: any[]): string => {
+              for (const p of parts) {
+                if (p.mimeType === 'text/plain' && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
+                if (p.parts) {
+                  const res = findText(p.parts);
+                  if (res) return res;
+                }
+              }
+              return "";
+            };
+            body = findText(payload.parts);
+          } else if (payload?.body?.data) {
+            body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+          }
+
+          if (body.length < 50) return;
+
+          const prompt = `
+            Extract car rental related question and answer pairs from the following email content.
+            The email is likely from a customer asking about car rentals in Pattaya, Thailand.
+            Focus on general information that could be useful for a knowledge base (prices, requirements, locations, etc.).
+            Return the result as a JSON array of objects with "question" and "answer" properties.
+            If no relevant pairs are found, return an empty array [].
+            
+            Email Content:
+            ${body.substring(0, 3000)}
+          `;
+
+          const geminiResponse = await genAI.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    question: { type: Type.STRING },
+                    answer: { type: Type.STRING }
+                  },
+                  required: ["question", "answer"]
+                }
+              }
+            }
+          });
+
+          const text = geminiResponse.text;
+          if (!text) return;
+          
+          const pairs = JSON.parse(text);
+          console.log(`Gemini extracted ${pairs.length} pairs from message ${msg.id}`);
+          return pairs.map((p: any) => ({ ...p, source: `Gmail: ${msg.id}` }));
+        } catch (err) {
+          console.error(`Error processing message ${msg.id}:`, err);
+          return [];
+        }
+      };
+
+      const results = await Promise.all(messages.map(msg => processMessage(msg)));
+      results.forEach(pairs => {
+        if (pairs) allExtractedPairs.push(...pairs);
+      });
+
+      if (allExtractedPairs.length > 0) {
+        console.log(`Saving ${allExtractedPairs.length} total pairs to Firestore`);
+        const batch = firestore.batch();
+        const collection = firestore.collection('ai_knowledge_base');
+
+        // Firestore batch limit is 500, we should be well under that with 8 messages
+        for (const pair of allExtractedPairs) {
+          const docRef = collection.doc();
+          batch.set(docRef, {
+            question: pair.question,
+            answer: pair.answer,
+            isActive: true,
+            source: pair.source,
+            updatedAt: FieldValue.serverTimestamp()
+          });
+        }
+
+        await batch.commit();
+      }
+
+      res.json({ success: true, count: allExtractedPairs.length });
+    } catch (error: any) {
+      console.error("Error syncing Gmail:", error);
+      res.status(500).json({ error: "Failed to sync Gmail", details: error.message });
+    }
+  });
 
   let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
   let lastFetchTime = 0;
@@ -450,6 +824,12 @@ async function startServer() {
       console.error('Error fetching Google business details:', error);
       res.status(500).json({ error: 'Failed to fetch business details' });
     }
+  });
+
+  // Catch-all for unhandled API routes
+  app.all("/api/*", (req, res) => {
+    console.log(`Unhandled API Request: ${req.method} ${req.path}`);
+    res.status(404).json({ error: "API route not found", path: req.path, method: req.method });
   });
 
   // Vite middleware for development

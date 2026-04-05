@@ -15,11 +15,13 @@ import {
   AlertCircle,
   Loader2,
   FileUp,
-  Sparkles
+  Sparkles,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { fetchWithRetry } from '../lib/api';
 import Papa from 'papaparse';
 
 export const AITraining: React.FC = () => {
@@ -35,6 +37,7 @@ export const AITraining: React.FC = () => {
   });
 
   const [isImporting, setIsImporting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -71,7 +74,7 @@ export const AITraining: React.FC = () => {
             return;
           }
 
-          const response = await fetch('/api/knowledge-base/import-csv', {
+          const response = await fetchWithRetry('/api/knowledge-base/import-csv', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data: validData })
@@ -97,6 +100,67 @@ export const AITraining: React.FC = () => {
         setIsImporting(false);
       }
     });
+  };
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        toast.success('Successfully authenticated with Google!');
+        handleSyncGmail();
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        toast.error('Failed to authenticate with Google');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleSyncGmail = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetchWithRetry('/api/knowledge-base/sync-gmail', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        try {
+          const data = await response.json();
+          toast.success(`Successfully synced ${data.count} entries from Gmail!`);
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          throw new Error('Server returned an invalid response format. Please check console for details.');
+        }
+      } else {
+        if (response.status === 401) {
+          // Open auth URL in popup
+          const authRes = await fetchWithRetry('/api/auth/google/url');
+          const authData = await authRes.json();
+          const authWindow = window.open(authData.url, 'google_auth_popup', 'width=600,height=700');
+          if (!authWindow) {
+            toast.error('Please allow popups for this site to connect your account.');
+          }
+          return;
+        }
+        
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to sync Gmail');
+        } else {
+          const text = await response.text();
+          console.error('Non-JSON error response:', text);
+          if (response.status === 503) {
+            throw new Error('Service is still initializing. Please wait a few minutes.');
+          }
+          throw new Error(`Server error (${response.status}). Please try again later.`);
+        }
+      }
+    } catch (error: any) {
+      console.error('Sync error:', error);
+      toast.error(error.message || 'Failed to sync Gmail');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleSave = async () => {
@@ -181,6 +245,15 @@ export const AITraining: React.FC = () => {
             accept=".csv"
             className="hidden"
           />
+          <button
+            onClick={handleSyncGmail}
+            disabled={isSyncing}
+            className="h-12 px-6 bg-white/40 backdrop-blur-md border border-white/60 text-[#1A1A1A] rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all disabled:opacity-50"
+          >
+            {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} className="text-brand-orange" />}
+            {isSyncing ? 'Syncing...' : 'Sync Gmail'}
+          </button>
+
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}

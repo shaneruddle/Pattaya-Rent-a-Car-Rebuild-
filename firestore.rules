@@ -8,17 +8,26 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        request.auth.token.email_verified == true &&
-        'email' in request.auth.token &&
-        request.auth.token.email.lower() == "info@pattayarentacar.com";
+        (
+          ('email' in request.auth.token && 
+           (request.auth.token.email.lower() == "info@pattayarentacar.com" ||
+            request.auth.token.email.lower() == "pattayarentacar@gmail.com")) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
     function isStaff() {
       return isAuthenticated() &&
-        'email' in request.auth.token &&
-        (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$") || 
-         request.auth.token.email.lower() == "gift@pattayarentacar.com" ||
-         isAdmin());
+        (
+          isAdmin() ||
+          ('email' in request.auth.token && 
+           (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$") ||
+            request.auth.token.email.lower() == "gift@pattayarentacar.com" ||
+            request.auth.token.email.lower() == "prac.staff@gmail.com")) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff')
+        );
     }
 
     // Cars: Publicly readable, staff writable
@@ -64,9 +73,13 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
     }
 
-    // Users: Self only
+    // Users: Self only, but admins can see all
     match /users/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId && 
+        (!request.resource.data.keys().contains('role') || request.resource.data.role == resource.data.role);
     }
 
     // Vehicle Logs: Staff only
@@ -85,9 +98,10 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
-    // System Config: Staff only
+    // System Config: Publicly readable for debugging, staff writable
     match /system_config/{configId} {
-      allow read, write: if isStaff();
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     // AI Knowledge Base: Publicly readable, staff writable

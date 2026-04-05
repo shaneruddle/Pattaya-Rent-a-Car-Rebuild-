@@ -17,10 +17,10 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { fetchWithRetry } from '../lib/api';
 import { GoogleGenAI, Type } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface Suggestion {
   title: string;
@@ -37,31 +37,85 @@ export const TrafficInsights: React.FC = () => {
   const [searchData, setSearchData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const getAI = () => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn('GEMINI_API_KEY is missing');
+      return null;
+    }
+    return new GoogleGenAI({ apiKey });
+  };
+
   useEffect(() => {
     checkAuthStatus();
   }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = async (retries = 3, delay = 2000) => {
     try {
-      const res = await fetch('/api/auth/google/status');
-      const data = await res.json();
-      setIsAuthenticated(data.authenticated);
-      if (data.authenticated) {
-        fetchSearchData();
+      const res = await fetchWithRetry('/api/auth/google/status');
+      if (!res.ok) {
+        const text = await res.text();
+        if (text.includes('Rate exceeded') && retries > 0) {
+          console.warn(`Rate limit exceeded for auth status check, retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          return checkAuthStatus(retries - 1, delay * 2);
+        }
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const data = await res.json();
+        setIsAuthenticated(data.authenticated);
+        if (data.authenticated) {
+          fetchSearchData();
+        }
+      } else {
+        const text = await res.text();
+        if (text.includes('Rate exceeded') && retries > 0) {
+          console.warn(`Rate limit exceeded for auth status check (non-JSON), retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          return checkAuthStatus(retries - 1, delay * 2);
+        }
+        console.warn("Received non-JSON response for auth status:", text);
+        setIsAuthenticated(false);
       }
     } catch (error) {
       console.error("Error checking auth status:", error);
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchSearchData = async () => {
+  const fetchSearchData = async (retries = 3, delay = 2000) => {
     try {
-      const res = await fetch('/api/seo/search-data');
-      const data = await res.json();
-      if (data.data) {
-        setSearchData(data.data);
+      const res = await fetchWithRetry('/api/seo/search-data');
+      if (!res.ok) {
+        const text = await res.text();
+        if (text.includes('Rate exceeded') && retries > 0) {
+          console.warn(`Rate limit exceeded for search data, retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          return fetchSearchData(retries - 1, delay * 2);
+        }
+        console.warn("Error fetching search data:", text);
+        return;
+      }
+      
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const data = await res.json();
+        if (data.data) {
+          setSearchData(data.data);
+        }
+      } else {
+        const text = await res.text();
+        if (text.includes('Rate exceeded') && retries > 0) {
+          console.warn(`Rate limit exceeded for search data (non-JSON), retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          return fetchSearchData(retries - 1, delay * 2);
+        }
+        console.warn("Received non-JSON response for search data:", text);
       }
     } catch (error) {
       console.error("Error fetching search data:", error);
@@ -70,11 +124,24 @@ export const TrafficInsights: React.FC = () => {
 
   const handleConnect = async () => {
     try {
-      const res = await fetch('/api/auth/google/url');
-      const { url } = await res.json();
-      window.location.href = url;
+      const res = await fetchWithRetry('/api/auth/google/url');
+      if (!res.ok) {
+        const text = await res.text();
+        toast.error(`Auth error: ${text.includes('Rate exceeded') ? 'Too many requests' : text}`);
+        return;
+      }
+      
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const { url } = await res.json();
+        window.location.href = url;
+      } else {
+        const text = await res.text();
+        throw new Error(`Invalid response: ${text}`);
+      }
     } catch (error) {
       console.error("Error getting auth URL:", error);
+      toast.error("Failed to connect to Google. Please try again later.");
     }
   };
 
@@ -83,6 +150,11 @@ export const TrafficInsights: React.FC = () => {
     setIsAuditing(true);
     
     try {
+      const ai = getAI();
+      if (!ai) {
+        throw new Error('AI service not available (missing API key)');
+      }
+      
       const prompt = `Analyze these Google Search Console keywords for a car rental business in Pattaya, Thailand:
       ${JSON.stringify(searchData)}
       
@@ -160,10 +232,21 @@ export const TrafficInsights: React.FC = () => {
         </p>
         <button
           onClick={handleConnect}
-          className="bg-brand-orange text-white px-12 py-5 rounded-3xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-brand-orange/90 transition-all shadow-xl shadow-brand-orange/20"
+          className="bg-brand-orange text-white px-12 py-5 rounded-3xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-brand-orange/90 transition-all shadow-xl shadow-brand-orange/20 mb-8"
         >
           <Globe size={20} /> Connect Google Console
         </button>
+        
+        <div className="bg-white/40 backdrop-blur-md border border-white/60 p-6 rounded-3xl text-left max-w-lg w-full">
+          <h3 className="font-bold text-xs uppercase tracking-widest text-[#1A1A1A]/40 mb-4">Setup Instructions</h3>
+          <ol className="text-xs text-[#1A1A1A]/60 space-y-3 list-decimal ml-4">
+            <li>Go to <a href="https://console.cloud.google.com/" target="_blank" className="text-brand-orange hover:underline">Google Cloud Console</a> and create a project.</li>
+            <li>Enable <strong>Google Search Console API</strong> and <strong>Google Analytics Data API</strong>.</li>
+            <li>Create OAuth 2.0 Credentials (Web Application).</li>
+            <li>Add this Authorized Redirect URI: <code className="bg-black/5 px-1 rounded">{window.location.origin}/api/auth/google/callback</code></li>
+            <li>Add the Client ID, Secret, and Redirect URI to the <strong>Secrets</strong> panel in AI Studio.</li>
+          </ol>
+        </div>
       </div>
     );
   }

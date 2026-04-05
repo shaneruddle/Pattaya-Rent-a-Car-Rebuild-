@@ -8,6 +8,9 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase SDK
 console.log('firebase.ts: Initializing Firebase SDK');
+console.log('firebase.ts: Config Project ID:', firebaseConfig.projectId);
+console.log('firebase.ts: Config Database ID:', firebaseConfig.firestoreDatabaseId);
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
@@ -23,13 +26,13 @@ export const logOut = () => signOut(auth);
 async function testConnection() {
   try {
     console.log("Firebase: Testing connection to database:", firebaseConfig.firestoreDatabaseId);
-    // Use 'cars' collection which is publicly readable in rules
-    await getDocFromServer(doc(db, 'cars', 'connection_test'));
+    // Use 'system_config' which is also publicly readable for debugging
+    await getDocFromServer(doc(db, 'system_config', 'test_connection'));
     console.log("Firebase: Connection test successful.");
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firebase: Connection test failed:", error);
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. This often means the database ID or project ID is incorrect.");
+    if (error.message && (error.message.includes('NOT_FOUND') || error.message.includes('not-found'))) {
+      console.warn("Firebase: Database not found. This app might need to be re-provisioned or the project ID is incorrect.");
     }
   }
 }

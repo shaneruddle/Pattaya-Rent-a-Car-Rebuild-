@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, doc, setDoc, getDocFromServer } from 'firebase/firestore';
 import { auth, db, signIn, handleFirestoreError, OperationType } from './firebase';
 import { Car, Booking } from './types';
 import { Sidebar } from './components/Sidebar';
@@ -34,25 +34,28 @@ import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid } from 'date-
 
 import { BookingEngine } from './components/BookingEngine';
 import { LanguageProvider } from './LanguageContext';
+import { PricingProvider } from './contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
 import { SystemLog } from './types';
 
 export default function App() {
   console.log('App: Rendering top-level component');
   return (
-    <LanguageProvider>
-      <Helmet>
-        <title>Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005</title>
-        <meta name="description" content="Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today." />
-        <meta property="og:title" content="Pattaya Rent a Car | Trusted Car Rental in Pattaya" />
-        <meta property="og:description" content="Pattaya's most trusted car rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
-        <meta property="og:url" content="https://pattayarentacar.com/" />
-        <meta property="og:image" content="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=1200,h=630,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png" />
-      </Helmet>
-      <ErrorBoundary>
-        <AppContent />
-      </ErrorBoundary>
-    </LanguageProvider>
+    <ErrorBoundary>
+      <LanguageProvider>
+        <PricingProvider>
+          <Helmet>
+            <title>Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005</title>
+            <meta name="description" content="Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today." />
+            <meta property="og:title" content="Pattaya Rent a Car | Trusted Car Rental in Pattaya" />
+            <meta property="og:description" content="Pattaya's most trusted car rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
+            <meta property="og:url" content="https://pattayarentacar.com/" />
+            <meta property="og:image" content="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=1200,h=630,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png" />
+          </Helmet>
+          <AppContent />
+        </PricingProvider>
+      </LanguageProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -96,6 +99,34 @@ function AppContent() {
       console.log('Not attaching listeners: user=', !!user, 'isStaff=', isStaff);
       return;
     }
+
+    // Ensure user document exists in Firestore for rules to work correctly
+    const ensureUserDoc = async () => {
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        let docSnap;
+        try {
+          docSnap = await getDocFromServer(userDocRef);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+          return;
+        }
+        if (!docSnap.exists()) {
+          console.log('Creating user document for:', user.email);
+          await setDoc(userDocRef, {
+            email: user.email,
+            displayName: user.displayName,
+            role: user.email === 'info@pattayarentacar.com' ? 'admin' : 'staff',
+            createdAt: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        console.error('Error ensuring user document:', error);
+        // If it's a permission error, we might still be able to create it if it doesn't exist
+        // but we'll let the rules handle that.
+      }
+    };
+    ensureUserDoc();
 
     console.log('Fetching data for user:', user.email);
 
