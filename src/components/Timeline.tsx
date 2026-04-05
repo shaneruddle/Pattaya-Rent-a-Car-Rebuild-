@@ -17,9 +17,10 @@ interface TimelineProps {
   currentDate: Date;
   newBookingTrigger?: number;
   onLogIncome?: (booking: Booking) => void;
+  title?: string;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome }) => {
+export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome, title = "Car Fleet" }) => {
   const [selectedSlot, setSelectedSlot] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -398,7 +399,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
             <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
-              <span className="font-serif italic text-sm text-[#1A1A1A]">Car Fleet</span>
+              <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
             </div>
             <div className="flex">
               {daysInMonth.map(day => (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut } from '../firebase';
@@ -7,16 +7,17 @@ import { cn } from '../lib/utils';
 
 interface SidebarProps {
   user: any;
+  isAdmin?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs' | 'enquiries' | 'ai_training' | 'traffic_insights';
-  onViewChange: (view: 'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'logs' | 'enquiries' | 'ai_training' | 'traffic_insights') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental') => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentView, onViewChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, onNewBooking, currentView, onViewChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
 
-  const isSettingsView = ['pricing', 'website_fleet', 'ai_training'].includes(currentView);
+  const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'traffic_insights'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   React.useEffect(() => {
@@ -41,14 +42,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
       <div className="p-6 flex flex-col h-full">
         <div className="mb-10 flex items-center justify-center">
           <img
-            src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
-            alt="PRAC Logo"
+            src={currentView === 'timeline_bikes' 
+              ? "/api/artifacts/artifact_1712270072000.png" 
+              : "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"}
+            alt={currentView === 'timeline_bikes' ? "PRAB Logo" : "PRAC Logo"}
             className={cn("transition-all duration-300", isCollapsed ? "w-10" : "w-32")}
             referrerPolicy="no-referrer"
           />
         </div>
 
-        <div className="mb-8 px-2">
+        <div className="mb-8 px-2 space-y-2">
+          <button
+            onClick={() => onViewChange('new_rental')}
+            className={cn(
+              "w-full h-12 rounded-2xl bg-brand-orange text-white font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all hover:bg-[#1A1A1A] shadow-lg shadow-brand-orange/20",
+              isCollapsed && "px-0 justify-center",
+              currentView === 'new_rental' && "ring-2 ring-brand-orange ring-offset-2"
+            )}
+          >
+            <Zap size={18} />
+            {!isCollapsed && "New Rental"}
+          </button>
           <button
             onClick={onNewBooking}
             className={cn(
@@ -65,15 +79,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
             <div className="space-y-2 mb-8">
               <button
-                onClick={() => onViewChange('timeline')}
+                onClick={() => onViewChange('timeline_cars')}
                 className={cn(
                   "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                  currentView === 'timeline' 
+                  currentView === 'timeline_cars' 
                     ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
                     : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-white/60"
                 )}
               >
-                <Calendar size={18} /> Timeline
+                <Calendar size={18} /> Car Timeline
+              </button>
+              <button
+                onClick={() => onViewChange('timeline_bikes')}
+                className={cn(
+                  "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                  currentView === 'timeline_bikes' 
+                    ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                    : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-white/60"
+                )}
+              >
+                <Calendar size={18} /> Bike Timeline
               </button>
               <button
                 onClick={() => onViewChange('enquiries')}
@@ -96,6 +121,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
                 )}
               >
                 <Calendar size={18} /> Bookings
+              </button>
+              <button
+                onClick={() => onViewChange('rentals')}
+                className={cn(
+                  "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                  currentView === 'rentals' 
+                    ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                    : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-white/60"
+                )}
+              >
+                <ShieldCheck size={18} /> Rentals
               </button>
               <button
                 onClick={() => onViewChange('finance')}
@@ -140,17 +176,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
                 )}
               >
                 <Activity size={18} /> System Logs
-              </button>
-              <button
-                onClick={() => onViewChange('traffic_insights')}
-                className={cn(
-                  "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                  currentView === 'traffic_insights' 
-                    ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                    : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-white/60"
-                )}
-              >
-                <TrendingUp size={18} /> Traffic Insights
               </button>
 
               {/* System Settings Group */}
@@ -202,16 +227,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
                         <Globe size={14} /> Website Fleet
                       </button>
                       <button
-                        onClick={() => onViewChange('ai_training')}
+                        onClick={() => onViewChange('traffic_insights')}
                         className={cn(
                           "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                          currentView === 'ai_training' 
+                          currentView === 'traffic_insights' 
                             ? "bg-brand-orange text-white shadow-md" 
                             : "text-[#1A1A1A]/50 hover:bg-white/40"
                         )}
                       >
-                        <Bot size={14} /> AI Training
+                        <TrendingUp size={14} /> Traffic Insights
                       </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => onViewChange('user_management')}
+                          className={cn(
+                            "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                            currentView === 'user_management' 
+                              ? "bg-brand-orange text-white shadow-md" 
+                              : "text-[#1A1A1A]/50 hover:bg-white/40"
+                          )}
+                        >
+                          <Shield size={14} /> User Management
+                        </button>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -238,12 +276,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
         {isCollapsed && (
           <div className="flex-1 flex flex-col items-center gap-4 pt-4 overflow-y-auto custom-scrollbar no-scrollbar">
             <button 
-              onClick={() => onViewChange('timeline')}
+              onClick={() => onViewChange('new_rental')}
               className={cn(
                 "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                currentView === 'timeline' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
+                currentView === 'new_rental' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
               )}
-              title="Timeline"
+              title="New Rental"
+            >
+              <Zap size={20} />
+            </button>
+            <button 
+              onClick={() => onViewChange('timeline_cars')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'timeline_cars' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
+              )}
+              title="Car Timeline"
+            >
+              <Calendar size={20} />
+            </button>
+            <button 
+              onClick={() => onViewChange('timeline_bikes')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'timeline_bikes' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
+              )}
+              title="Bike Timeline"
             >
               <Calendar size={20} />
             </button>
@@ -266,6 +324,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
               title="Bookings"
             >
               <Calendar size={20} />
+            </button>
+            <button 
+              onClick={() => onViewChange('rentals')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'rentals' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
+              )}
+              title="Rentals"
+            >
+              <ShieldCheck size={20} />
             </button>
             <button 
               onClick={() => onViewChange('finance')}
@@ -306,16 +374,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
               title="System Logs"
             >
               <Activity size={20} />
-            </button>
-            <button 
-              onClick={() => onViewChange('traffic_insights')}
-              className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                currentView === 'traffic_insights' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-white/60"
-              )}
-              title="Traffic Insights"
-            >
-              <TrendingUp size={20} />
             </button>
 
             {/* Collapsed System Settings */}
@@ -360,15 +418,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onNewBooking, currentVie
                       <Globe size={16} />
                     </button>
                     <button 
-                      onClick={() => onViewChange('ai_training')}
+                      onClick={() => onViewChange('traffic_insights')}
                       className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'ai_training' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                        currentView === 'traffic_insights' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
                       )}
-                      title="AI Training"
+                      title="Traffic Insights"
                     >
-                      <Bot size={16} />
+                      <TrendingUp size={16} />
                     </button>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => onViewChange('user_management')}
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                          currentView === 'user_management' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                        )}
+                        title="User Management"
+                      >
+                        <Shield size={16} />
+                      </button>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

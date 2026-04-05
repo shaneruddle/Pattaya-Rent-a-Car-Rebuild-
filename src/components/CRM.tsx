@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
 import { format, parseISO } from 'date-fns';
+import Papa from 'papaparse';
 import { 
   Users, 
   Search, 
@@ -76,6 +77,92 @@ export const CRM: React.FC = () => {
 
     return () => unsubscribe();
   }, [selectedCustomer]);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+      complete: async (results) => {
+        const data = results.data as any[];
+        
+        // Map common CSV headers to our Customer type
+        const validData = data.map(item => {
+          const email = item.email || item.email_address;
+          const firstName = item.first_name || item.name?.split(' ')[0] || item.firstname;
+          if (!email || !firstName) return null;
+
+          // Check if already exists
+          if (customers.some(c => c.email.toLowerCase() === email.toLowerCase())) return null;
+
+          return {
+            firstName,
+            lastName: item.last_name || item.name?.split(' ').slice(1).join(' ') || item.lastname || '',
+            email,
+            mobileNumber: item.mobile_number || item.phone || item.mobile || '',
+            address: item.address || '',
+            dob: item.dob || item.date_of_birth || '',
+            location: {
+              lat: parseFloat(item.lat || item.latitude) || 0,
+              lng: parseFloat(item.lng || item.longitude) || 0,
+              address: item.location_address || item.location_label || ''
+            }
+          };
+        }).filter(item => item !== null);
+
+        if (validData.length === 0) {
+          toast.error('No new valid customers found in CSV. Ensure headers like "email" and "first_name" are present.');
+          return;
+        }
+
+        toast.promise(async () => {
+          const chunks = [];
+          for (let i = 0; i < validData.length; i += 500) {
+            chunks.push(validData.slice(i, i + 500));
+          }
+
+          const { fetchWithRetry } = await import('../lib/api');
+          
+          for (const chunk of chunks) {
+            const response = await fetchWithRetry('/api/crm/import-csv', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: chunk })
+            });
+            
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.details || error.error || 'Failed to import chunk');
+            }
+          }
+          
+          await logSystemActivity(
+            'CSV Import',
+            `Imported ${validData.length} customers via CSV`,
+            'CRM',
+            { count: validData.length }
+          );
+
+          return validData.length;
+        }, {
+          loading: 'Importing customers...',
+          success: (count) => `Successfully imported ${count} customers!`,
+          error: 'Failed to import customers'
+        });
+
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      },
+      error: (error) => {
+        console.error('PapaParse error:', error);
+        toast.error('Failed to parse CSV file');
+      }
+    });
+  };
 
   const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -186,6 +273,19 @@ export const CRM: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleImportCSV}
+            accept=".csv"
+            className="hidden"
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-white/40 backdrop-blur-md border border-white/60 text-[#141414] px-6 py-2.5 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm"
+          >
+            Import CSV
+          </button>
           <button 
             onClick={() => {
               setIsAdding(true);

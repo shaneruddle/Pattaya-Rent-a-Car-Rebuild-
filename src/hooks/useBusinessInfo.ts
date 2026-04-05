@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+import { fetchWithRetry } from '../lib/api';
+
 export interface BusinessInfo {
   formatted_address?: string;
   international_phone_number?: string;
@@ -30,11 +32,17 @@ export const useBusinessInfo = () => {
 
     const fetchInfo = async () => {
       try {
-        const response = await fetch('/api/reviews');
+        const response = await fetchWithRetry('/api/reviews');
         if (response.ok) {
-          const data = await response.json();
-          cachedInfo = data;
-          setInfo(data);
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            cachedInfo = data;
+            setInfo(data);
+          } else {
+            console.error('Invalid content type for business info:', contentType);
+            setError('Invalid response format from server');
+          }
         } else {
           setError('Failed to fetch business info');
         }

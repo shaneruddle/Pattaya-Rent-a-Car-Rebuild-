@@ -157,6 +157,37 @@
       },
       "required": ["to", "message"]
     },
+    "Rental": {
+      "title": "Rental",
+      "description": "An active rental record.",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string", "description": "Optional booking ID." },
+        "customerId": { "type": "string", "description": "The ID of the customer." },
+        "carId": { "type": "string", "description": "The ID of the vehicle." },
+        "dateOut": { "type": "string", "format": "date-time" },
+        "dateIn": { "type": "string", "format": "date-time" },
+        "totalCharge": { "type": "number" },
+        "depositAmount": { "type": "number" },
+        "damagePhotos": { "type": "array", "items": { "type": "string" }, "description": "List of storage URLs for damage photos." },
+        "status": { "type": "string", "enum": ["Active", "Completed", "Cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "processedBy": { "type": "string" }
+      },
+      "required": ["customerId", "carId", "dateOut", "dateIn", "totalCharge", "status"]
+    },
+    "RentalPhoto": {
+      "title": "RentalPhoto",
+      "description": "A photo associated with a rental, used as a fallback when storage is unavailable.",
+      "type": "object",
+      "properties": {
+        "rentalId": { "type": "string" },
+        "photo": { "type": "string", "description": "Base64 encoded image data." },
+        "index": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["rentalId", "photo", "createdAt"]
+    },
     "WebsiteCar": {
       "title": "WebsiteCar",
       "description": "A vehicle displayed on the public website.",
@@ -196,19 +227,6 @@
       },
       "required": ["action", "description", "user", "timestamp", "category"]
     },
-    "AIKnowledgeBase": {
-      "title": "AIKnowledgeBase",
-      "description": "A question and answer pair used to train the AI assistant.",
-      "type": "object",
-      "properties": {
-        "question": { "type": "string", "description": "The question or trigger phrase." },
-        "answer": { "type": "string", "description": "The detailed response the AI should provide." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "When the entry was last updated." },
-        "updatedBy": { "type": "string", "description": "The user who last updated the entry." },
-        "isActive": { "type": "boolean", "description": "Whether the entry is currently active." }
-      },
-      "required": ["question", "answer", "isActive"]
-    },
     "SystemConfig": {
       "title": "SystemConfig",
       "description": "System-wide configuration settings, including OAuth tokens.",
@@ -228,7 +246,8 @@
       "properties": {
         "email": { "type": "string", "format": "email" },
         "role": { "type": "string", "enum": ["admin", "staff"] },
-        "displayName": { "type": "string" }
+        "displayName": { "type": "string" },
+        "lastLogin": { "type": "string", "format": "date-time", "description": "When the user last logged in." }
       },
       "required": ["email", "role"]
     },
@@ -275,6 +294,14 @@
       "schema": "Mail",
       "description": "Collection used for triggering emails."
     },
+    "/rentals/{rentalId}": {
+      "schema": "Rental",
+      "description": "Collection of active rental records."
+    },
+    "/rental_photos/{photoId}": {
+      "schema": "RentalPhoto",
+      "description": "Collection of rental photos (fallback storage)."
+    },
     "/website_cars/{carId}": {
       "schema": "WebsiteCar",
       "description": "Collection of vehicles displayed on the public website."
@@ -282,10 +309,6 @@
     "/system_logs/{logId}": {
       "schema": "SystemLog",
       "description": "Collection of system-wide activity logs."
-    },
-    "/ai_knowledge_base/{entryId}": {
-      "schema": "AIKnowledgeBase",
-      "description": "Collection of custom training data for the AI assistant."
     },
     "/system_config/{configId}": {
       "schema": "SystemConfig",

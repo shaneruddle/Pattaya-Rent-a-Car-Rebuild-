@@ -6,6 +6,11 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 // Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
 
+if (!firebaseConfig || !firebaseConfig.projectId) {
+  console.error('Firebase: CRITICAL - firebase-applet-config.json is missing or invalid!');
+  throw new Error('Firebase configuration is missing. Please check firebase-applet-config.json');
+}
+
 // Initialize Firebase SDK
 console.log('firebase.ts: Initializing Firebase SDK');
 console.log('firebase.ts: Config Project ID:', firebaseConfig.projectId);
@@ -14,7 +19,29 @@ console.log('firebase.ts: Config Database ID:', firebaseConfig.firestoreDatabase
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
-export const storage = getStorage(app);
+
+// Initialize storage with a more robust fallback for the bucket name
+const getStorageInstance = () => {
+  try {
+    const primaryBucket = firebaseConfig.storageBucket;
+    const fallbackBucket = `${firebaseConfig.projectId}.appspot.com`;
+    const fallbackBucket2 = `${firebaseConfig.projectId}.firebasestorage.app`;
+    
+    if (!primaryBucket) {
+      console.warn('Firebase: No storageBucket in config, using fallback:', fallbackBucket);
+      return getStorage(app, fallbackBucket);
+    }
+    
+    console.log('Firebase: Using storageBucket:', primaryBucket);
+    return getStorage(app, primaryBucket);
+  } catch (e) {
+    console.error('Firebase: Storage initialization failed:', e);
+    // Return a dummy object that will fail gracefully when used
+    return null as any;
+  }
+};
+
+export const storage = getStorageInstance();
 export const googleProvider = new GoogleAuthProvider();
 
 export { writeBatch, getDocs };

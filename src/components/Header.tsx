@@ -71,16 +71,6 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-3 bg-white/60 border border-white/80 text-[#1A1A1A] px-5 py-2 rounded-full shadow-sm h-10 backdrop-blur-md">
-            <CalendarIcon size={14} className="text-brand-orange" />
-            <div className="flex items-baseline gap-2">
-              <span className="text-[10px] uppercase tracking-widest opacity-60 font-bold">Free:</span>
-              <span className="text-sm font-bold">
-                {availability.free} / {availability.total}
-              </span>
-            </div>
-          </div>
         </div>
 
         <div className="flex items-center gap-4">

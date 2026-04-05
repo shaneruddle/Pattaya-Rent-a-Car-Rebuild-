@@ -4,6 +4,7 @@ export const translations = {
   en: {
     nav: {
       rentACar: "Rent a Car",
+      rentABike: "Rent a Bike",
       fleet: "Rent a Car",
       longTerm: "Long Term Rental",
       aboutUs: "About Us",
@@ -263,6 +264,7 @@ export const translations = {
   th: {
     nav: {
       rentACar: "เช่ารถ",
+      rentABike: "เช่ามอเตอร์ไซค์",
       fleet: "เช่ารถ",
       longTerm: "เช่าระยะยาว",
       aboutUs: "เกี่ยวกับเรา",
@@ -492,6 +494,7 @@ export const translations = {
   ru: {
     nav: {
       rentACar: "Аренда авто",
+      rentABike: "Аренда байка",
       fleet: "Аренда авто",
       longTerm: "Долгосрочная аренда",
       aboutUs: "О нас",
@@ -721,6 +724,7 @@ export const translations = {
   de: {
     nav: {
       rentACar: "Auto mieten",
+      rentABike: "Motorrad mieten",
       fleet: "Auto mieten",
       longTerm: "Langzeitmiete",
       aboutUs: "Über uns",
@@ -950,6 +954,7 @@ export const translations = {
   zh: {
     nav: {
       rentACar: "租车",
+      rentABike: "租摩托车",
       fleet: "租车",
       longTerm: "长期租赁",
       aboutUs: "关于我们",

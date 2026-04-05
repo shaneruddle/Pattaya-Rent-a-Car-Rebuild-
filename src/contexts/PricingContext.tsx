@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 
+import { fetchWithRetry } from '../lib/api';
+
 interface PricingContextType {
   sheetPricing: any | null;
   loading: boolean;
@@ -28,7 +30,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const performFetch = async (retries = 3, delay = 2000): Promise<void> => {
       try {
-        const response = await fetch('/api/pricing/sheet');
+        const response = await fetchWithRetry('/api/pricing/sheet');
         
         if (response.ok) {
           const contentType = response.headers.get("content-type");

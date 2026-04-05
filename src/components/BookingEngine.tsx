@@ -41,6 +41,15 @@ import { AIAssistant } from './AIAssistant';
 import { Language } from '../translations';
 import { LocationPicker } from './LocationPicker';
 
+const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
+  const hour = i.toString().padStart(2, '0');
+  return [`${hour}:00`, `${hour}:30`];
+}).filter(time => {
+  const [h, m] = time.split(':').map(Number);
+  const totalMinutes = h * 60 + m;
+  return totalMinutes >= 9 * 60 + 30 && totalMinutes <= 16 * 60;
+});
+
 interface BookingEngineProps {
   onLoginClick: () => void;
 }
@@ -187,11 +196,6 @@ const Calendar: React.FC<CalendarProps> = ({
     }
   };
 
-  const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
-    const hour = i.toString().padStart(2, '0');
-    return [`${hour}:00`, `${hour}:30`];
-  });
-
   return (
     <div ref={calendarRef} className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-[#f27d26] rounded-[40px] overflow-hidden z-[100] w-[700px] max-w-[95vw] shadow-2xl border-4 border-[#f27d26]">
       <div className="flex flex-col md:flex-row relative border-b border-white/10">
@@ -305,9 +309,18 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term'>('landing');
+  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike'>('landing');
+  const [isBikeMode, setIsBikeMode] = useState(false);
 
-  console.log('BookingEngine: Current state - loading:', loading, 'view:', view, 'cars count:', cars.length);
+  useEffect(() => {
+    if (view === 'rent-a-bike') {
+      setIsBikeMode(true);
+    } else if (view === 'landing') {
+      setIsBikeMode(false);
+    }
+  }, [view]);
+
+  console.log('BookingEngine: Current state - loading:', loading, 'view:', view, 'cars count:', cars.length, 'isBikeMode:', isBikeMode);
 
   const getSeoMetadata = () => {
     switch (view) {
@@ -328,13 +341,18 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         };
       case 'results':
         return {
-          title: "Available Vehicles | Pattaya Rent a Car",
-          description: "Browse our wide selection of available rental vehicles in Pattaya. Find the perfect car for your journey."
+          title: isBikeMode ? "Available Bikes | Pattaya Rent a Bike" : "Available Vehicles | Pattaya Rent a Car",
+          description: isBikeMode ? "Browse our wide selection of available rental motorbikes in Pattaya." : "Browse our wide selection of available rental vehicles in Pattaya. Find the perfect car for your journey."
+        };
+      case 'rent-a-bike':
+        return {
+          title: "Pattaya Rent a Bike | Trusted Motorbike Rental in Pattaya Since 2005",
+          description: "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today."
         };
       default:
         return {
-          title: "Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005",
-          description: "Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today."
+          title: isBikeMode ? "Pattaya Rent a Bike | Trusted Motorbike Rental in Pattaya Since 2005" : "Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005",
+          description: isBikeMode ? "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today." : "Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today."
         };
     }
   };
@@ -344,8 +362,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     from: addDays(new Date(), 1),
     to: addDays(new Date(), 6)
   });
-  const [pickUpTime, setPickUpTime] = useState('09:00');
-  const [dropOffTime, setDropOffTime] = useState('09:00');
+  const [pickUpTime, setPickUpTime] = useState('09:30');
+  const [dropOffTime, setDropOffTime] = useState('09:30');
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedCar, setSelectedCar] = useState<WebsiteCar | null>(null);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
@@ -444,6 +462,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const totalDays = Math.max(1, Math.ceil(totalHours / 12) / 2);
 
   const filteredCars = cars.filter(car => {
+    // Filter by category first
+    const category = car.category || 'Car';
+    if (isBikeMode && category === 'Car') return false;
+    if (!isBikeMode && category === 'Motorbike') return false;
+
     if (filters.seats !== 'all' && car.passengers !== parseInt(filters.seats)) return false;
     if (filters.transmission !== 'all' && car.transmission?.toLowerCase() !== filters.transmission.toLowerCase()) return false;
     if (filters.fuel !== 'all' && car.fuelType?.toLowerCase() !== filters.fuel.toLowerCase()) return false;
@@ -649,18 +672,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-12">
             <img 
-              src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png" 
-              alt="Pattaya Rent A Car" 
+              src={isBikeMode ? "/api/artifacts/artifact_1712270072000.png" : "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"} 
+              alt={isBikeMode ? "Pattaya Rent A Bike" : "Pattaya Rent A Car"} 
               className="h-10 cursor-pointer"
-              onClick={() => setView('landing')}
+              onClick={() => {
+                setView('landing');
+                setIsBikeMode(false);
+              }}
               referrerPolicy="no-referrer"
             />
-            <nav className="hidden lg:flex items-center gap-8 text-[10px] font-bold uppercase tracking-widest text-black/40">
-              <button onClick={() => setView('landing')} className="hover:text-brand-orange transition-colors">{t('nav.rentACar')}</button>
-              <button onClick={() => setView('long-term')} className="hover:text-brand-orange transition-colors">{t('nav.longTerm')}</button>
-              <button onClick={() => setView('about')} className="hover:text-brand-orange transition-colors">{t('nav.aboutUs')}</button>
-              <button onClick={() => setView('contact')} className="hover:text-brand-orange transition-colors">{t('nav.contact')}</button>
-            </nav>
           </div>
           <div className="flex items-center gap-6">
             <div className="relative group">
@@ -714,12 +734,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           <ContactUs />
         ) : view === 'long-term' ? (
           <LongTermHire />
-        ) : view === 'landing' ? (
+        ) : view === 'landing' || view === 'rent-a-bike' ? (
           <>
             {/* Hero Section */}
           <section className="pt-24 pb-40 px-4 text-center">
             <h1 className="text-4xl md:text-6xl font-bold text-black mb-12 tracking-tight">
-              {t('hero.title')} <br />
+              {isBikeMode ? "Let's find your perfect bike." : t('hero.title')} <br />
               <span className="text-brand-orange">{t('hero.subtitle')}</span>
             </h1>
 
@@ -745,15 +765,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         onChange={(e) => setPickUpTime(e.target.value)}
                         className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
                       >
-                        {Array.from({ length: 24 }).map((_, i) => {
-                          const hour = i.toString().padStart(2, '0');
-                          return (
-                            <React.Fragment key={hour}>
-                              <option value={`${hour}:00`}>{hour}:00</option>
-                              <option value={`${hour}:30`}>{hour}:30</option>
-                            </React.Fragment>
-                          );
-                        })}
+                        {timeOptions.map(time => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
                     </div>
@@ -779,15 +793,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         onChange={(e) => setDropOffTime(e.target.value)}
                         className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
                       >
-                        {Array.from({ length: 24 }).map((_, i) => {
-                          const hour = i.toString().padStart(2, '0');
-                          return (
-                            <React.Fragment key={hour}>
-                              <option value={`${hour}:00`}>{hour}:00</option>
-                              <option value={`${hour}:30`}>{hour}:30</option>
-                            </React.Fragment>
-                          );
-                        })}
+                        {timeOptions.map(time => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
                     </div>
@@ -861,7 +869,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => setView('landing')}
+                onClick={() => setView(isBikeMode ? 'rent-a-bike' : 'landing')}
                 className="px-8 py-3 bg-black/5 text-black/60 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-black/10 transition-colors"
               >
                 {t('results.modifySearch')}
@@ -1309,7 +1317,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
       </main>
 
-      <Footer onPageChange={(v) => setView(v as any)} />
+      <Footer onPageChange={(v) => setView(v as any)} isBikeMode={isBikeMode} />
       <AIAssistant />
     </div>
   );

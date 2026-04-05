@@ -8,7 +8,7 @@ export interface FetchOptions extends RequestInit {
  * Enhanced fetch that automatically handles the AI Studio warmup page by retrying.
  */
 export async function fetchWithRetry(url: string, options: FetchOptions = {}): Promise<Response> {
-  const { maxRetries = 3, retryDelay = 5000, ...fetchOptions } = options;
+  const { maxRetries = 200, retryDelay = 5000, ...fetchOptions } = options;
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -24,23 +24,32 @@ export async function fetchWithRetry(url: string, options: FetchOptions = {}): P
       const clonedResponse = response.clone();
       const text = await clonedResponse.text();
 
-      // Check if it's the warmup page
-      if (text.includes('Starting Server...') || text.includes('Please wait while your application starts')) {
-        console.warn(`Received warmup page from ${url}. Server is still starting.`);
+      // Check if it's the warmup page or service initializing
+      if (response.status === 503 ||
+          text.includes('Starting Server...') || 
+          text.includes('Please wait while your application starts') ||
+          text.includes('Your application is being prepared') ||
+          text.includes('The server is currently restarting')) {
+        console.warn(`Received warmup page or 503 from ${url}. Server is still starting or initializing.`);
         if (attempt < maxRetries) continue;
-        throw new Error('The server is currently restarting. Please wait a few seconds and try again.');
+        throw new Error('The server is currently initializing. Please wait a few seconds and try again.');
       }
 
       return response;
     } catch (error: any) {
       lastError = error;
-      console.error(`Fetch error on attempt ${attempt}:`, error);
       
-      // If it's a network error, we might want to retry
-      if (attempt < maxRetries && (error.name === 'TypeError' || error.message.includes('restarting'))) {
+      // If it's a network error or a warmup page, we might want to retry
+      if (attempt < maxRetries && (
+        error.name === 'TypeError' || 
+        error.message.includes('restarting') || 
+        error.message.includes('Failed to fetch')
+      )) {
+        console.warn(`Fetch error on attempt ${attempt}:`, error.message);
         continue;
       }
       
+      console.error(`Fetch error on final attempt ${attempt}:`, error);
       throw error;
     }
   }

@@ -72,6 +72,21 @@ export interface Booking {
   deposit?: number;
 }
 
+export interface Rental {
+  id: string;
+  bookingId?: string;
+  customerId: string;
+  carId: string;
+  dateOut: string; // ISO string
+  dateIn: string; // ISO string
+  totalCharge: number;
+  depositAmount: number;
+  damagePhotos: string[]; // base64 or URLs
+  status: 'Active' | 'Completed' | 'Cancelled';
+  createdAt: string; // ISO string
+  processedBy: string; // user email
+}
+
 export interface Transaction {
   id: string;
   type: 'Income' | 'Expense' | 'Transfer';
@@ -117,6 +132,7 @@ export interface WebsiteCar {
   realImages: string[];
   slug?: string;
   priceGridVehicle?: string;
+  category?: 'Car' | 'Motorbike';
 }
 
 export interface SystemLog {
@@ -129,11 +145,11 @@ export interface SystemLog {
   metadata?: any;
 }
 
-export interface AIKnowledgeBase {
+export interface UserProfile {
   id: string;
-  question: string;
-  answer: string;
-  updatedAt: any;
-  updatedBy?: string;
-  isActive: boolean;
+  email: string;
+  role: 'admin' | 'staff';
+  displayName?: string;
+  lastLogin?: string; // ISO string
+  createdAt?: string; // ISO string
 }

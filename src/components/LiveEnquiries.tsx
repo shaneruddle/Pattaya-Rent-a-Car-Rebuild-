@@ -22,7 +22,8 @@ import {
   ArrowRight,
   Loader2,
   DollarSign,
-  ShieldCheck
+  ShieldCheck,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -165,6 +166,35 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'bookings');
     }
+  };
+
+  const copyEmailTemplate = (enquiry: Booking) => {
+    const firstName = enquiry.customerName.split(' ')[0] || 'Customer';
+    const car = enquiry.requestedCarType || 'requested car';
+    const total = `฿${(enquiry.amount || 0).toLocaleString()}`;
+
+    const template = `Hi ${firstName},
+
+Thanks for your email. We can confirm availability of the ${car} (or similar) at a total rate of ${total}
+
+Included in your rental:
+
+- First Class Rental Insurance
+- Unlimited kms
+- 24 hour breakdown cover for your piece of mind
+- Additional drivers
+- All taxes
+
+In addition you can book now, pay later and cancel at anytime free of charge
+
+Do you wish to proceed with the booking ?`;
+
+    navigator.clipboard.writeText(template).then(() => {
+      toast.success('Email template copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+      toast.error('Failed to copy template');
+    });
   };
 
   return (
@@ -311,6 +341,12 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
                   )}
 
                   <div className="mt-auto pt-6 border-t border-black/5 flex gap-4">
+                    <button
+                      onClick={() => copyEmailTemplate(enquiry)}
+                      className="flex-1 bg-white border border-black/10 text-black/60 py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all"
+                    >
+                      <Copy size={14} /> Copy Email Reply
+                    </button>
                     <button
                       onClick={() => handleConvert(enquiry)}
                       className="flex-1 bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20"

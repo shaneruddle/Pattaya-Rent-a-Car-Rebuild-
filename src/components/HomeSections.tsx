@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Clock, MapPin, CheckCircle2, Star, Send, Phone, Mail, Facebook, Youtube, Linkedin, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { cn } from '../lib/utils';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'sonner';
@@ -288,7 +289,7 @@ export const EnquiryForm: React.FC = () => {
   );
 };
 
-export const Footer: React.FC<{ onPageChange?: (view: string) => void }> = ({ onPageChange }) => {
+export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMode?: boolean }> = ({ onPageChange, isBikeMode }) => {
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
   return (
@@ -298,9 +299,9 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void }> = ({ on
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
           <div className="space-y-10">
             <img
-              src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
-              alt="PRAC Logo"
-              className="w-44 brightness-0 invert cursor-pointer hover:opacity-80 transition-opacity"
+              src={isBikeMode ? "/api/artifacts/artifact_1712270072000.png" : "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"}
+              alt={isBikeMode ? "Pattaya Rent A Bike" : "PRAC Logo"}
+              className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity", !isBikeMode && "brightness-0 invert")}
               onClick={() => onPageChange?.('landing')}
               referrerPolicy="no-referrer"
             />

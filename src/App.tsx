@@ -22,10 +22,12 @@ import { FleetManager } from './components/FleetManager';
 import { Bookings } from './components/Bookings';
 import { WebsiteFleetManager } from './components/WebsiteFleetManager';
 import { CRM } from './components/CRM';
+import { UserManagement } from './components/UserManagement';
 import { Logs } from './components/Logs';
-import { AITraining } from './components/AITraining';
 import { TrafficInsights } from './components/TrafficInsights';
 import { LiveEnquiries } from './components/LiveEnquiries';
+import { NewRental } from './components/NewRental';
+import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -68,8 +70,10 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'website_fleet' | 'crm' | 'bookings' | 'logs' | 'enquiries' | 'ai_training' | 'traffic_insights'>('timeline');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
+
+  console.log('AppContent: Current State:', { loading, user: !!user, currentView });
 
   // Filtering State
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +85,15 @@ function AppContent() {
   const isStaff = useMemo(() => {
     const email = user?.email?.toLowerCase();
     return email?.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
+  }, [user]);
+
+  const isAdmin = useMemo(() => {
+    const email = user?.email?.toLowerCase();
+    return [
+      'info@pattayarentacar.com',
+      'gift@pattayarentacar.com',
+      'rak@pattayarentacar.com'
+    ].includes(email || '');
   }, [user]);
 
   useEffect(() => {
@@ -111,19 +124,33 @@ function AppContent() {
           handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
           return;
         }
+
+        const isAdminEmail = [
+          'info@pattayarentacar.com',
+          'gift@pattayarentacar.com',
+          'rak@pattayarentacar.com'
+        ].includes(user.email?.toLowerCase() || '');
+
         if (!docSnap.exists()) {
           console.log('Creating user document for:', user.email);
           await setDoc(userDocRef, {
             email: user.email,
             displayName: user.displayName,
-            role: user.email === 'info@pattayarentacar.com' ? 'admin' : 'staff',
-            createdAt: new Date().toISOString()
+            role: isAdminEmail ? 'admin' : 'staff',
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString()
           });
+        } else {
+          // Update last login
+          await setDoc(userDocRef, {
+            lastLogin: new Date().toISOString(),
+            displayName: user.displayName || docSnap.data().displayName,
+            // Ensure initial admins are always admins if they exist but don't have the role
+            role: isAdminEmail ? 'admin' : (docSnap.data().role || 'staff')
+          }, { merge: true });
         }
       } catch (error) {
         console.error('Error ensuring user document:', error);
-        // If it's a permission error, we might still be able to create it if it doesn't exist
-        // but we'll let the rules handle that.
       }
     };
     ensureUserDoc();
@@ -327,6 +354,7 @@ function AppContent() {
       <div className="flex h-screen bg-warm-bg font-sans text-[#1A1A1A] selection:bg-brand-orange selection:text-white">
         <Sidebar 
           user={user} 
+          isAdmin={isAdmin}
           onNewBooking={() => setNewBookingTrigger(prev => prev + 1)} 
           currentView={currentView}
           onViewChange={setCurrentView}
@@ -364,7 +392,7 @@ function AppContent() {
               )}
             </div>
           )}
-          {currentView === 'timeline' ? (
+          {currentView === 'timeline_cars' || currentView === 'timeline_bikes' ? (
             <>
               <Header
                 currentDate={currentDate}
@@ -380,10 +408,11 @@ function AppContent() {
                 onNewBooking={() => setNewBookingTrigger(prev => prev + 1)}
               />
               <Timeline
-                cars={cars}
+                cars={cars.filter(c => currentView === 'timeline_cars' ? c.category === 'Car' : c.category === 'Motorbike')}
                 bookings={filteredBookings}
                 currentDate={currentDate}
                 newBookingTrigger={newBookingTrigger}
+                title={currentView === 'timeline_bikes' ? "Bike Fleet" : "Car Fleet"}
                 onLogIncome={(booking) => {
                   setFinancePreFill({
                     type: 'Income',
@@ -409,16 +438,20 @@ function AppContent() {
             <FleetManager />
           ) : currentView === 'bookings' ? (
             <Bookings bookings={bookings} cars={cars} />
+          ) : currentView === 'rentals' ? (
+            <Rentals cars={cars} />
           ) : currentView === 'enquiries' ? (
             <LiveEnquiries bookings={bookings} cars={cars} />
           ) : currentView === 'website_fleet' ? (
             <WebsiteFleetManager />
           ) : currentView === 'crm' ? (
             <CRM />
+          ) : currentView === 'user_management' ? (
+            <UserManagement />
           ) : currentView === 'logs' ? (
             <Logs logs={logs} />
-          ) : currentView === 'ai_training' ? (
-            <AITraining />
+          ) : currentView === 'new_rental' ? (
+            <NewRental cars={cars} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
           ) : currentView === 'traffic_insights' ? (
             <TrafficInsights />
           ) : (
