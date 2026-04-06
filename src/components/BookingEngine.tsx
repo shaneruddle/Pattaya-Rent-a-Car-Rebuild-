@@ -26,7 +26,8 @@ import {
   Zap,
   Fuel,
   Search,
-  Truck
+  Truck,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -380,6 +381,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -681,6 +683,59 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               }}
               referrerPolicy="no-referrer"
             />
+            <nav className="hidden lg:flex items-center gap-8">
+              <button 
+                onClick={() => {
+                  setView('landing');
+                  setIsBikeMode(false);
+                }}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  view === 'landing' && !isBikeMode ? "text-brand-orange" : "text-black/60 hover:text-black"
+                )}
+              >
+                {t('nav.rentACar')}
+              </button>
+              <button 
+                onClick={() => {
+                  setView('rent-a-bike');
+                  setIsBikeMode(true);
+                }}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  isBikeMode ? "text-brand-orange" : "text-black/60 hover:text-black"
+                )}
+              >
+                {t('nav.rentABike')}
+              </button>
+              <button 
+                onClick={() => setView('long-term')}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  view === 'long-term' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                )}
+              >
+                {t('nav.longTerm')}
+              </button>
+              <button 
+                onClick={() => setView('about')}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  view === 'about' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                )}
+              >
+                {t('nav.aboutUs')}
+              </button>
+              <button 
+                onClick={() => setView('contact')}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  view === 'contact' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                )}
+              >
+                {t('nav.contact')}
+              </button>
+            </nav>
           </div>
           <div className="flex items-center gap-6">
             <div className="relative group">
@@ -718,12 +773,104 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
             <button 
               onClick={onLoginClick}
-              className="text-[10px] font-bold uppercase tracking-widest text-black/20 hover:text-black transition-colors"
+              className="hidden lg:block text-[10px] font-bold uppercase tracking-widest text-black/20 hover:text-black transition-colors"
             >
               {t('nav.staffLogin')}
             </button>
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 text-black/60 hover:text-black transition-colors"
+            >
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden bg-warm-bg border-t border-black/5 overflow-hidden"
+            >
+              <div className="flex flex-col p-4 gap-4">
+                <button 
+                  onClick={() => {
+                    setView('landing');
+                    setIsBikeMode(false);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    view === 'landing' && !isBikeMode ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                  )}
+                >
+                  {t('nav.rentACar')}
+                </button>
+                <button 
+                  onClick={() => {
+                    setView('rent-a-bike');
+                    setIsBikeMode(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    isBikeMode ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                  )}
+                >
+                  {t('nav.rentABike')}
+                </button>
+                <button 
+                  onClick={() => {
+                    setView('long-term');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    view === 'long-term' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                  )}
+                >
+                  {t('nav.longTerm')}
+                </button>
+                <button 
+                  onClick={() => {
+                    setView('about');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    view === 'about' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                  )}
+                >
+                  {t('nav.aboutUs')}
+                </button>
+                <button 
+                  onClick={() => {
+                    setView('contact');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    view === 'contact' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                  )}
+                >
+                  {t('nav.contact')}
+                </button>
+                <button 
+                  onClick={() => {
+                    onLoginClick();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest bg-black text-white"
+                >
+                  {t('nav.staffLogin')}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* Main Content */}

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, getDocFromServer, writeBatch, getDocs } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -18,7 +18,7 @@ console.log('firebase.ts: Config Database ID:', firebaseConfig.firestoreDatabase
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth();
+export const auth = getAuth(app);
 
 // Initialize storage with a more robust fallback for the bucket name
 const getStorageInstance = () => {
@@ -47,6 +47,7 @@ export const googleProvider = new GoogleAuthProvider();
 export { writeBatch, getDocs };
 
 export const signIn = () => signInWithPopup(auth, googleProvider);
+export const signInRedirect = () => signInWithRedirect(auth, googleProvider);
 export const logOut = () => signOut(auth);
 
 // Test connection

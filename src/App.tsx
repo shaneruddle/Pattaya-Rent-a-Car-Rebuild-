@@ -9,9 +9,9 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy, addDoc, doc, setDoc, getDocFromServer } from 'firebase/firestore';
-import { auth, db, signIn, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType } from './firebase';
 import { Car, Booking } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -65,6 +65,7 @@ function AppContent() {
   console.log('AppContent: Initializing');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [cars, setCars] = useState<Car[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -83,7 +84,7 @@ function AppContent() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   const isStaff = useMemo(() => {
-    const email = user?.email?.toLowerCase();
+    const email = user?.email?.toLowerCase().trim();
     return email?.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
 
@@ -98,6 +99,23 @@ function AppContent() {
 
   useEffect(() => {
     console.log('AppContent: Setting up auth listener');
+    
+    // Check for redirect result
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log('AppContent: Redirect sign in successful');
+          setUser(result.user);
+          setShowLogin(false);
+        }
+      } catch (error: any) {
+        console.error('AppContent: Redirect sign in error:', error);
+        toast.error(`Redirect sign in failed: ${error.message}`);
+      }
+    };
+    checkRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log('AppContent: Auth state changed:', !!user);
       setUser(user);
@@ -262,6 +280,39 @@ function AppContent() {
 
   console.log('AppContent: Auth state:', { loading, user: !!user, isStaff });
 
+  const handleSignIn = async () => {
+    setSigningIn(true);
+    try {
+      console.log('AppContent: Starting sign in...');
+      await signIn();
+      console.log('AppContent: Sign in successful');
+    } catch (error: any) {
+      console.error('AppContent: Sign in error:', error);
+      toast.error(`Sign in failed: ${error.message || 'Unknown error'}`);
+      
+      // If it's a domain error, give specific advice
+      if (error.code === 'auth/unauthorized-domain') {
+        toast.error('This domain is not authorized in Firebase. Please add it to Authorized Domains in Firebase Console.', {
+          duration: 10000
+        });
+      }
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleSignInRedirect = async () => {
+    setSigningIn(true);
+    try {
+      console.log('AppContent: Starting redirect sign in...');
+      await signInRedirect();
+    } catch (error: any) {
+      console.error('AppContent: Redirect sign in error:', error);
+      toast.error(`Redirect sign in failed: ${error.message}`);
+      setSigningIn(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-screen bg-warm-bg flex items-center justify-center">
@@ -303,10 +354,23 @@ function AppContent() {
           <h1 className="font-serif italic text-4xl text-[#1A1A1A] mb-4">Staff Login</h1>
           <p className="text-[#1A1A1A]/60 mb-10 uppercase tracking-widest text-xs">Fleet Management Dashboard</p>
           <button
-            onClick={signIn}
-            className="w-full bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20"
+            onClick={handleSignIn}
+            disabled={signingIn}
+            className="w-full bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
           >
-            <LogIn size={20} /> Sign In with Google
+            {signingIn ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <LogIn size={20} />
+            )}
+            {signingIn ? 'Signing In...' : 'Sign In with Google'}
+          </button>
+          <button
+            onClick={handleSignInRedirect}
+            disabled={signingIn}
+            className="w-full text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange transition-colors"
+          >
+            Trouble with popup? Try Redirect Sign In
           </button>
         </motion.div>
       </div>
