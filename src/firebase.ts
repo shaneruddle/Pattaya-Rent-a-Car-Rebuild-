@@ -20,6 +20,12 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
+// Set persistence explicitly to ensure it works across domain redirects/popups
+import { setPersistence, browserLocalPersistence } from 'firebase/auth';
+setPersistence(auth, browserLocalPersistence).catch(err => {
+  console.error('Firebase: Failed to set persistence:', err);
+});
+
 // Initialize storage with a more robust fallback for the bucket name
 const getStorageInstance = () => {
   try {
@@ -44,10 +50,38 @@ const getStorageInstance = () => {
 export const storage = getStorageInstance();
 export const googleProvider = new GoogleAuthProvider();
 
+// Add custom parameters to help with domain issues
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
 export { writeBatch, getDocs };
 
-export const signIn = () => signInWithPopup(auth, googleProvider);
-export const signInRedirect = () => signInWithRedirect(auth, googleProvider);
+export const signIn = async () => {
+  try {
+    console.log('firebase.ts: Attempting signInWithPopup...');
+    const result = await signInWithPopup(auth, googleProvider);
+    console.log('firebase.ts: signInWithPopup successful for:', result.user.email);
+    return result;
+  } catch (error: any) {
+    console.error('firebase.ts: signInWithPopup error:', error);
+    // Specific handling for common custom domain errors
+    if (error.code === 'auth/unauthorized-domain') {
+      console.error('firebase.ts: Domain not authorized. Current domain:', window.location.hostname);
+    }
+    throw error;
+  }
+};
+
+export const signInRedirect = async () => {
+  try {
+    console.log('firebase.ts: Attempting signInWithRedirect...');
+    return await signInWithRedirect(auth, googleProvider);
+  } catch (error: any) {
+    console.error('firebase.ts: signInWithRedirect error:', error);
+    throw error;
+  }
+};
 export const logOut = () => signOut(auth);
 
 // Test connection

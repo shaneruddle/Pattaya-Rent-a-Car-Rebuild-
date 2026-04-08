@@ -122,7 +122,7 @@
     },
     "PricingRule": {
       "title": "PricingRule",
-      "description": "A pricing rule for a car type and duration.",
+      "description": "Standard pricing tiers for a car type.",
       "type": "object",
       "properties": {
         "carType": { "type": "string", "description": "The category of the car." },
@@ -139,6 +139,22 @@
         }
       },
       "required": ["carType", "rates"]
+    },
+    "PricingGrid": {
+      "title": "PricingGrid",
+      "description": "Date-specific pricing grid for a car type.",
+      "type": "object",
+      "properties": {
+        "carType": { "type": "string" },
+        "headers": { "type": "array", "items": { "type": "number" }, "description": "Duration headers (e.g. 1, 1.5, 2...)" },
+        "rates": { 
+          "type": "object", 
+          "description": "Map of ISO date strings to arrays of rates matching headers.",
+          "additionalProperties": { "type": "array", "items": { "type": "number" } }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["carType", "headers", "rates"]
     },
     "Mail": {
       "title": "Mail",
@@ -251,6 +267,18 @@
       },
       "required": ["email", "role"]
     },
+    "FAQ": {
+      "title": "FAQ",
+      "description": "A frequently asked question.",
+      "type": "object",
+      "properties": {
+        "q": { "type": "string", "description": "The question." },
+        "a": { "type": "string", "description": "The answer." },
+        "category": { "type": "string", "description": "The category of the FAQ." },
+        "order": { "type": "integer", "description": "The display order." }
+      },
+      "required": ["q", "a", "category"]
+    },
     "Setting": {
       "title": "Setting",
       "description": "A system setting.",
@@ -259,6 +287,27 @@
         "spreadsheetId": { "type": "string" },
         "enabled": { "type": "boolean" }
       }
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "A blog post for the website.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "content": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "author": { "type": "string" },
+        "authorId": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "category": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["Draft", "Published"] },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "content", "author", "authorId", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -284,7 +333,11 @@
     },
     "/pricing/{pricingId}": {
       "schema": "PricingRule",
-      "description": "Collection of pricing rules."
+      "description": "Collection of standard pricing rules."
+    },
+    "/pricing_grid/{carType}": {
+      "schema": "PricingGrid",
+      "description": "Collection of date-specific pricing grids."
     },
     "/customers/{customerId}": {
       "schema": "Customer",
@@ -318,9 +371,17 @@
       "schema": "User",
       "description": "Collection of staff users."
     },
+    "/faqs/{faqId}": {
+      "schema": "FAQ",
+      "description": "Collection of frequently asked questions."
+    },
     "/settings/{settingId}": {
       "schema": "Setting",
       "description": "Collection of system settings."
+    },
+    "/blog_posts/{postId}": {
+      "schema": "BlogPost",
+      "description": "Collection of blog posts."
     }
   }
 }

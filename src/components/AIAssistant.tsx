@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useLanguage } from '../LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,13 +25,24 @@ export const AIAssistant: React.FC = () => {
   useEffect(() => {
     const fetchKnowledgeBase = async () => {
       try {
-        const q = query(collection(db, 'ai_knowledge_base'), where('isActive', '==', true));
-        const snapshot = await getDocs(q);
-        const pairs = snapshot.docs.map(doc => {
+        // Fetch from custom knowledge base
+        const qKB = query(collection(db, 'ai_knowledge_base'), where('isActive', '==', true));
+        const snapshotKB = await getDocs(qKB);
+        const pairsKB = snapshotKB.docs.map(doc => {
           const data = doc.data();
           return `Question: ${data.question}\nAnswer: ${data.answer}`;
-        }).join('\n\n');
-        setKnowledgeBase(pairs);
+        });
+
+        // Fetch from FAQs
+        const qFAQ = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+        const snapshotFAQ = await getDocs(qFAQ);
+        const pairsFAQ = snapshotFAQ.docs.map(doc => {
+          const data = doc.data();
+          return `Category: ${data.category}\nQuestion: ${data.q}\nAnswer: ${data.a}`;
+        });
+
+        const combinedKnowledge = [...pairsKB, ...pairsFAQ].join('\n\n');
+        setKnowledgeBase(combinedKnowledge);
       } catch (error) {
         console.error('Error fetching AI knowledge base:', error);
       }
@@ -142,7 +153,7 @@ export const AIAssistant: React.FC = () => {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-[#f27d26] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group"
+        className="fixed bottom-6 left-6 z-[9999] w-14 h-14 bg-[#f27d26] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group"
         aria-label={t('aiAssistant.cta')}
       >
         <MessageSquare size={24} className="group-hover:rotate-12 transition-transform" />
@@ -156,7 +167,7 @@ export const AIAssistant: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-24 right-6 z-50 w-[380px] h-[500px] bg-[#151619] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            className="fixed bottom-24 left-6 z-[9999] w-[380px] h-[500px] bg-[#151619] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">

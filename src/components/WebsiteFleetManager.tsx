@@ -31,8 +31,11 @@ import {
   Wind,
   Music,
   Settings,
-  Calendar
+  Calendar,
+  Download,
+  Zap
 } from 'lucide-react';
+import Papa from 'papaparse';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
@@ -113,6 +116,119 @@ export const WebsiteFleetManager: React.FC = () => {
     } finally {
       setIsSeeding(false);
     }
+  };
+
+  const handleExportCSV = () => {
+    if (cars.length === 0) {
+      toast.error('No vehicles to export');
+      return;
+    }
+
+    const exportData = cars.map(car => ({
+      name: car.name,
+      year_range: car.yearRange,
+      price_per_day: car.pricePerDay,
+      price_monthly: car.priceMonthly,
+      engine_size: car.engineSize,
+      fuel_type: car.fuelType,
+      transmission: car.transmission,
+      passengers: car.passengers,
+      air_con: car.airCon,
+      audio: car.audio,
+      display_order: car.displayOrder,
+      is_active: car.isActive,
+      main_image: car.mainImage,
+      price_grid_vehicle: car.priceGridVehicle || '',
+      category: car.category || 'Car'
+    }));
+
+    const csv = Papa.unparse(exportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `prac_website_fleet_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success('Website fleet exported successfully');
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+      complete: async (results) => {
+        const data = results.data as any[];
+        
+        const validData = data.map(item => {
+          if (!item.name) return null;
+
+          return {
+            name: item.name,
+            yearRange: item.year_range || '2024',
+            pricePerDay: Number(item.price_per_day) || 0,
+            priceMonthly: Number(item.price_monthly) || 0,
+            engineSize: item.engine_size || '1.5',
+            fuelType: item.fuel_type || 'Petrol',
+            transmission: item.transmission || 'Auto',
+            passengers: Number(item.passengers) || 5,
+            airCon: item.air_con === 'true' || item.air_con === true,
+            audio: item.audio || 'Bluetooth',
+            displayOrder: Number(item.display_order) || cars.length,
+            isActive: item.is_active === 'true' || item.is_active === true,
+            mainImage: item.main_image || '',
+            realImages: [],
+            priceGridVehicle: item.price_grid_vehicle || '',
+            category: item.category || 'Car'
+          };
+        }).filter(item => item !== null);
+
+        if (validData.length === 0) {
+          toast.error('No valid vehicles found in CSV.');
+          return;
+        }
+
+        toast.promise(async () => {
+          const batch = writeBatch(db);
+          const websiteCarsCollection = collection(db, 'website_cars');
+          
+          for (const car of validData) {
+            const docRef = doc(websiteCarsCollection);
+            batch.set(docRef, car);
+          }
+          
+          await batch.commit();
+          
+          await logSystemActivity(
+            'Website CSV Import',
+            `Imported ${validData.length} website vehicles via CSV`,
+            'Fleet',
+            { count: validData.length }
+          );
+
+          return validData.length;
+        }, {
+          loading: 'Importing website vehicles...',
+          success: (count) => `Successfully imported ${count} vehicles!`,
+          error: 'Failed to import vehicles'
+        });
+
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      },
+      error: (error) => {
+        console.error('PapaParse error:', error);
+        toast.error('Failed to parse CSV file');
+      }
+    });
   };
 
   const handleUpdateCar = async (e: React.FormEvent) => {
@@ -239,6 +355,27 @@ export const WebsiteFleetManager: React.FC = () => {
           <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Manage vehicles displayed on the public website</p>
         </div>
         <div className="flex items-center gap-4">
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleImportCSV}
+            accept=".csv"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-6 py-2.5 bg-white/60 text-[#1A1A1A] border border-white/40 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5"
+          >
+            <Zap size={14} />
+            Import CSV
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-6 py-2.5 bg-white/60 text-[#1A1A1A] border border-white/40 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
           <button
             onClick={handleSeedData}
             disabled={isSeeding}

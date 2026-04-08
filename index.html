@@ -31,6 +31,18 @@
       gtag('js', new Date());
       gtag('config', '%VITE_GOOGLE_ANALYTICS_ID%');
     </script>
+
+    <!-- Clear any phantom service workers that might block Firebase Auth -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+            console.log('Service Worker unregistered:', registration.scope);
+          }
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -73,27 +73,27 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-warm-bg overflow-hidden">
-      <div className="p-8 border-b border-white/20 bg-white/40 backdrop-blur-xl flex flex-col gap-6">
+      <div className="p-4 sm:p-8 border-b border-white/20 bg-white/40 backdrop-blur-xl flex flex-col gap-4 sm:gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-serif italic text-4xl text-[#1A1A1A]">Active Rentals</h1>
-            <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Manage Processed Vehicle Rentals</p>
+            <h1 className="font-serif italic text-2xl sm:text-4xl text-[#1A1A1A]">Active Rentals</h1>
+            <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[8px] sm:text-[10px] mt-1 font-medium">Manage Processed Vehicle Rentals</p>
           </div>
         </div>
 
-        <div className="relative max-w-md">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30" size={16} />
           <input
             type="text"
             placeholder="Search by customer or vehicle..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-12 pl-12 pr-4 bg-white/60 border border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 transition-all"
+            className="w-full h-10 sm:h-12 pl-12 pr-4 bg-white/60 border border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 transition-all"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
         <div className="max-w-5xl mx-auto space-y-4">
           {filteredRentals.map(rental => {
             const customer = customers.find(c => c.id === rental.customerId);
@@ -105,50 +105,52 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
                 key={rental.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/60 backdrop-blur-md border border-white/60 p-6 rounded-[32px] hover:shadow-xl transition-all group"
+                className="bg-white/60 backdrop-blur-md border border-white/60 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] hover:shadow-xl transition-all group"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="w-14 h-14 bg-brand-orange/10 rounded-2xl flex items-center justify-center text-brand-orange">
-                      <CarIcon size={28} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-brand-orange/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-brand-orange shrink-0">
+                      <CarIcon size={24} className="sm:w-7 sm:h-7" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-[#1A1A1A]">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-base sm:text-lg text-[#1A1A1A] truncate">
                         {car ? `${car.name} (${car.plateNumber})` : 'Unknown Vehicle'}
                       </h3>
-                      <div className="flex items-center gap-4 mt-1">
-                        <div className="flex items-center gap-1.5 text-xs text-[#1A1A1A]/60 font-medium">
-                          <User size={14} className="opacity-40" />
-                          {customer ? `${customer.firstName} ${customer.lastName}` : 'Unknown Customer'}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1">
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-[#1A1A1A]/60 font-medium">
+                          <User size={12} className="opacity-40 sm:w-3.5 sm:h-3.5" />
+                          <span className="truncate">{customer ? `${customer.firstName} ${customer.lastName}` : 'Unknown Customer'}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-[#1A1A1A]/60 font-medium">
-                          <Clock size={14} className="opacity-40" />
-                          {isValid(dateOut) ? format(dateOut, 'dd MMM yyyy, HH:mm') : 'Invalid Date'}
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-[#1A1A1A]/60 font-medium">
+                          <Clock size={12} className="opacity-40 sm:w-3.5 sm:h-3.5" />
+                          {isValid(dateOut) ? format(dateOut, 'dd MMM, HH:mm') : 'Invalid Date'}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="text-right mr-4">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Total Charge</p>
-                      <p className="text-lg font-bold text-brand-orange">฿{rental.totalCharge.toLocaleString()}</p>
+                  <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-4 sm:pt-0">
+                    <div className="text-left sm:text-right sm:mr-4">
+                      <p className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Total Charge</p>
+                      <p className="text-base sm:text-lg font-bold text-brand-orange">฿{rental.totalCharge.toLocaleString()}</p>
                     </div>
-                    <div className={cn(
-                      "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest",
-                      rental.status === 'Active' ? "bg-green-100 text-green-600" : "bg-[#1A1A1A]/5 text-[#1A1A1A]/40"
-                    )}>
-                      {rental.status}
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "px-3 py-1 sm:px-4 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-bold uppercase tracking-widest",
+                        rental.status === 'Active' ? "bg-green-100 text-green-600" : "bg-[#1A1A1A]/5 text-[#1A1A1A]/40"
+                      )}>
+                        {rental.status}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedRental(rental);
+                          fetchFallbackPhotos(rental.id);
+                        }}
+                        className="p-2 sm:p-3 bg-white rounded-xl sm:rounded-2xl text-[#1A1A1A]/40 hover:text-brand-orange hover:shadow-md transition-all"
+                      >
+                        <Eye size={18} className="sm:w-5 sm:h-5" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSelectedRental(rental);
-                        fetchFallbackPhotos(rental.id);
-                      }}
-                      className="p-3 bg-white rounded-2xl text-[#1A1A1A]/40 hover:text-brand-orange hover:shadow-md transition-all"
-                    >
-                      <Eye size={20} />
-                    </button>
                   </div>
                 </div>
               </motion.div>

@@ -3,12 +3,14 @@ import { ShieldCheck, Clock, MapPin, CheckCircle2, Star, Send, Phone, Mail, Face
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
+import { ref, getDownloadURL } from 'firebase/storage';
 import { toast } from 'sonner';
+import { StorageImage } from './StorageImage';
 import { useBusinessInfo } from '../hooks/useBusinessInfo';
 import { useLanguage } from '../LanguageContext';
 
-export const WhyChooseUs: React.FC = () => {
+export const WhyChooseUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
   const features = [
     {
@@ -35,7 +37,10 @@ export const WhyChooseUs: React.FC = () => {
 
   return (
     <section className="py-32 bg-warm-bg relative overflow-hidden">
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-orange/5 blur-[100px] -z-10"></div>
+      <div className={cn(
+        "absolute top-0 left-1/4 w-96 h-96 blur-[100px] -z-10",
+        isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5"
+      )}></div>
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-20">
           <h2 className="text-5xl md:text-6xl font-bold tracking-tighter mb-6">{t('whyChoose.title')}</h2>
@@ -51,7 +56,10 @@ export const WhyChooseUs: React.FC = () => {
               transition={{ delay: i * 0.1 }}
               className="p-10 bg-white/40 backdrop-blur-xl border border-white/40 rounded-[32px] shadow-xl shadow-black/5 hover:translate-y-[-8px] transition-all duration-500 group"
             >
-              <div className="mb-8 text-brand-orange group-hover:scale-110 transition-transform duration-500">{f.icon}</div>
+              <div className={cn(
+                "mb-8 group-hover:scale-110 transition-transform duration-500",
+                isBikeMode ? "text-brand-blue" : "text-brand-orange"
+              )}>{f.icon}</div>
               <h3 className="font-bold text-xl mb-4 tracking-tight">{f.title}</h3>
               <p className="text-black/50 text-sm leading-relaxed font-medium">{f.description}</p>
             </motion.div>
@@ -62,7 +70,7 @@ export const WhyChooseUs: React.FC = () => {
   );
 };
 
-export const GoogleReviews: React.FC = () => {
+export const GoogleReviews: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
   const { info, loading } = useBusinessInfo();
   const rating = info?.rating || 4.9;
@@ -90,7 +98,10 @@ export const GoogleReviews: React.FC = () => {
 
   return (
     <section className="py-32 bg-warm-bg relative overflow-hidden">
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-brand-orange/5 blur-[100px] -z-10"></div>
+      <div className={cn(
+        "absolute bottom-0 right-1/4 w-96 h-96 blur-[100px] -z-10",
+        isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5"
+      )}></div>
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col lg:flex-row justify-between items-end mb-20 gap-12">
           <div className="max-w-2xl">
@@ -98,9 +109,15 @@ export const GoogleReviews: React.FC = () => {
             <p className="text-black/30 uppercase tracking-[0.3em] text-[10px] font-bold">{t('reviews.subtitle')}</p>
           </div>
           <div className="flex items-center gap-6 bg-white/60 backdrop-blur-2xl border border-white/60 p-8 rounded-[32px] shadow-2xl shadow-black/5">
-            <div className="text-5xl font-bold tracking-tighter text-brand-orange">{rating}</div>
+            <div className={cn(
+              "text-5xl font-bold tracking-tighter",
+              isBikeMode ? "text-brand-blue" : "text-brand-orange"
+            )}>{rating}</div>
             <div>
-              <div className="flex text-brand-orange mb-2">
+              <div className={cn(
+                "flex mb-2",
+                isBikeMode ? "text-brand-blue" : "text-brand-orange"
+              )}>
                 {[...Array(5)].map((_, i) => (
                   <Star 
                     key={i} 
@@ -117,7 +134,7 @@ export const GoogleReviews: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {loading ? (
             <div className="col-span-3 flex justify-center py-20">
-              <Loader2 className="animate-spin text-brand-orange" size={48} />
+              <Loader2 className={cn("animate-spin", isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={48} />
             </div>
           ) : (
             reviews.slice(0, 3).map((r, i) => (
@@ -128,7 +145,10 @@ export const GoogleReviews: React.FC = () => {
                 viewport={{ once: true }}
                 className="bg-white/40 backdrop-blur-xl p-10 border border-white/40 rounded-[40px] shadow-xl shadow-black/5 flex flex-col h-full hover:bg-white/60 transition-colors duration-500"
               >
-                <div className="flex text-brand-orange mb-6">
+                <div className={cn(
+                  "flex mb-6",
+                  isBikeMode ? "text-brand-blue" : "text-brand-orange"
+                )}>
                   {[...Array(5)].map((_, i) => (
                     <Star 
                       key={i} 
@@ -154,7 +174,7 @@ export const GoogleReviews: React.FC = () => {
   );
 };
 
-export const EnquiryForm: React.FC = () => {
+export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
@@ -177,6 +197,7 @@ export const EnquiryForm: React.FC = () => {
 
       await addDoc(collection(db, 'mail'), {
         to: 'info@pattayarentacar.com',
+        replyTo: formData.email,
         message: {
           subject: `New Website Enquiry from ${formData.name}`,
           html: `
@@ -202,7 +223,10 @@ export const EnquiryForm: React.FC = () => {
 
   return (
     <section id="enquiry" className="py-32 bg-warm-bg relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-orange/5 blur-[150px] -z-10"></div>
+      <div className={cn(
+        "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] blur-[150px] -z-10",
+        isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5"
+      )}></div>
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
           <div>
@@ -212,16 +236,22 @@ export const EnquiryForm: React.FC = () => {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
               <div className="flex items-center gap-6 p-6 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-sm">
-                <div className="w-14 h-14 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center shrink-0">
+                <div className={cn(
+                  "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0",
+                  isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange"
+                )}>
                   <Phone size={24} />
                 </div>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-black/30 mb-1">{t('enquiry.callUs')}</div>
-                  <div className="font-bold tracking-tight">{info?.international_phone_number || '+66 (0) 81 123 4567'}</div>
+                  <div className="font-bold tracking-tight">{info?.international_phone_number || '+66 83 077 6928'}</div>
                 </div>
               </div>
               <div className="flex items-center gap-6 p-6 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-sm min-w-0">
-                <div className="w-14 h-14 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center shrink-0">
+                <div className={cn(
+                  "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0",
+                  isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange"
+                )}>
                   <Mail size={24} />
                 </div>
                 <div className="min-w-0">
@@ -277,7 +307,10 @@ export const EnquiryForm: React.FC = () => {
             <button
               disabled={isSubmitting}
               type="submit"
-              className="w-full bg-brand-orange text-white py-6 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs flex items-center justify-center gap-4 hover:opacity-90 transition-all disabled:opacity-50 shadow-xl shadow-brand-orange/20"
+              className={cn(
+                "w-full text-white py-6 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs flex items-center justify-center gap-4 hover:opacity-90 transition-all disabled:opacity-50 shadow-xl",
+                isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+              )}
             >
               {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
               {t('enquiry.submit')}
@@ -292,19 +325,33 @@ export const EnquiryForm: React.FC = () => {
 export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMode?: boolean }> = ({ onPageChange, isBikeMode }) => {
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
+
   return (
     <footer className="bg-black text-white pt-32 pb-16 relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-orange/20 to-transparent"></div>
+      <div className={cn(
+        "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent",
+        isBikeMode ? "via-brand-blue/20" : "via-brand-orange/20"
+      )}></div>
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
           <div className="space-y-10">
-            <img
-              src={isBikeMode ? "/api/artifacts/artifact_1712270072000.png" : "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"}
-              alt={isBikeMode ? "Pattaya Rent A Bike" : "PRAC Logo"}
-              className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity", !isBikeMode && "brightness-0 invert")}
-              onClick={() => onPageChange?.('landing')}
-              referrerPolicy="no-referrer"
-            />
+            {isBikeMode ? (
+              <StorageImage 
+                path="PRAB-Logo-1.png"
+                alt="Pattaya Rent A Bike"
+                className="w-44 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => onPageChange?.('landing')}
+                fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
+              />
+            ) : (
+              <img 
+                src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
+                alt="PRAC Logo"
+                className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity brightness-0 invert")}
+                onClick={() => onPageChange?.('landing')}
+                referrerPolicy="no-referrer"
+              />
+            )}
             <p className="text-white/40 text-sm leading-relaxed font-medium">
               {t('footer.description')}
             </p>
@@ -320,7 +367,10 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
                   href={social.href} 
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-brand-orange hover:text-white transition-all duration-500"
+                  className={cn(
+                    "w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center transition-all duration-500",
+                    isBikeMode ? "hover:bg-brand-blue" : "hover:bg-brand-orange"
+                  )}
                 >
                   {social.icon}
                 </a>
@@ -331,16 +381,17 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
           <div>
             <h4 className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mb-10">{t('footer.quickLinks')}</h4>
             <ul className="space-y-5 text-sm font-bold tracking-tight text-white/40">
-              <li><button onClick={() => onPageChange?.('landing')} className="hover:text-brand-orange transition-colors">{t('nav.fleet')}</button></li>
-              <li><button onClick={() => onPageChange?.('long-term')} className="hover:text-brand-orange transition-colors">{t('nav.longTerm')}</button></li>
+              <li><button onClick={() => onPageChange?.('landing')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.fleet')}</button></li>
+              <li><button onClick={() => onPageChange?.('long-term')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.longTerm')}</button></li>
               <li><button onClick={() => {
                 onPageChange?.('landing');
                 setTimeout(() => {
                   document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' });
                 }, 100);
-              }} className="hover:text-brand-orange transition-colors">{t('nav.faq')}</button></li>
-              <li><button onClick={() => onPageChange?.('about')} className="hover:text-brand-orange transition-colors">{t('nav.about')}</button></li>
-              <li><button onClick={() => onPageChange?.('contact')} className="hover:text-brand-orange transition-colors">{t('nav.contact')}</button></li>
+              }} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.faq')}</button></li>
+              <li><button onClick={() => onPageChange?.('about')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.about')}</button></li>
+              <li><button onClick={() => onPageChange?.('contact')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.contact')}</button></li>
+              <li><button onClick={() => onPageChange?.('blog')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>Blog</button></li>
             </ul>
           </div>
 
@@ -348,15 +399,15 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
             <h4 className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mb-10">{t('footer.contactUs')}</h4>
             <ul className="space-y-8 text-sm font-medium text-white/40">
               <li className="flex gap-5">
-                <MapPin size={20} className="shrink-0 text-brand-orange" />
+                <MapPin size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
                 <span className="leading-relaxed">{info?.formatted_address || 'Pattaya Second Road, Pattaya City, Chonburi 20150, Thailand'}</span>
               </li>
               <li className="flex gap-5">
-                <Phone size={20} className="shrink-0 text-brand-orange" />
-                <span className="font-bold tracking-tight">{info?.international_phone_number || '+66 (0) 81 123 4567'}</span>
+                <Phone size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
+                <span className="font-bold tracking-tight">{info?.international_phone_number || '+66 83 077 6928'}</span>
               </li>
               <li className="flex gap-5 min-w-0">
-                <Mail size={20} className="shrink-0 text-brand-orange" />
+                <Mail size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
                 <span className="font-bold tracking-tight break-all">info@pattayarentacar.com</span>
               </li>
             </ul>
@@ -371,7 +422,10 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
                 placeholder={t('footer.emailPlaceholder')}
                 className="bg-white/5 border-none rounded-2xl p-5 text-sm outline-none focus:bg-white/10 transition-all flex-1 font-medium"
               />
-              <button className="bg-brand-orange text-white px-6 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20">
+              <button className={cn(
+                "text-white px-6 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:opacity-90 transition-all shadow-lg",
+                isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+              )}>
                 {t('footer.join')}
               </button>
             </div>

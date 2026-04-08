@@ -241,7 +241,13 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         {/* Status Dot */}
                         <div className={cn(
                           "w-3 h-3 rounded-full shrink-0 shadow-sm",
-                          (!booking.carId || booking.carId === 'unassigned') ? "bg-yellow-500" : (booking.status === 'Paid' ? "bg-green-500" : "bg-orange-500")
+                          booking.status === 'Paid' 
+                            ? "bg-green-500" 
+                            : (parseISO(booking.startDate) < new Date()
+                                ? "bg-yellow-500"
+                                : (isFuture(parseISO(booking.startDate)) 
+                                    ? "bg-red-500" 
+                                    : ((!booking.carId || booking.carId === 'unassigned') ? "bg-yellow-500" : "bg-orange-500")))
                         )} />
 
                         {/* Time */}
@@ -271,11 +277,15 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         <div className="flex items-center gap-2">
                           <div className={cn(
                             "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all",
-                            (!booking.carId || booking.carId === 'unassigned')
-                              ? "bg-yellow-100/80 text-yellow-600 border border-yellow-200/50"
-                              : (booking.status === 'Paid' 
-                                ? "bg-green-100/80 text-green-600 border border-green-200/50" 
-                                : "bg-orange-100/80 text-orange-600 border border-orange-200/50")
+                            booking.status === 'Paid' 
+                              ? "bg-green-100/80 text-green-600 border border-green-200/50" 
+                              : (parseISO(booking.startDate) < new Date()
+                                  ? "bg-yellow-100/80 text-yellow-600 border border-yellow-200/50"
+                                  : (isFuture(parseISO(booking.startDate)) 
+                                      ? "bg-red-100/80 text-red-600 border border-red-200/50" 
+                                      : ((!booking.carId || booking.carId === 'unassigned') 
+                                          ? "bg-yellow-100/80 text-yellow-600 border border-yellow-200/50" 
+                                          : "bg-orange-100/80 text-orange-600 border border-orange-200/50")))
                           )}>
                             {booking.status}
                           </div>
@@ -371,7 +381,13 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Status</p>
                     <div className={cn(
                       "inline-flex px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                      (!viewingBooking.carId || viewingBooking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : (viewingBooking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600")
+                      viewingBooking.status === 'Paid' 
+                        ? "bg-green-100 text-green-600" 
+                        : (parseISO(viewingBooking.startDate) < new Date()
+                            ? "bg-yellow-100 text-yellow-600"
+                            : (isFuture(parseISO(viewingBooking.startDate)) 
+                                ? "bg-red-100 text-red-600" 
+                                : ((!viewingBooking.carId || viewingBooking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600")))
                     )}>
                       {viewingBooking.status}
                     </div>

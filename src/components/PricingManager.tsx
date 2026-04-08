@@ -1,49 +1,120 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
-import { PricingRule } from '../types';
-import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database } from 'lucide-react';
+import { PricingRule, PricingGrid, WebsiteCar } from '../types';
+import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database, CloudDownload, Calendar, Check, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
+import { format, parseISO, isAfter } from 'date-fns';
+import { cn } from '../lib/utils';
 
 import { usePricing } from '../contexts/PricingContext';
+import { PricingGridEditor } from './PricingGridEditor';
 
-interface SheetConfig {
+interface PricingSettings {
   spreadsheetId: string;
-  enabled: boolean;
+  useSheetDirectly: boolean;
+  lastSync?: string;
 }
 
-const DURATION_TIERS = ['1-3', '4-7', '8-14', '15-29', '30+'];
+const DURATION_TIERS = Array.from({ length: 179 }, (_, i) => (1 + i * 0.5).toString());
 
 export const PricingManager: React.FC = () => {
   const { sheetPricing, loading: pricingLoading, refreshPricing } = usePricing();
   const [rules, setRules] = useState<PricingRule[]>([]);
+  const [grids, setGrids] = useState<PricingGrid[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [sheetConfig, setSheetConfig] = useState<SheetConfig>({
+  const [settings, setSettings] = useState<PricingSettings>({
     spreadsheetId: '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo',
-    enabled: true
+    useSheetDirectly: false
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isImportingToDb, setIsImportingToDb] = useState(false);
+  const [editingGridCarType, setEditingGridCarType] = useState<string | null>(null);
+  const [showNewGridModal, setShowNewGridModal] = useState(false);
+  const [newCarType, setNewCarType] = useState('');
+  const [customCarType, setCustomCarType] = useState('');
+  const [modalMode, setModalMode] = useState<'grid' | 'category'>('grid');
+  const [fleetCars, setFleetCars] = useState<WebsiteCar[]>([]);
+  const [deletingGridId, setDeletingGridId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ ruleId: string, tier: string, value: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ ruleId: string, tier: string } | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'pricing'), (snapshot) => {
+    const handleGlobalMouseUp = () => {
+      if (dragStart && dragEnd) {
+        const startTierIdx = DURATION_TIERS.indexOf(dragStart.tier);
+        const endTierIdx = DURATION_TIERS.indexOf(dragEnd.tier);
+        
+        const minTierIdx = Math.min(startTierIdx, endTierIdx);
+        const maxTierIdx = Math.max(startTierIdx, endTierIdx);
+        
+        const targetTiers = DURATION_TIERS.slice(minTierIdx, maxTierIdx + 1);
+        
+        const ruleIds = rules.map(r => r.id);
+        const startRuleIdx = ruleIds.indexOf(dragStart.ruleId);
+        const endRuleIdx = ruleIds.indexOf(dragEnd.ruleId);
+        
+        const minRuleIdx = Math.min(startRuleIdx, endRuleIdx);
+        const maxRuleIdx = Math.max(startRuleIdx, endRuleIdx);
+        
+        const targetRuleIds = ruleIds.slice(minRuleIdx, maxRuleIdx + 1);
+        
+        setRules(prev => prev.map(rule => {
+          if (targetRuleIds.includes(rule.id)) {
+            const newRates = { ...rule.rates };
+            targetTiers.forEach(tier => {
+              newRates[tier] = dragStart.value;
+            });
+            return { ...rule, rates: newRates };
+          }
+          return rule;
+        }));
+      }
+      setDragStart(null);
+      setDragEnd(null);
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [dragStart, dragEnd, rules]);
+
+  useEffect(() => {
+    const qFleet = query(collection(db, 'website_cars'), orderBy('name', 'asc'));
+    const unsubscribeFleet = onSnapshot(qFleet, (snapshot) => {
+      const fleetData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar));
+      setFleetCars(fleetData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'website_cars');
+    });
+
+    const unsubscribeRules = onSnapshot(collection(db, 'pricing'), (snapshot) => {
       const pricingData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
       setRules(pricingData);
-      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'pricing');
+    });
+
+    const unsubscribeGrids = onSnapshot(collection(db, 'pricing_grid'), (snapshot) => {
+      const gridData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingGrid));
+      setGrids(gridData);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'pricing_grid');
       setLoading(false);
     });
 
-    // Load sheet config from settings if it exists
+    // Load settings if they exist
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'pricing'), (snapshot) => {
       if (snapshot.exists()) {
-        setSheetConfig(snapshot.data() as SheetConfig);
+        setSettings(snapshot.data() as PricingSettings);
       }
     });
 
     return () => {
-      unsubscribe();
+      unsubscribeFleet();
+      unsubscribeRules();
+      unsubscribeGrids();
       unsubscribeSettings();
     };
   }, []);
@@ -54,14 +125,68 @@ export const PricingManager: React.FC = () => {
     setIsSyncing(false);
   };
 
-  const saveSheetConfig = async () => {
+  const importSheetToFirestore = async () => {
+    if (!sheetPricing) {
+      toast.error('No sheet data found. Please sync with Google Sheets first.');
+      return;
+    }
+
+    setIsImportingToDb(true);
     try {
-      await setDoc(doc(db, 'settings', 'pricing'), sheetConfig);
-      toast.success('Google Sheet configuration saved');
-      handleSync();
+      const carTypes = Object.keys(sheetPricing);
+      for (const carType of carTypes) {
+        const data = sheetPricing[carType];
+        await setDoc(doc(db, 'pricing_grid', carType), {
+          carType,
+          headers: data.headers || [],
+          rates: data.data || {},
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      await setDoc(doc(db, 'settings', 'pricing'), {
+        ...settings,
+        lastSync: new Date().toISOString()
+      }, { merge: true });
+
+      await logSystemActivity(
+        'Sync Pricing to Database',
+        `Imported pricing data for ${carTypes.length} car types from Google Sheets to Firestore.`,
+        'Pricing',
+        { carTypes }
+      );
+
+      toast.success(`Successfully imported ${carTypes.length} car types to the backend database.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'pricing_grid');
+    } finally {
+      setIsImportingToDb(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      await setDoc(doc(db, 'settings', 'pricing'), settings);
+      toast.success('Pricing settings saved');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'settings/pricing');
     }
+  };
+
+  const getLastFilledDate = (grid: PricingGrid) => {
+    const dates = Object.keys(grid.rates);
+    if (dates.length === 0) return null;
+    
+    let lastDate: string | null = null;
+    dates.forEach(date => {
+      const hasRates = grid.rates[date].some(rate => rate > 0);
+      if (hasRates) {
+        if (!lastDate || isAfter(parseISO(date), parseISO(lastDate))) {
+          lastDate = date;
+        }
+      }
+    });
+    return lastDate;
   };
 
   const handleRateChange = (ruleId: string, tier: string, value: string) => {
@@ -95,29 +220,46 @@ export const PricingManager: React.FC = () => {
     }
   };
 
-  const addNewRule = async () => {
-    const carType = prompt('Enter Car Type (e.g. Small, Medium, SUV, Luxury):');
-    if (!carType) return;
+  const handleNewItemSubmit = async () => {
+    const carTypeToUse = newCarType === 'custom' ? customCarType.trim() : newCarType.trim();
 
-    const newRule = {
-      carType,
-      rates: DURATION_TIERS.reduce((acc, tier) => ({ ...acc, [tier]: 1200 }), {})
-    };
-
-    try {
-      const docRef = await addDoc(collection(db, 'pricing'), newRule);
-      
-      await logSystemActivity(
-        'Add Pricing Rule',
-        `Added new pricing rule for car type: ${carType}`,
-        'Pricing',
-        { ruleId: docRef.id, carType }
-      );
-
-      toast.success('New pricing category added');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'pricing');
+    if (!carTypeToUse) {
+      toast.error('Please enter or select a car type');
+      return;
     }
+
+    if (modalMode === 'grid') {
+      setEditingGridCarType(carTypeToUse);
+    } else {
+      const newRule = {
+        carType: carTypeToUse,
+        rates: DURATION_TIERS.reduce((acc, tier) => ({ ...acc, [tier]: 1200 }), {})
+      };
+
+      try {
+        const docRef = await addDoc(collection(db, 'pricing'), newRule);
+        
+        await logSystemActivity(
+          'Add Pricing Category',
+          `Added new pricing category for car type: ${carTypeToUse}`,
+          'Pricing',
+          { ruleId: docRef.id, carType: carTypeToUse }
+        );
+
+        toast.success('New pricing category added');
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'pricing');
+      }
+    }
+
+    setNewCarType('');
+    setCustomCarType('');
+    setShowNewGridModal(false);
+  };
+
+  const addNewRule = () => {
+    setModalMode('category');
+    setShowNewGridModal(true);
   };
 
   const deleteRule = async (id: string) => {
@@ -201,6 +343,25 @@ export const PricingManager: React.FC = () => {
     }
   };
 
+  const deleteGrid = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'pricing_grid', id));
+      
+      await logSystemActivity(
+        'Delete Pricing Grid',
+        `Deleted manual pricing grid for car type: ${id}`,
+        'Pricing',
+        { gridId: id }
+      );
+
+      toast.success('Pricing grid deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `pricing_grid/${id}`);
+    } finally {
+      setDeletingGridId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-warm-bg">
@@ -239,6 +400,15 @@ export const PricingManager: React.FC = () => {
               <RefreshCw size={14} /> Paste from Spreadsheet
             </button>
             <button
+              onClick={() => {
+                setModalMode('grid');
+                setShowNewGridModal(true);
+              }}
+              className="bg-white/40 backdrop-blur-md border border-white/60 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm active:translate-y-[2px]"
+            >
+              <Plus size={14} /> Create Manual Grid
+            </button>
+            <button
               onClick={addNewRule}
               className="bg-white/40 backdrop-blur-md border border-white/60 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm active:translate-y-[2px]"
             >
@@ -257,11 +427,42 @@ export const PricingManager: React.FC = () => {
 
         {/* Google Sheet Configuration */}
         <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-[32px] shadow-xl mb-12">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
-              <FileSpreadsheet className="text-brand-orange" size={24} />
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
+                <FileSpreadsheet className="text-brand-orange" size={24} />
+              </div>
+              <div>
+                <h2 className="font-serif italic text-3xl text-[#1A1A1A]">Google Sheet Integration</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Sync external data to your internal database</p>
+              </div>
             </div>
-            <h2 className="font-serif italic text-3xl text-[#1A1A1A]">Google Sheet Integration</h2>
+            
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">Pricing Source</span>
+                <div className="flex bg-white/40 p-1 rounded-xl border border-white/60">
+                  <button 
+                    onClick={() => setSettings(prev => ({ ...prev, useSheetDirectly: true }))}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                      settings.useSheetDirectly ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+                    )}
+                  >
+                    Direct Sheet
+                  </button>
+                  <button 
+                    onClick={() => setSettings(prev => ({ ...prev, useSheetDirectly: false }))}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                      !settings.useSheetDirectly ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+                    )}
+                  >
+                    Internal DB
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -270,39 +471,37 @@ export const PricingManager: React.FC = () => {
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-2">Spreadsheet ID</label>
                 <input
                   type="text"
-                  value={sheetConfig.spreadsheetId}
-                  onChange={(e) => setSheetConfig(prev => ({ ...prev, spreadsheetId: e.target.value }))}
+                  value={settings.spreadsheetId}
+                  onChange={(e) => setSettings(prev => ({ ...prev, spreadsheetId: e.target.value }))}
                   className="w-full bg-white/40 border-b-2 border-white/60 py-3 px-1 font-mono text-sm focus:border-brand-orange outline-none transition-colors text-[#1A1A1A] font-bold"
                   placeholder="e.g. 1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo"
                 />
               </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 pt-2">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={sheetConfig.enabled}
-                      onChange={(e) => setSheetConfig(prev => ({ ...prev, enabled: e.target.checked }))}
-                      className="peer sr-only"
-                    />
-                    <div className="w-10 h-6 bg-white/40 border border-white/60 rounded-full peer-checked:bg-brand-orange transition-all duration-300" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 peer-checked:translate-x-4 shadow-sm" />
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/60 group-hover:text-brand-orange transition-colors">Enable Sheet Pricing</span>
-                </label>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-2">
                 <button
-                  onClick={saveSheetConfig}
-                  className="bg-brand-orange text-white px-6 py-2.5 rounded-full font-bold uppercase tracking-widest text-[10px] hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                  onClick={saveSettings}
+                  className="bg-white/40 backdrop-blur-md border border-white/60 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm active:translate-y-[2px]"
                 >
-                  Save Config
+                  <Save size={14} /> Save Settings
+                </button>
+                <button
+                  onClick={importSheetToFirestore}
+                  disabled={isImportingToDb || !sheetPricing}
+                  className="bg-brand-orange text-white px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20 active:translate-y-[2px] disabled:opacity-50"
+                >
+                  {isImportingToDb ? <RefreshCw className="animate-spin" size={14} /> : <CloudDownload size={14} />}
+                  Sync to Database
                 </button>
               </div>
+              <p className="text-[10px] text-[#1A1A1A]/40 italic">
+                * "Sync to Database" takes the current Google Sheet data and saves it permanently to your app's internal Firestore database.
+              </p>
             </div>
 
             <div className="bg-white/40 backdrop-blur-md p-8 rounded-3xl border border-white/60 border-dashed relative overflow-hidden group">
               <div className="absolute -right-4 -top-4 w-24 h-24 bg-brand-orange/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
               <h3 className="font-bold uppercase tracking-widest text-[10px] mb-6 flex items-center gap-2 text-[#1A1A1A]/60">
-                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Status: <span className={sheetPricing ? "text-green-600" : "text-red-600"}>{sheetPricing ? 'Connected' : 'Not Connected'}</span>
+                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Sheet Status: <span className={sheetPricing ? "text-green-600" : "text-red-600"}>{sheetPricing ? 'Connected' : 'Not Connected'}</span>
               </h3>
               {sheetPricing ? (
                 <div className="space-y-4 relative z-10">
@@ -311,11 +510,11 @@ export const PricingManager: React.FC = () => {
                     <p className="text-sm font-bold text-[#1A1A1A]">{Object.keys(sheetPricing).join(', ')}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Sync Status</p>
-                    <p className="text-sm font-bold text-[#1A1A1A]">All car types synchronized</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Last DB Sync</p>
+                    <p className="text-sm font-bold text-[#1A1A1A]">{settings.lastSync ? format(new Date(settings.lastSync), 'dd MMM yyyy HH:mm') : 'Never'}</p>
                   </div>
                   <a 
-                    href={`https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`}
+                    href={`https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/edit`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange hover:underline mt-4 bg-white/60 px-4 py-2 rounded-full border border-white/80 shadow-sm"
@@ -332,92 +531,174 @@ export const PricingManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white/60 backdrop-blur-xl border border-white/40 rounded-[32px] shadow-xl overflow-hidden mb-12">
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-white/40 border-b border-white/60">
-                  <th className="p-6 text-left font-serif italic text-2xl text-[#1A1A1A] border-r border-white/20">Car Type</th>
-                  {DURATION_TIERS.map(tier => (
-                    <th key={tier} className="p-6 text-center font-bold uppercase tracking-widest text-[10px] text-[#1A1A1A]/40 border-r border-white/20">
-                      {tier} Days
-                    </th>
-                  ))}
-                  <th className="p-6 w-20"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.length === 0 ? (
-                  <tr>
-                    <td colSpan={DURATION_TIERS.length + 2} className="p-20 text-center">
-                      <div className="flex flex-col items-center gap-4">
-                        <Database className="text-[#1A1A1A]/10" size={48} />
-                        <p className="text-[#1A1A1A]/40 font-bold uppercase tracking-widest text-[10px]">No pricing rules defined. Click "Add Category" to start.</p>
+        {/* Internal Database Grid Status */}
+        <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-[32px] shadow-xl mb-12">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
+              <Database className="text-brand-orange" size={24} />
+            </div>
+            <div>
+              <h2 className="font-serif italic text-3xl text-[#1A1A1A]">Internal Pricing Database</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">High-performance date-specific pricing</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {grids.length === 0 ? (
+              <div className="col-span-full p-12 text-center bg-white/40 rounded-3xl border border-white/60 border-dashed">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">No date-specific pricing found in database. Use the sync feature above to import from Google Sheets.</p>
+              </div>
+            ) : (
+              grids.map(grid => (
+                <div key={grid.id} className="bg-white/40 p-6 rounded-3xl border border-white/60 hover:border-brand-orange transition-all group">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="font-serif italic text-xl text-[#1A1A1A] capitalize">{grid.carType}</h3>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setEditingGridCarType(grid.carType)}
+                        className="w-8 h-8 rounded-lg bg-brand-orange/10 text-brand-orange flex items-center justify-center hover:bg-brand-orange/20 transition-all"
+                        title="Edit Manually"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => setDeletingGridId(grid.id)}
+                        className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition-all"
+                        title="Delete Grid"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <div className="w-8 h-8 rounded-lg bg-green-50 text-green-500 flex items-center justify-center">
+                        <Check size={16} />
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  rules.map((rule) => (
-                    <tr key={rule.id} className="border-b border-white/20 hover:bg-white/40 transition-colors group">
-                      <td className="p-6 border-r border-white/20">
-                        <input
-                          type="text"
-                          value={rule.carType}
-                          onChange={(e) => {
-                            const newType = e.target.value;
-                            setRules(prev => prev.map(r => r.id === rule.id ? { ...r, carType: newType } : r));
-                          }}
-                          className="bg-transparent border-none focus:ring-0 w-full font-bold text-[#1A1A1A] text-lg tracking-tight outline-none"
-                        />
-                      </td>
-                      {DURATION_TIERS.map(tier => (
-                        <td key={tier} className="p-6 border-r border-white/20">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-[8px] font-bold uppercase tracking-widest text-brand-orange/60">THB / Day</span>
-                            <input
-                              type="number"
-                              value={rule.rates[tier] || 0}
-                              onChange={(e) => handleRateChange(rule.id, tier, e.target.value)}
-                              className="w-24 bg-white/40 border-b border-white/60 text-center focus:border-brand-orange outline-none font-bold text-sm text-[#1A1A1A] py-1 rounded-t-lg transition-colors"
-                            />
-                          </div>
-                        </td>
-                      ))}
-                      <td className="p-6 text-center">
-                        <button
-                          onClick={() => deleteRule(rule.id)}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center text-[#1A1A1A]/20 hover:text-red-600 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+                      <span>Dates Stored</span>
+                      <span className="text-[#1A1A1A]">{Object.keys(grid.rates).length}</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+                      <span>Tiers</span>
+                      <span className="text-[#1A1A1A]">{grid.headers.length}</span>
+                    </div>
+                    <div className="pt-4 space-y-1">
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange">
+                        <Calendar size={12} />
+                        <span>Updated {grid.updatedAt ? format(parseISO(grid.updatedAt), 'dd MMM') : 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/60">
+                        <Check size={12} className="text-green-500" />
+                        <span>Filled up to {(() => {
+                          const lastDate = getLastFilledDate(grid);
+                          return lastDate ? format(parseISO(lastDate), 'dd MMM yyyy') : 'No data';
+                        })()}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        <div className="p-8 bg-white/60 backdrop-blur-xl border border-white/40 rounded-[32px] flex flex-col md:flex-row gap-8 items-start shadow-xl">
-          <div className="w-12 h-12 bg-brand-orange text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-brand-orange/20">
-            <Info size={24} />
-          </div>
-          <div className="space-y-4">
-            <h3 className="font-serif italic text-2xl text-[#1A1A1A]">How it works</h3>
-            <div className="space-y-4 text-sm text-[#1A1A1A]/60 leading-relaxed font-medium">
-              <p>
-                The booking engine will automatically look up the daily rate based on the car's type and the total duration of the rental. 
-                If a car type is not found in this grid, it will fallback to the default price set on the vehicle profile.
+        {editingGridCarType && (
+          <PricingGridEditor 
+            carType={editingGridCarType} 
+            onClose={() => setEditingGridCarType(null)} 
+            initialData={grids.find(g => g.carType.toLowerCase() === editingGridCarType.toLowerCase())}
+          />
+        )}
+
+        {showNewGridModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl border border-white/20">
+              <h3 className="font-serif italic text-3xl text-[#1A1A1A] mb-2">
+                {modalMode === 'grid' ? 'Create Manual Grid' : 'Add Pricing Category'}
+              </h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-8">
+                Enter the car type to {modalMode === 'grid' ? 'start manual editing' : 'add to categories'}
               </p>
-              <div className="p-4 bg-brand-orange/5 border-l-4 border-brand-orange rounded-r-2xl">
-                <p className="text-[#1A1A1A] font-bold">
-                  Important: The "Car Type" in this grid must exactly match the "Type" field on your vehicle profiles (e.g., "Sedan", "SUV", "Small").
-                </p>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Car Type</label>
+                  <select
+                    autoFocus
+                    value={newCarType}
+                    onChange={(e) => setNewCarType(e.target.value)}
+                    className="w-full bg-warm-bg border-b-2 border-[#1A1A1A]/5 py-3 px-1 font-bold text-lg focus:border-brand-orange outline-none transition-colors appearance-none"
+                  >
+                    <option value="">Select a vehicle...</option>
+                    {fleetCars.map(car => (
+                      <option key={car.id} value={car.name}>{car.name}</option>
+                    ))}
+                    <option value="custom">-- Other (Custom Type) --</option>
+                  </select>
+                  
+                  {newCarType === 'custom' && (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={customCarType}
+                      onChange={(e) => setCustomCarType(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleNewItemSubmit()}
+                      className="w-full bg-warm-bg border-b-2 border-[#1A1A1A]/5 py-3 px-1 font-bold text-lg focus:border-brand-orange outline-none transition-colors mt-4"
+                      placeholder="Enter custom car type..."
+                    />
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowNewGridModal(false);
+                      setNewCarType('');
+                    }}
+                    className="flex-1 bg-[#1A1A1A]/5 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-[#1A1A1A]/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleNewItemSubmit}
+                    className="flex-1 bg-brand-orange text-white px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                  >
+                    Confirm
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {deletingGridId && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl border border-white/20">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-6">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="font-serif italic text-3xl text-[#1A1A1A] mb-2">Delete Pricing Grid?</h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-8">
+                Are you sure you want to delete the pricing grid for <span className="text-red-500">{deletingGridId}</span>? This action cannot be undone.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeletingGridId(null)}
+                  className="flex-1 bg-[#1A1A1A]/5 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-[#1A1A1A]/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteGrid(deletingGridId)}
+                  className="flex-1 bg-red-500 text-white px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

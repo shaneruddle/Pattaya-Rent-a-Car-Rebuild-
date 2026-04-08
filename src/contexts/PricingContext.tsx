@@ -3,8 +3,14 @@ import { toast } from 'sonner';
 
 import { fetchWithRetry } from '../lib/api';
 
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { PricingGrid } from '../types';
+
 interface PricingContextType {
   sheetPricing: any | null;
+  dbPricing: { [carType: string]: PricingGrid } | null;
+  settings: { useSheetDirectly: boolean } | null;
   loading: boolean;
   error: string | null;
   refreshPricing: () => Promise<void>;
@@ -14,18 +20,48 @@ const PricingContext = createContext<PricingContextType | undefined>(undefined);
 
 export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sheetPricing, setSheetPricing] = useState<any | null>(null);
+  const [dbPricing, setDbPricing] = useState<{ [carType: string]: PricingGrid } | null>(null);
+  const [settings, setSettings] = useState<{ useSheetDirectly: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState(0);
 
+  useEffect(() => {
+    // Listen to DB Pricing Grid
+    const unsubscribeGrids = onSnapshot(collection(db, 'pricing_grid'), (snapshot) => {
+      const pricingMap: { [carType: string]: PricingGrid } = {};
+      snapshot.docs.forEach(doc => {
+        pricingMap[doc.id.toLowerCase()] = { id: doc.id, ...doc.data() } as PricingGrid;
+      });
+      setDbPricing(pricingMap);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'pricing_grid');
+    });
+
+    // Listen to Settings
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'pricing'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data() as any);
+      } else {
+        setSettings({ useSheetDirectly: false });
+      }
+    });
+
+    return () => {
+      unsubscribeGrids();
+      unsubscribeSettings();
+    };
+  }, []);
+
   const fetchPricing = useCallback(async (force = false) => {
-    // Avoid fetching too often (cache for 5 minutes in memory)
+    // Avoid fetching sheet too often if not needed
     if (!force && sheetPricing && Date.now() - lastFetch < 5 * 60 * 1000) {
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
+    // Only fetch sheet if explicitly requested or if we are in sheet mode
+    // Actually, we fetch it anyway for the PricingManager to show sync status
+    
     setError(null);
 
     const performFetch = async (retries = 3, delay = 2000): Promise<void> => {
@@ -38,44 +74,17 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const data = await response.json();
             setSheetPricing(data);
             setLastFetch(Date.now());
-            setLoading(false);
           } else {
-            const text = await response.text();
-            if (text.includes('Rate exceeded') && retries > 0) {
-              console.warn(`Rate limit hit, retrying in ${delay}ms...`);
-              await new Promise(r => setTimeout(r, delay));
-              return performFetch(retries - 1, delay * 2);
-            }
             throw new Error('Invalid response format from server');
           }
-        } else if (response.status === 429 || response.status === 503) {
-          if (retries > 0) {
-            console.warn(`Server busy or rate limited (${response.status}), retrying in ${delay}ms...`);
-            await new Promise(r => setTimeout(r, delay));
-            return performFetch(retries - 1, delay * 2);
-          }
-          throw new Error('Server is currently busy. Please try again in a few minutes.');
-        } else {
-          const text = await response.text();
-          throw new Error(text || `Error ${response.status}`);
         }
       } catch (err: any) {
-        if (retries > 0 && (err.message.includes('Rate exceeded') || err.message.includes('Failed to fetch'))) {
-          console.warn(`Fetch failed, retrying in ${delay}ms...`, err);
-          await new Promise(r => setTimeout(r, delay));
-          return performFetch(retries - 1, delay * 2);
-        }
-        
-        const msg = err.message || 'Failed to load pricing data';
-        setError(msg);
-        setLoading(false);
-        if (force) {
-          toast.error('Pricing Sync Failed', { description: msg });
-        }
+        console.error('Sheet fetch error:', err);
       }
     };
 
     await performFetch();
+    setLoading(false);
   }, [sheetPricing, lastFetch]);
 
   useEffect(() => {
@@ -83,7 +92,14 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   return (
-    <PricingContext.Provider value={{ sheetPricing, loading, error, refreshPricing: () => fetchPricing(true) }}>
+    <PricingContext.Provider value={{ 
+      sheetPricing, 
+      dbPricing,
+      settings,
+      loading, 
+      error, 
+      refreshPricing: () => fetchPricing(true) 
+    }}>
       {children}
     </PricingContext.Provider>
   );

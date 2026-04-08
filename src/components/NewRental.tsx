@@ -306,7 +306,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
           <p style="font-size: 12px; color: #666;">
             Pattaya Rent a Car<br />
-            Phone: +66 (0) 81 234 5678<br />
+            Phone: +66 83 077 6928<br />
             Email: info@pattayarentacar.com
           </p>
         </div>
@@ -323,6 +323,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
       // Also send a copy to staff
       await addDoc(collection(db, 'mail'), {
         to: 'info@pattayarentacar.com',
+        replyTo: formData.customerEmail,
         message: {
           subject: `[STAFF] New Rental Processed: ${formData.customerName}`,
           html: `

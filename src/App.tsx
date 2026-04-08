@@ -25,6 +25,9 @@ import { CRM } from './components/CRM';
 import { UserManagement } from './components/UserManagement';
 import { Logs } from './components/Logs';
 import { TrafficInsights } from './components/TrafficInsights';
+import { ImageManagement } from './components/ImageManagement';
+import { MarketingFAQ } from './components/MarketingFAQ';
+import { BlogManager } from './components/BlogManager';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { NewRental } from './components/NewRental';
 import { Rentals } from './components/Rentals';
@@ -71,8 +74,18 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   console.log('AppContent: Current State:', { loading, user: !!user, currentView });
 
@@ -97,30 +110,63 @@ function AppContent() {
     ].includes(email || '');
   }, [user]);
 
+  // Redirect mobile employees to allowed sections
+  useEffect(() => {
+    if (isMobile && !isAdmin && user && isStaff) {
+      const allowedViews = ['new_rental', 'rentals'];
+      if (!allowedViews.includes(currentView)) {
+        setCurrentView('new_rental');
+      }
+    }
+  }, [isMobile, isAdmin, user, isStaff, currentView]);
+
+  useEffect(() => {
+    // Warm up camera permission early to avoid repeated prompts later
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          // Immediately stop the tracks as we only wanted to trigger the permission prompt
+          stream.getTracks().forEach(track => track.stop());
+          console.log('AppContent: Camera permission warmed up successfully');
+        })
+        .catch(err => {
+          console.warn('AppContent: Camera permission warmup failed or denied:', err);
+        });
+    }
+  }, []);
+
   useEffect(() => {
     console.log('AppContent: Setting up auth listener');
     
     // Check for redirect result
     const checkRedirect = async () => {
       try {
+        console.log('AppContent: Checking redirect result...');
         const result = await getRedirectResult(auth);
         if (result?.user) {
-          console.log('AppContent: Redirect sign in successful');
+          console.log('AppContent: Redirect sign in successful for:', result.user.email);
           setUser(result.user);
           setShowLogin(false);
+          toast.success(`Welcome back, ${result.user.displayName || result.user.email}`);
+        } else {
+          console.log('AppContent: No redirect result found');
         }
       } catch (error: any) {
         console.error('AppContent: Redirect sign in error:', error);
+        setLastError(`Redirect Error: ${error.message}`);
         toast.error(`Redirect sign in failed: ${error.message}`);
       }
     };
     checkRedirect();
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('AppContent: Auth state changed:', !!user);
+      console.log('AppContent: Auth state changed:', !!user, user?.email);
       setUser(user);
       setLoading(false);
-      if (user) setShowLogin(false);
+      if (user) {
+        setShowLogin(false);
+        console.log('AppContent: User detected, hiding login screen');
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -282,17 +328,33 @@ function AppContent() {
 
   const handleSignIn = async () => {
     setSigningIn(true);
+    setLastError(null);
     try {
       console.log('AppContent: Starting sign in...');
-      await signIn();
-      console.log('AppContent: Sign in successful');
+      const result = await signIn();
+      console.log('AppContent: Sign in successful, user:', result.user.email);
+      setUser(result.user);
+      setShowLogin(false);
+      toast.success(`Signed in as ${result.user.email}`);
+
+      // On custom domains, sometimes the state doesn't sync immediately to the main window
+      // If after 2 seconds we still don't have a user in the auth object, try a reload
+      if (window.location.hostname !== 'localhost' && !window.location.hostname.includes('run.app')) {
+        setTimeout(() => {
+          if (!auth.currentUser) {
+            console.log('AppContent: Auth state not persisted on custom domain, reloading...');
+            window.location.reload();
+          }
+        }, 2000);
+      }
     } catch (error: any) {
       console.error('AppContent: Sign in error:', error);
+      setLastError(error.message || 'Unknown sign-in error');
       toast.error(`Sign in failed: ${error.message || 'Unknown error'}`);
       
       // If it's a domain error, give specific advice
       if (error.code === 'auth/unauthorized-domain') {
-        toast.error('This domain is not authorized in Firebase. Please add it to Authorized Domains in Firebase Console.', {
+        toast.error('This domain is not authorized in Firebase. Please add new.pattayarentacar.com to Authorized Domains in Firebase Console.', {
           duration: 10000
         });
       }
@@ -352,7 +414,29 @@ function AppContent() {
             </button>
           </div>
           <h1 className="font-serif italic text-4xl text-[#1A1A1A] mb-4">Staff Login</h1>
-          <p className="text-[#1A1A1A]/60 mb-10 uppercase tracking-widest text-xs">Fleet Management Dashboard</p>
+          <p className="text-[#1A1A1A]/60 mb-6 uppercase tracking-widest text-xs">Fleet Management Dashboard</p>
+          
+          <div className="bg-black/5 rounded-2xl p-4 mb-8 text-[10px] font-mono text-left space-y-1">
+            <p className="text-black/40 uppercase font-bold mb-2">System Status</p>
+            <p>Domain: {window.location.hostname}</p>
+            <p>Protocol: {window.location.protocol}</p>
+            <p>Auth Ready: {loading ? '⏳ Loading...' : '✅ Ready'}</p>
+            <p>Current User: {user ? user.email : 'None'}</p>
+            <p>Is Staff: {user ? (isStaff ? '✅ Yes' : '❌ No') : 'N/A'}</p>
+            {lastError && <p className="text-red-500 mt-2">Error: {lastError}</p>}
+            <button 
+              onClick={() => {
+                console.log('Manual Auth Refresh. Current:', auth.currentUser?.email);
+                setUser(auth.currentUser);
+                if (auth.currentUser) setShowLogin(false);
+                toast.info(`Auth State: ${auth.currentUser ? auth.currentUser.email : 'No user'}`);
+              }}
+              className="mt-2 text-brand-orange hover:underline font-bold"
+            >
+              [ Refresh Auth State ]
+            </button>
+          </div>
+
           <button
             onClick={handleSignIn}
             disabled={signingIn}
@@ -365,13 +449,40 @@ function AppContent() {
             )}
             {signingIn ? 'Signing In...' : 'Sign In with Google'}
           </button>
+          
           <button
             onClick={handleSignInRedirect}
             disabled={signingIn}
-            className="w-full text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange transition-colors"
+            className="w-full text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange transition-colors mb-6"
           >
             Trouble with popup? Try Redirect Sign In
           </button>
+
+          <div className="pt-6 border-t border-black/5 space-y-4">
+            <p className="text-[9px] text-black/40 leading-relaxed">
+              If you are redirected to the internal Cloud Run URL, please log in there first, then return to this domain.
+            </p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => {
+                  console.log('Current Auth User:', auth.currentUser);
+                  toast.info(`Current User: ${auth.currentUser?.email || 'None'}`);
+                }}
+                className="text-[8px] font-bold uppercase tracking-widest text-black/20 hover:text-black transition-colors"
+              >
+                Check Auth Status
+              </button>
+              <button
+                onClick={() => {
+                  auth.signOut();
+                  toast.success('Signed out successfully');
+                }}
+                className="text-[8px] font-bold uppercase tracking-widest text-black/20 hover:text-red-500 transition-colors"
+              >
+                Force Sign Out
+              </button>
+            </div>
+          </div>
         </motion.div>
       </div>
     );
@@ -419,6 +530,7 @@ function AppContent() {
         <Sidebar 
           user={user} 
           isAdmin={isAdmin}
+          isMobile={isMobile}
           onNewBooking={() => setNewBookingTrigger(prev => prev + 1)} 
           currentView={currentView}
           onViewChange={setCurrentView}
@@ -482,6 +594,7 @@ function AppContent() {
                     type: 'Income',
                     amount: booking.amount || 0,
                     carId: booking.carId,
+                    bookingId: booking.id,
                     description: `Rental payment from ${booking.customerName}`,
                     category: 'Rental'
                   });
@@ -518,6 +631,12 @@ function AppContent() {
             <NewRental cars={cars} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
           ) : currentView === 'traffic_insights' ? (
             <TrafficInsights />
+          ) : currentView === 'image_management' ? (
+            <ImageManagement />
+          ) : currentView === 'marketing_faq' ? (
+            <MarketingFAQ />
+          ) : currentView === 'blog' ? (
+            <BlogManager />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <BookingEngine onLoginClick={() => {}} />

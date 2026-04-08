@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck } from 'lucide-react';
@@ -358,10 +358,25 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
     const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
 
+    const isFutureBooking = isFuture(start);
+    const isUnpaid = start < new Date() && booking.status !== 'Paid';
+    
+    let bgColor = '#FF6321'; // Default brand-orange
+    
+    if (booking.status === 'Paid') {
+      bgColor = '#10B981'; // Green (emerald-500)
+    } else if (isUnpaid) {
+      bgColor = '#EAB308'; // Yellow (yellow-500) - Unpaid
+    } else if (isFutureBooking) {
+      bgColor = '#EF4444'; // Red (red-500)
+    } else if (!booking.carId || booking.carId === 'unassigned') {
+      bgColor = '#EAB308'; // Yellow (yellow-500)
+    }
+
     return {
       left: `${(startDayIdx * 2 + startSlot) * 36}px`,
       width: `${Math.max(totalSlots, 1) * 36}px`,
-      backgroundColor: (!booking.carId || booking.carId === 'unassigned') ? '#EAB308' : (booking.status === 'Paid' ? '#10B981' : '#FF6321')
+      backgroundColor: bgColor
     };
   };
 
@@ -398,12 +413,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
-            <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
+            <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
               <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
             </div>
             <div className="flex">
               {daysInMonth.map(day => (
-                <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r border-b border-white/40 bg-white/20">
+                <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r border-b border-black/10 bg-white/20">
                   <div className="text-center py-1 text-[9px] font-bold uppercase tracking-wider bg-brand-orange/5 text-brand-orange">
                     {format(day, 'EEE d')}
                   </div>
@@ -420,7 +435,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
           <div className="relative">
             {/* Unassigned Row */}
             <div className="flex group h-6 bg-brand-orange/5">
-              <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
+              <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
                 <div className="w-1 h-full absolute left-0 bg-brand-orange" />
                 <AlertCircle size={10} className="shrink-0 text-brand-orange" />
                 <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned Bookings</span>
@@ -429,7 +444,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 {daysInMonth.map(day => (
                   <React.Fragment key={day.toISOString()}>
                     <div
-                      className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
+                      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'AM')}
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -439,7 +454,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       onDrop={(e) => handleDrop(e, 'unassigned', day, 'AM')}
                     />
                     <div
-                      className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
+                      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'PM')}
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -454,7 +469,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 {/* Unassigned Bookings */}
                 {dropPreview && dropPreview.carId === 'unassigned' && draggedBooking && (
                   <div
-                    className="absolute h-4 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                    className="absolute h-5 top-0.5 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
                     style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
                   />
                 )}
@@ -477,13 +492,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       }}
                       onMouseLeave={() => setHoveredBooking(null)}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-                      className="absolute h-4 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
-                      style={{
-                        ...style,
-                        color: 'white'
-                      }}
+                      className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                      style={style || {}}
                     >
-                      <span className="text-[8px] font-bold truncate leading-none">
+                      <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">
                         {booking.customerName}
                       </span>
                     </div>
@@ -498,7 +510,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               
               return (
                 <div key={car.id} className="flex group h-6">
-                  <div className="w-80 flex-shrink-0 border-r border-b border-white/40 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
+                  <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
                     <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
                     <Icon size={10} className={cn("shrink-0", typeStyles.color)} />
                     <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">{car.name}</span>
@@ -508,7 +520,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     {daysInMonth.map(day => (
                       <React.Fragment key={day.toISOString()}>
                         <div
-                          className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
+                          className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'AM')}
                           onDragOver={(e) => {
                             e.preventDefault();
@@ -518,7 +530,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           onDrop={(e) => handleDrop(e, car.id, day, 'AM')}
                         />
                         <div
-                          className="w-[36px] flex-shrink-0 border-r border-b border-white/40 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
+                          className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'PM')}
                           onDragOver={(e) => {
                             e.preventDefault();
@@ -533,7 +545,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     {/* Bookings for this car */}
                     {dropPreview && dropPreview.carId === car.id && draggedBooking && (
                       <div
-                        className="absolute h-4 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                        className="absolute h-5 top-0.5 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
                         style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
                       />
                     )}
@@ -556,19 +568,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           }}
                           onMouseLeave={() => setHoveredBooking(null)}
                           onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-                          className="absolute h-4 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
-                          style={{
-                            ...style,
-                            color: 'white'
-                          }}
+                          className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                          style={style || {}}
                         >
-                          <span className="text-[8px] font-bold truncate leading-none">
+                          <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">
                             {booking.customerName}
-                          </span>
-                          <span className="text-[6px] opacity-80 font-medium truncate leading-none mt-0.5">
-                            {isValid(parseISO(booking.startDate)) && isValid(parseISO(booking.endDate)) ? (
-                              `${format(parseISO(booking.startDate), 'HH:mm')} - ${format(parseISO(booking.endDate), 'HH:mm')}`
-                            ) : 'Invalid dates'}
                           </span>
                         </div>
                       );
@@ -602,7 +606,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               transform: 'translateY(0)'
             }}
           >
-            <div className="bg-white/90 backdrop-blur-2xl border border-white/40 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
+            <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h4 className="text-sm font-bold text-[#1A1A1A]">{hoveredBooking.booking.customerName}</h4>
@@ -615,7 +619,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 </div>
                 <span className={cn(
                   "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                  (!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : (hoveredBooking.booking.status === 'Paid' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600")
+                  hoveredBooking.booking.status === 'Paid' 
+                    ? "bg-green-100 text-green-600" 
+                    : (parseISO(hoveredBooking.booking.startDate) < new Date()
+                        ? "bg-yellow-100 text-yellow-600"
+                        : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
+                            ? "bg-red-100 text-red-600" 
+                            : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600")))
                 )}>
                   {hoveredBooking.booking.status}
                 </span>
@@ -661,7 +671,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 max-w-2xl w-full shadow-2xl rounded-[40px] overflow-y-auto max-h-[90vh]"
+              className="bg-white/60 backdrop-blur-xl border border-black/10 p-8 max-w-2xl w-full shadow-2xl rounded-[40px] overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-8">
                 <div>
@@ -776,8 +786,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Status</p>
                       <div className="h-[52px] flex items-center">
                         <span className={cn(
-                          "px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full border border-white/40 shadow-sm",
-                          (!editingBooking.carId || editingBooking.carId === 'unassigned') ? "bg-yellow-500 text-white" : (editingBooking.status === 'Paid' ? "bg-emerald-500 text-white" : "bg-brand-orange text-white")
+                          "px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full border border-black/10 shadow-sm",
+                          editingBooking.status === 'Paid' 
+                            ? "bg-emerald-500 text-white" 
+                            : (isFuture(parseISO(editingBooking.startDate)) 
+                                ? "bg-red-500 text-white" 
+                                : ((!editingBooking.carId || editingBooking.carId === 'unassigned') ? "bg-yellow-500 text-white" : "bg-brand-orange text-white"))
                         )}>
                           {editingBooking.status}
                         </span>

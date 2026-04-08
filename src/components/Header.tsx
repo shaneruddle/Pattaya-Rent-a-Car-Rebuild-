@@ -43,14 +43,14 @@ export const Header: React.FC<HeaderProps> = ({
   const hasActiveFilters = searchQuery || statusFilter || typeFilter;
 
   return (
-    <header className="bg-white/40 backdrop-blur-xl border-b border-white/40 sticky top-0 z-20">
+    <header className="bg-white/40 backdrop-blur-xl border-b border-black/10 sticky top-0 z-20">
       <div className="h-12 px-8 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4">
             <h1 className="font-serif italic text-xl text-[#1A1A1A] min-w-[150px]">
               {format(currentDate, 'MMMM yyyy')}
             </h1>
-            <div className="flex items-center gap-1 bg-white/40 border border-white/60 p-1 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1 bg-white/40 border border-black/20 p-1 rounded-full backdrop-blur-md">
               <button
                 onClick={handlePrevMonth}
                 className="p-1.5 hover:bg-brand-orange hover:text-white rounded-full transition-all text-[#1A1A1A]"
@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
             <input
               type="text"
               placeholder="Search..."
-              className="bg-white/40 border border-white/60 focus:border-brand-orange focus:bg-white outline-none rounded-full h-10 pl-10 pr-4 text-xs w-48 transition-all font-medium backdrop-blur-md"
+              className="bg-white/40 border border-black/20 focus:border-brand-orange focus:bg-white outline-none rounded-full h-10 pl-10 pr-4 text-xs w-48 transition-all font-medium backdrop-blur-md"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -89,7 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Filters */}
           <div className="flex items-center gap-2">
             <select
-              className="bg-white/40 border border-white/60 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
+              className="bg-white/40 border border-black/20 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
               value={statusFilter || ''}
               onChange={(e) => setStatusFilter(e.target.value || null)}
             >
@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
             </select>
 
             <select
-              className="bg-white/40 border border-white/60 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
+              className="bg-white/40 border border-black/20 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
               value={typeFilter || ''}
               onChange={(e) => setTypeFilter(e.target.value || null)}
             >

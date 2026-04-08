@@ -29,7 +29,8 @@ import {
   ChevronDown,
   Save,
   X,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -100,23 +101,23 @@ export const FleetManager: React.FC = () => {
 
     const formData = new FormData(e.currentTarget);
     const updatedData: Partial<Car> = {
-      name: formData.get('name') as string,
-      plateNumber: formData.get('plateNumber') as string,
-      type: formData.get('type') as string,
-      category: formData.get('category') as 'Car' | 'Motorbike' | 'Other',
-      make: formData.get('make') as string,
-      model: formData.get('model') as string,
-      yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string),
-      insuranceExpiry: formData.get('insuranceExpiry') as string,
-      taxExpiry: formData.get('taxExpiry') as string,
-      owner: formData.get('owner') as string,
-      currentKms: parseInt(formData.get('currentKms') as string),
-      lastOilChangeKms: parseInt(formData.get('lastOilChangeKms') as string),
-      lastOilChangeDate: formData.get('lastOilChangeDate') as string,
-      fuel: formData.get('fuel') as string,
-      engine: formData.get('engine') as string,
-      transmission: formData.get('transmission') as string,
-      audio: formData.get('audio') as string,
+      name: (formData.get('name') as string) || 'Unnamed Vehicle',
+      plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
+      type: (formData.get('type') as string) || 'Unknown',
+      category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
+      make: (formData.get('make') as string) || '',
+      model: (formData.get('model') as string) || '',
+      yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
+      insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
+      taxExpiry: (formData.get('taxExpiry') as string) || '',
+      owner: (formData.get('owner') as string) || '',
+      currentKms: parseInt(formData.get('currentKms') as string) || 0,
+      lastOilChangeKms: parseInt(formData.get('lastOilChangeKms') as string) || 0,
+      lastOilChangeDate: (formData.get('lastOilChangeDate') as string) || '',
+      fuel: (formData.get('fuel') as string) || '',
+      engine: (formData.get('engine') as string) || '',
+      transmission: (formData.get('transmission') as string) || '',
+      audio: (formData.get('audio') as string) || '',
       isActive: formData.get('isActive') === 'true',
     };
 
@@ -159,16 +160,25 @@ export const FleetManager: React.FC = () => {
 
   const handleAddLog = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCar || !logDescription) return;
+    if (!selectedCar) return;
 
     try {
-      await addDoc(collection(db, 'vehicle_logs'), {
+      const logData = {
         carId: selectedCar.id,
         type: logType,
         date: new Date().toISOString(),
         user: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown',
-        description: logDescription
-      });
+        description: logDescription || 'No description provided'
+      };
+
+      await addDoc(collection(db, 'vehicle_logs'), logData);
+      
+      await logSystemActivity(
+        'Add Vehicle Log',
+        `Added log entry for vehicle ${selectedCar.name}`,
+        'Fleet',
+        { carId: selectedCar.id, logType }
+      );
       
       setLogDescription('');
       setIsAddingLog(false);
@@ -189,6 +199,15 @@ export const FleetManager: React.FC = () => {
         date: editLogData.date
       });
       
+      if (selectedCar) {
+        await logSystemActivity(
+          'Update Vehicle Log',
+          `Updated log entry for vehicle ${selectedCar.name}`,
+          'Fleet',
+          { carId: selectedCar.id, logId: editingLogId }
+        );
+      }
+      
       setEditingLogId(null);
       setEditLogData(null);
       toast.success('Log entry updated');
@@ -200,6 +219,16 @@ export const FleetManager: React.FC = () => {
   const handleDeleteLog = async (logId: string) => {
     try {
       await deleteDoc(doc(db, 'vehicle_logs', logId));
+      
+      if (selectedCar) {
+        await logSystemActivity(
+          'Delete Vehicle Log',
+          `Deleted log entry for vehicle ${selectedCar.name}`,
+          'Fleet',
+          { carId: selectedCar.id, logId }
+        );
+      }
+      
       toast.success('Log entry deleted');
     } catch (error) {
       toast.error('Failed to delete log entry');
@@ -277,23 +306,23 @@ export const FleetManager: React.FC = () => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const newVehicle: Omit<Car, 'id'> = {
-      name: formData.get('name') as string,
-      plateNumber: formData.get('plateNumber') as string,
-      type: formData.get('type') as string,
-      category: formData.get('category') as 'Car' | 'Motorbike' | 'Other',
-      make: formData.get('make') as string,
-      model: formData.get('model') as string,
+      name: (formData.get('name') as string) || 'Unnamed Vehicle',
+      plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
+      type: (formData.get('type') as string) || 'Unknown',
+      category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
+      make: (formData.get('make') as string) || '',
+      model: (formData.get('model') as string) || '',
       yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
-      insuranceExpiry: formData.get('insuranceExpiry') as string || new Date().toISOString(),
-      taxExpiry: formData.get('taxExpiry') as string || new Date().toISOString(),
-      owner: formData.get('owner') as string || 'PRAC',
+      insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
+      taxExpiry: (formData.get('taxExpiry') as string) || '',
+      owner: (formData.get('owner') as string) || 'PRAC',
       currentKms: parseInt(formData.get('currentKms') as string) || 0,
       lastOilChangeKms: parseInt(formData.get('lastOilChangeKms') as string) || 0,
-      lastOilChangeDate: formData.get('lastOilChangeDate') as string || new Date().toISOString(),
-      fuel: formData.get('fuel') as string || '',
-      engine: formData.get('engine') as string || '',
-      transmission: formData.get('transmission') as string || 'Automatic',
-      audio: formData.get('audio') as string || '',
+      lastOilChangeDate: (formData.get('lastOilChangeDate') as string) || '',
+      fuel: (formData.get('fuel') as string) || '',
+      engine: (formData.get('engine') as string) || '',
+      transmission: (formData.get('transmission') as string) || 'Automatic',
+      audio: (formData.get('audio') as string) || '',
       isActive: true,
       order: cars.length,
     };
@@ -316,6 +345,49 @@ export const FleetManager: React.FC = () => {
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportCSV = () => {
+    if (cars.length === 0) {
+      toast.error('No vehicles to export');
+      return;
+    }
+
+    const exportData = cars.map(car => ({
+      name: car.name,
+      plate_number: car.plateNumber,
+      type: car.type,
+      category: car.category,
+      make: car.make,
+      model: car.model,
+      year: car.yearOfManufacture,
+      insurance_expiry: car.insuranceExpiry,
+      tax_expiry: car.taxExpiry,
+      owner: car.owner,
+      kms: car.currentKms,
+      last_oil_change_kms: car.lastOilChangeKms,
+      last_oil_change_date: car.lastOilChangeDate,
+      fuel: car.fuel,
+      engine: car.engine,
+      transmission: car.transmission,
+      audio: car.audio,
+      is_active: car.isActive ?? true,
+      image_url: car.imageUrl || '',
+      order: car.order
+    }));
+
+    const csv = Papa.unparse(exportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `prac_fleet_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success('Fleet exported successfully');
+  };
 
   const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -354,8 +426,9 @@ export const FleetManager: React.FC = () => {
             engine: item.engine || '125cc',
             transmission: item.transmission || 'Automatic',
             audio: item.audio || 'N/A',
-            isActive: true,
-            order: cars.length
+            isActive: item.is_active === undefined ? true : (item.is_active === 'true' || item.is_active === true),
+            imageUrl: item.image_url || '',
+            order: Number(item.order) || cars.length
           };
         }).filter(item => item !== null);
 
@@ -553,6 +626,13 @@ Yamaha,New Aerox,Red,4กย 1611`;
         }
       }
 
+      await logSystemActivity(
+        'Bulk Import Bikes',
+        `Imported ${bikesToImport.length} bikes via bulk import`,
+        'Fleet',
+        { count: bikesToImport.length }
+      );
+
       return bikesToImport.length;
     }, {
       loading: 'Importing bikes...',
@@ -592,9 +672,15 @@ Yamaha,New Aerox,Red,4กย 1611`;
           />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-white/40"
+            className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
           >
             <Zap size={14} /> Import CSV
+          </button>
+          <button 
+            onClick={handleExportCSV}
+            className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
+          >
+            <Download size={14} /> Export CSV
           </button>
           <button 
             onClick={() => setIsAddingVehicle(true)}
@@ -840,11 +926,11 @@ Yamaha,New Aerox,Red,4กย 1611`;
                         <form onSubmit={handleUpdateCar} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Display Name</label>
-                            <input name="name" defaultValue={selectedCar.name} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="name" defaultValue={selectedCar.name} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Plate Number</label>
-                            <input name="plateNumber" defaultValue={selectedCar.plateNumber} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="plateNumber" defaultValue={selectedCar.plateNumber} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Category</label>
@@ -866,39 +952,39 @@ Yamaha,New Aerox,Red,4กย 1611`;
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Make</label>
-                            <input name="make" defaultValue={selectedCar.make} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="make" defaultValue={selectedCar.make} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Model</label>
-                            <input name="model" defaultValue={selectedCar.model} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="model" defaultValue={selectedCar.model} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Year of Manufacture</label>
-                            <input name="yearOfManufacture" type="number" defaultValue={selectedCar.yearOfManufacture} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="yearOfManufacture" type="number" defaultValue={selectedCar.yearOfManufacture} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Owner</label>
-                            <input name="owner" defaultValue={selectedCar.owner} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="owner" defaultValue={selectedCar.owner} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Current Kms</label>
-                            <input name="currentKms" type="number" defaultValue={selectedCar.currentKms} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="currentKms" type="number" defaultValue={selectedCar.currentKms} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Last Oil Change (Kms)</label>
-                            <input name="lastOilChangeKms" type="number" defaultValue={selectedCar.lastOilChangeKms} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="lastOilChangeKms" type="number" defaultValue={selectedCar.lastOilChangeKms} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Last Oil Change (Date)</label>
-                            <input name="lastOilChangeDate" type="date" defaultValue={selectedCar.lastOilChangeDate} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="lastOilChangeDate" type="date" defaultValue={selectedCar.lastOilChangeDate} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Insurance Expiry</label>
-                            <input name="insuranceExpiry" type="date" defaultValue={selectedCar.insuranceExpiry} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="insuranceExpiry" type="date" defaultValue={selectedCar.insuranceExpiry} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Tax Expiry</label>
-                            <input name="taxExpiry" type="date" defaultValue={selectedCar.taxExpiry} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                            <input name="taxExpiry" type="date" defaultValue={selectedCar.taxExpiry} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Fuel Type</label>
@@ -1015,13 +1101,11 @@ Yamaha,New Aerox,Red,4กย 1611`;
                                       className="w-full bg-white/40 border border-white/60 p-2 rounded-xl text-sm focus:outline-none focus:border-brand-orange/40 text-[#1A1A1A]"
                                       value={editLogData.date.slice(0, 16)}
                                       onChange={(e) => setEditLogData({ ...editLogData, date: new Date(e.target.value).toISOString() })}
-                                      required
                                     />
                                     <textarea 
                                       className="w-full bg-white/40 border border-white/60 p-4 rounded-xl text-sm focus:outline-none focus:border-brand-orange/40 min-h-[80px] text-[#1A1A1A]"
                                       value={editLogData.description}
                                       onChange={(e) => setEditLogData({ ...editLogData, description: e.target.value })}
-                                      required
                                     />
                                     <div className="flex gap-3">
                                       <button type="submit" className="flex-1 bg-brand-orange text-white py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] shadow-md shadow-brand-orange/20">Update</button>
@@ -1192,11 +1276,11 @@ Yamaha,New Aerox,Red,4กย 1611`;
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Display Name</label>
-                    <input name="name" placeholder="e.g. Toyota Vios" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="name" placeholder="e.g. Toyota Vios" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Plate Number</label>
-                    <input name="plateNumber" placeholder="e.g. 1กข 1234" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="plateNumber" placeholder="e.g. 1กข 1234" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Category</label>
@@ -1208,31 +1292,31 @@ Yamaha,New Aerox,Red,4กย 1611`;
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Type</label>
-                    <input name="type" placeholder="e.g. Economy, SUV, Scooter" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="type" placeholder="e.g. Economy, SUV, Scooter" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Make</label>
-                    <input name="make" placeholder="e.g. Toyota" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="make" placeholder="e.g. Toyota" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Model</label>
-                    <input name="model" placeholder="e.g. Vios" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="model" placeholder="e.g. Vios" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Year</label>
-                    <input name="yearOfManufacture" type="number" defaultValue={new Date().getFullYear()} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="yearOfManufacture" type="number" defaultValue={new Date().getFullYear()} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Owner</label>
-                    <input name="owner" defaultValue="PRAC" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="owner" defaultValue="PRAC" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Insurance Expiry</label>
-                    <input name="insuranceExpiry" type="date" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="insuranceExpiry" type="date" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Tax Expiry</label>
-                    <input name="taxExpiry" type="date" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" required />
+                    <input name="taxExpiry" type="date" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                 </div>
                 <div className="mt-8">

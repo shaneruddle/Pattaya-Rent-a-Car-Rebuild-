@@ -79,28 +79,229 @@ export const translations = {
       subtitle: "Everything you need to know about renting a car in Pattaya.",
       items: [
         {
-          q: "What documents do I need to rent a car?",
-          a: "You will need a valid driving license (Thai or International Driving Permit), your original passport, and a security deposit (Credit Card or Cash)."
+          q: "What is included in the rental price for a vehicle?",
+          a: "The rental rate includes first-class rental insurance, unlimited kilometers, 24-hour breakdown cover, the ability to add additional drivers, and all applicable taxes.",
+          category: "Payments"
         },
         {
-          q: "Is insurance included in the rental price?",
-          a: "Yes, all our rentals include comprehensive First Class Insurance. This covers you, your passengers, and third parties. 24/7 Roadside Assistance is also included."
+          q: "What is the cancellation policy for a booking?",
+          a: "You can cancel your booking at any time free of charge.",
+          category: "Booking"
         },
         {
-          q: "Do you deliver the car to my hotel?",
-          a: "Yes, we offer FREE delivery and collection anywhere in the Pattaya and Jomtien area. We can also deliver to other areas for a small fee."
+          q: "Do i have to pay for the car rental immediately when booking?",
+          a: "No, you can book now and pay later.",
+          category: "Payments"
         },
         {
-          q: "How much is the security deposit?",
-          a: "The security deposit typically ranges from 5,000 to 10,000 THB depending on the vehicle type. This can be paid in cash (THB, USD, EUR, etc.) or via credit card pre-authorization."
+          q: "What does it mean if the vehicle listed is 'toyota vios (or similar)'?",
+          a: "The 'or similar' designation means that while we prioritize the toyota vios, we may provide a vehicle of a similar class and standard. you can find more information about this on our blog at https://pattayarentacar.com/blog/no-guarantees.",
+          category: "Booking"
         },
         {
-          q: "Can I drive the car outside of Pattaya?",
-          a: "Yes, you can drive our vehicles anywhere within Thailand. However, taking the vehicle outside of Thailand is strictly prohibited."
+          q: "Do you provide car delivery services in pattaya?",
+          a: "Yes, we provide delivery services to specific addresses in pattaya, such as view talay 2.",
+          category: "Delivery"
         },
         {
-          q: "What should I do in case of an accident?",
-          a: "In the event of an accident, please contact our 24/7 support line immediately. Our team will guide you through the process and coordinate with the insurance company."
+          q: "Can i request a car delivery to a specific location in pattaya?",
+          a: "Yes, we can deliver your rental vehicle to specific locations provided by the customer at the time of booking.",
+          category: "Delivery"
+        },
+        {
+          q: "What documentation and payment are required when collecting a rental vehicle?",
+          a: "When collecting your vehicle, you must provide the full rental amount (cash or card; card payments incur a 3.5% fee), a 5000 thb cash deposit, your driving license, and your passport.",
+          category: "General"
+        },
+        {
+          q: "Is vehicle delivery available in pattaya?",
+          a: "Yes, we offer free delivery within pattaya. please request this service and provide your specific location when booking.",
+          category: "Delivery"
+        },
+        {
+          q: "What payment methods do you accept?",
+          a: "We accept cash or card. please note that card payments incur a 3.5% bank charge.",
+          category: "Payments"
+        },
+        {
+          q: "Does pattaya rent a car offer free delivery?",
+          a: "Yes, free delivery is available within pattaya. if you wish to use this service, please request it and provide your location.",
+          category: "Delivery"
+        },
+        {
+          q: "What documents and payments are required when collecting a rental car?",
+          a: "You need to provide the full rental amount (cash or card; card payments incur a 3.5% fee), a 5000 baht cash deposit, your driving licence, and your passport.",
+          category: "General"
+        },
+        {
+          q: "Do i need to pay a deposit for my car rental?",
+          a: "Yes, a 5,000 thb cash deposit is required upon vehicle collection.",
+          category: "Payments"
+        },
+        {
+          q: "Does pattaya rent a car provide breakdown assistance?",
+          a: "Yes, we include 24-hour breakdown cover with your rental for your peace of mind.",
+          category: "Insurance"
+        },
+        {
+          q: "What is the rental price for a toyota hilux from april 28, 2026, to may 19, 2026?",
+          a: "The total price for the toyota hilux for those dates is 23,000 baht, which includes taxi costs.",
+          category: "Payments"
+        },
+        {
+          q: "What happens if my requested vehicle is not available?",
+          a: "If your specific requested vehicle is unavailable, we may offer an alternative model at the same price, such as offering a toyota fortuner when a ford everest is requested.",
+          category: "Booking"
+        },
+        {
+          q: "What should i be aware of regarding pedestrian crossings when driving in pattaya?",
+          a: "Pedestrian crossings in pattaya can be unpredictable. cars do not always stop, pedestrians may assume they will, and motorbikes may continue driving even if you have stopped. you should always slow down when approaching crossings, check both sides of the road, and be prepared for someone to step out at any moment.",
+          category: "Driving"
+        },
+        {
+          q: "Does pattaya rent a car provide airport transfer services?",
+          a: "Yes, pattaya rent a car can arrange taxi services for airport pickups and drop-offs.",
+          category: "Delivery"
+        },
+        {
+          q: "Can i rent a car for a specific time duration?",
+          a: "Yes, rental periods are based on your selected pickup and drop-off dates and times. for example, bookings can be arranged from early morning hours.",
+          category: "Booking"
+        },
+        {
+          q: "What is the minimum age to rent a car?",
+          a: "The minimum age to rent a car is 21 years old. Drivers must have held a valid driving license for at least 1 year.",
+          category: "Booking"
+        },
+        {
+          q: "Do you offer child seats?",
+          a: "Yes, we have child seats available for a small daily fee. Please request them at the time of booking to ensure availability.",
+          category: "General"
+        },
+        {
+          q: "What is your fuel policy?",
+          a: "Our fuel policy is 'Full to Full'. We provide the car with a full tank, and you should return it with a full tank. If not, a refueling charge will apply.",
+          category: "Driving"
+        },
+        {
+          q: "Can i take the rental car to koh chang?",
+          a: "Yes, you are permitted to take the rental vehicle to koh chang.",
+          category: "Driving"
+        },
+        {
+          q: "Is it normal to see water leaking from underneath the rental car?",
+          a: "Yes, water dripping from under the vehicle is typically just condensation draining from the air conditioner and is not a cause for concern.",
+          category: "Driving"
+        },
+        {
+          q: "What is the earliest time i can pick up my rental car?",
+          a: "You can collect your car from the office anytime after 9:00 am on your scheduled pickup date.",
+          category: "Booking"
+        },
+        {
+          q: "Do you offer vehicle delivery to ocean marina?",
+          a: "Yes, we can deliver rental cars to ocean marina, with delivery times available as early as 9:30 am.",
+          category: "Delivery"
+        },
+        {
+          q: "What time does the pattaya rent a car office open?",
+          a: "The office opens at 9:00 am.",
+          category: "General"
+        },
+        {
+          q: "Can i have the rental car delivered to my hotel or resort?",
+          a: "Yes, we can deliver the vehicle to local resorts and hotels, such as the centara life maris resort jomtien.",
+          category: "Delivery"
+        },
+        {
+          q: "Can i use my foreign driver's license to rent a car in thailand?",
+          a: "Yes, you can use a foreign license to drive in thailand as a tourist, but we recommend reviewing the specific rental requirements.",
+          category: "General"
+        },
+        {
+          q: "Do you provide child seats for infants and young children?",
+          a: "Yes, we provide baby seats suitable for children from 1 month old up to 8 years old.",
+          category: "General"
+        },
+        {
+          q: "Do you offer e-bikes or bicycles for rent?",
+          a: "Pattaya rent a car no longer provides e-bikes or bicycles for rent.",
+          category: "General"
+        },
+        {
+          q: "Do you offer one-day car rentals?",
+          a: "While the business does rent cars, availability for short-term or one-day rentals depends on current stock; please contact us to check specific availability for your dates.",
+          category: "Booking"
+        },
+        {
+          q: "Do you provide delivery and collection services at suvarnabhumi airport?",
+          a: "Yes, we provide delivery and collection services at suvarnabhumi airport for a fee of 4,000 thb.",
+          category: "Delivery"
+        },
+        {
+          q: "Is it possible to extend my current car rental?",
+          a: "Yes, you can extend your rental period subject to vehicle availability. please contact the office to confirm the extension rate.",
+          category: "Booking"
+        },
+        {
+          q: "Do you rent scooters and what are the rates?",
+          a: "Yes, we have availability for scooters such as the yamaha gt 125cc, which rents for approximately 3,500 thb per month.",
+          category: "General"
+        },
+        {
+          q: "Is an international driving permit required to drive in thailand?",
+          a: "Yes, for international visitors, an international driving permit (idp) is required to legally drive scooters or cars in thailand.",
+          category: "General"
+        },
+        {
+          q: "Do you have cars with manual transmission?",
+          a: "No, our fleet consists of vehicles with automatic transmission.",
+          category: "General"
+        },
+        {
+          q: "Can i rent a car for a few hours?",
+          a: "No, our rental terms require a minimum duration of 24 hours.",
+          category: "Booking"
+        },
+        {
+          q: "Can i rent a car in pattaya and drive to other regions of thailand, such as buri ram?",
+          a: "Yes, you can drive the rental car anywhere within thailand, but the vehicle must be returned to the pattaya location.",
+          category: "Driving"
+        },
+        {
+          q: "Can someone else pick up the car for me if i am paying by credit card?",
+          a: "A second person can pick up the car using their own identification/documents. however, if you wish to pay by credit card, the cardholder must be present in person to complete the transaction.",
+          category: "General"
+        },
+        {
+          q: "Do you offer after-hours vehicle pickups?",
+          a: "No, we do not offer any services outside of our business hours. our office is open from 9:00 am to 5:00 pm only.",
+          category: "Booking"
+        },
+        {
+          q: "Can i extend my rental during the christmas and new year period?",
+          a: "Extensions may not be possible during peak seasons like christmas and new year if the vehicle schedule is already fully booked.",
+          category: "Booking"
+        },
+        {
+          q: "Do you offer delivery for motorbikes?",
+          a: "No, we do not deliver motorbikes. you must come to our office to collect your rental.",
+          category: "Delivery"
+        },
+        {
+          q: "Do you offer airport delivery or collection at bangkok international airport?",
+          a: "No, we do not offer airport delivery or collection services. all vehicles must be picked up and returned at our office in pattaya.",
+          category: "Delivery"
+        },
+        {
+          q: "Is an upper age limit for renting a car?",
+          a: "Drivers aged 76 and older are permitted to rent, provided they have a valid driving license and are in good health.",
+          category: "Booking"
+        },
+        {
+          q: "Can i get extra insurance to avoid a deposit?",
+          a: "Yes, you can purchase scdw (super collision damage waiver) for an extra charge, which allows for a rental with no deposit.",
+          category: "Insurance"
         }
       ]
     },

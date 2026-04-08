@@ -32,6 +32,7 @@ interface FinanceProps {
     type: 'Income' | 'Expense';
     amount: number;
     carId?: string;
+    bookingId?: string;
     description?: string;
     category?: string;
   } | null;
@@ -58,6 +59,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     category: '',
     carId: '',
+    bookingId: '',
     accountId: '',
     toAccountId: '',
     description: ''
@@ -97,6 +99,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
         ...prev,
         amount: preFill.amount,
         carId: preFill.carId || '',
+        bookingId: preFill.bookingId || '',
         description: preFill.description || '',
         category: preFill.category || '',
         accountId: accounts[0]?.id || ''
@@ -282,9 +285,23 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
             date: formData.date,
             category: formData.category,
             carId: formData.carId || null,
+            bookingId: formData.bookingId || null,
             accountId: formData.accountId,
             description: formData.description
           });
+
+          // If this is linked to a booking, update the booking status to Paid
+          if (formData.bookingId) {
+            try {
+              await updateDoc(doc(db, 'bookings', formData.bookingId), {
+                status: 'Paid'
+              });
+              toast.success("Booking status updated to Paid");
+            } catch (err) {
+              console.error("Error updating booking status:", err);
+              toast.error("Transaction logged, but failed to update booking status");
+            }
+          }
 
           // Update Balance
           const newBalance = modalType === 'Income' 
@@ -323,7 +340,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
       carId: tx.carId || '',
       accountId: tx.accountId,
       toAccountId: tx.toAccountId || '',
-      description: tx.description || ''
+      description: tx.description || '',
+      bookingId: tx.bookingId || ''
     });
     setShowModal(true);
   };
@@ -394,6 +412,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
       date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       category: '',
       carId: '',
+      bookingId: '',
       accountId: '',
       toAccountId: '',
       description: ''

@@ -19,7 +19,6 @@ process.env.GCLOUD_PROJECT = projectId;
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
-import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as XLSX from "xlsx";
@@ -31,6 +30,10 @@ import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as Papa from "papaparse";
+import fetch from "node-fetch";
+import https from "https";
+
+const httpsAgent = new https.Agent({ keepAlive: true });
 
 const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
@@ -251,6 +254,11 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Start listening immediately to satisfy platform health checks
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+
   app.use(express.json({ limit: '50mb' }));
 
   // Middleware to check if Firestore is ready
@@ -266,7 +274,7 @@ async function startServer() {
     next();
   });
 
-  // API routes go here
+  // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
@@ -332,6 +340,66 @@ async function startServer() {
   app.post("/api/auth/google/logout", async (req, res) => {
     await deleteTokens();
     res.json({ success: true });
+  });
+
+  // Proxy Download Route to bypass CORS
+  app.get("/api/storage/proxy-download", async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    try {
+      console.log(`[Proxy] Downloading from: ${url.substring(0, 50)}...`);
+      const response = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0'
+        }
+      });
+
+      res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+      res.set('Access-Control-Allow-Origin', '*'); // Ensure client can read it
+      res.send(response.data);
+    } catch (error: any) {
+      console.error("[Proxy] Download Error:", error.message);
+      res.status(500).json({ error: "Failed to proxy download", details: error.message });
+    }
+  });
+
+  // Storage Rename API Route
+  app.post("/api/storage/rename", async (req, res) => {
+    const { oldName, newName } = req.body;
+    
+    if (!oldName || !newName) {
+      return res.status(400).json({ error: "Missing oldName or newName" });
+    }
+
+    try {
+      console.log(`[Storage] Renaming "${oldName}" to "${newName}"...`);
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(oldName);
+      
+      // Check if file exists
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ error: `File "${oldName}" not found` });
+      }
+
+      // Move (Rename) the file
+      await file.move(newName);
+      
+      console.log(`[Storage] Successfully renamed "${oldName}" to "${newName}"`);
+      res.json({ success: true, oldName, newName });
+    } catch (error: any) {
+      console.error("[Storage] Rename Error:", error);
+      res.status(500).json({ 
+        error: "Failed to rename file in storage", 
+        details: error.message,
+        code: error.code 
+      });
+    }
   });
 
   // Search Console API Route
@@ -555,26 +623,19 @@ async function startServer() {
       const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
       console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
-
       try {
         const response = await fetch(url, {
-          signal: controller.signal,
+          method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           },
-          redirect: 'follow',
+          agent: httpsAgent,
+          // @ts-ignore - node-fetch specific
+          timeout: 300000 // 5 minutes for large spreadsheets
         });
-        
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
-          const text = await response.text();
-          if (text.includes('Service Login') || text.includes('Sign in')) {
-            throw new Error('The spreadsheet is not public. Please ensure "Anyone with the link" can view it.');
-          }
-          throw new Error(`HTTP error! status: ${response.status} - ${text.substring(0, 500)}`);
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const buffer = await response.arrayBuffer();
@@ -641,10 +702,15 @@ async function startServer() {
 
         return allData;
       } catch (error: any) {
-        clearTimeout(timeoutId);
-        const isTimeout = error.name === 'AbortError' || error.name === 'FetchError' && (error.type === 'request-timeout' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout') || error.message?.toLowerCase().includes('aborted'));
-        const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' || error.message?.toLowerCase().includes('stream has been aborted') || error.message?.toLowerCase().includes('premature close');
-        const isRateLimit = error.status === 429 || error.status === 503;
+        console.error(`Pricing fetch failed: [${error.code || 'NO_CODE'}] ${error.message}`, error);
+        const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout');
+        const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' || 
+                              error.code === 'ERR_STREAM_PREMATURE_CLOSE' || 
+                              error.message?.toLowerCase().includes('premature close') || 
+                              error.message?.toLowerCase().includes('aborted') ||
+                              error.message?.toLowerCase().includes('stream has been aborted');
+        const status = error.response?.status;
+        const isRateLimit = status === 429 || status === 503;
 
         if (currentRetries > 0 && (isTimeout || isNetworkError || isRateLimit)) {
           const delay = Math.pow(2, 6 - currentRetries) * 1000;
@@ -755,10 +821,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 startServer().catch(err => {

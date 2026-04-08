@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { db, handleFirestoreError, OperationType, logSystemActivity, storage } from '../firebase';
+import { ref, getDownloadURL } from 'firebase/storage';
 import { Car, PricingRule, WebsiteCar } from '../types';
 import { format, addDays, differenceInDays, differenceInHours, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { 
@@ -32,9 +33,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { StorageImage } from './StorageImage';
 import { WhyChooseUs, GoogleReviews, EnquiryForm, Footer } from './HomeSections';
 import { FAQ } from './FAQ';
 import { AboutUs, ContactUs, LongTermHire } from './Pages';
+import { BlogList } from './BlogList';
+import { BlogPostView } from './BlogPostView';
 import { useLanguage } from '../LanguageContext';
 import { usePricing } from '../contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
@@ -60,11 +64,12 @@ interface CalendarProps {
   setSelectedRange: (range: { from: Date; to: Date }) => void;
   setShowCalendar: (show: boolean) => void;
   calendarRef: React.RefObject<HTMLDivElement | null>;
-  setView: (view: 'landing' | 'results' | 'about' | 'contact' | 'long-term') => void;
+  setView: (view: 'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'blog' | 'blog-post') => void;
   pickUpTime: string;
   setPickUpTime: (time: string) => void;
   dropOffTime: string;
   setDropOffTime: (time: string) => void;
+  isBikeMode?: boolean;
 }
 
 const Calendar: React.FC<CalendarProps> = ({ 
@@ -76,7 +81,8 @@ const Calendar: React.FC<CalendarProps> = ({
   pickUpTime,
   setPickUpTime,
   dropOffTime,
-  setDropOffTime
+  setDropOffTime,
+  isBikeMode = false
 }) => {
   const { t } = useLanguage();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -87,6 +93,16 @@ const Calendar: React.FC<CalendarProps> = ({
   });
   const nextMonth = addMonths(currentMonth, 1);
 
+  const brandColor = isBikeMode ? '#0084ff' : '#f27d26';
+  const selectedColor = isBikeMode ? '#f27d26' : '#0084ff'; // Swap for contrast or keep blue? 
+  // Actually, if the background is blue, the selected dates should probably be orange or white.
+  // But the user wants things to be blue.
+  // If the background is blue, maybe selected dates should be white with a border?
+  // Let's stick to: background = brand color, selected = white or a contrasting shade.
+  
+  // Wait, the user said "These all be the same blue color as the Rent a Bike logo".
+  // The logo is blue. So the primary brand color in bike mode is blue.
+  
   const calculateDays = () => {
     if (!tempRange.from || !tempRange.to) return 0;
     const from = new Date(tempRange.from);
@@ -161,18 +177,27 @@ const Calendar: React.FC<CalendarProps> = ({
                 onClick={() => handleDayClick(day)}
                 className={cn(
                   "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative",
-                  isStart && !tempRange.to ? "bg-[#0084ff] text-white rounded-full z-10 shadow-lg" :
-                  isStart ? "bg-[#0084ff] text-white rounded-l-full z-10" : 
-                  isEnd ? "bg-[#0084ff] text-white rounded-r-full z-10" : 
-                  inRange ? "bg-[#0084ff]/20 text-white" : 
+                  isStart && !tempRange.to ? "text-white rounded-full z-10 shadow-lg" :
+                  isStart ? "text-white rounded-l-full z-10" : 
+                  isEnd ? "text-white rounded-r-full z-10" : 
+                  inRange ? "text-white" : 
                   isPast ? "text-white/10 cursor-not-allowed" : "text-white hover:bg-white/10 rounded-full"
                 )}
+                style={{
+                  backgroundColor: isStart || isEnd ? (isBikeMode ? '#0084ff' : '#FF6321') : inRange ? (isBikeMode ? 'rgba(0, 132, 255, 0.2)' : 'rgba(255, 99, 33, 0.2)') : undefined
+                }}
               >
                 {format(day, 'd')}
                 {isStart && tempRange.to && (
-                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#0084ff] text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50">
+                  <div 
+                    className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50"
+                    style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+                  >
                     {calculateDays()} days
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0084ff] rotate-45" />
+                    <div 
+                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45" 
+                      style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+                    />
                   </div>
                 )}
                 {isToday && !(isStart || isEnd) && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
@@ -198,7 +223,11 @@ const Calendar: React.FC<CalendarProps> = ({
   };
 
   return (
-    <div ref={calendarRef} className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-[#f27d26] rounded-[40px] overflow-hidden z-[100] w-[700px] max-w-[95vw] shadow-2xl border-4 border-[#f27d26]">
+    <div 
+      ref={calendarRef} 
+      className="absolute top-full left-1/2 -translate-x-1/2 mt-4 rounded-[40px] overflow-hidden z-[100] w-[700px] max-w-[95vw] shadow-2xl border-4"
+      style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321', borderColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+    >
       <div className="flex flex-col md:flex-row relative border-b border-white/10">
         <button 
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -240,7 +269,7 @@ const Calendar: React.FC<CalendarProps> = ({
               className="w-full bg-transparent text-white text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {timeOptions.map(time => (
-                <option key={time} value={time} className="bg-[#f27d26] text-white text-base">{time}</option>
+                <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
               ))}
             </select>
             <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none" />
@@ -268,7 +297,7 @@ const Calendar: React.FC<CalendarProps> = ({
               className="w-full bg-transparent text-white text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {timeOptions.map(time => (
-                <option key={time} value={time} className="bg-[#f27d26] text-white text-base">{time}</option>
+                <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
               ))}
             </select>
             <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none" />
@@ -305,12 +334,13 @@ const Calendar: React.FC<CalendarProps> = ({
 export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) => {
   console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
-  const { sheetPricing, loading: pricingLoading } = usePricing();
+  const { sheetPricing, dbPricing, settings, loading: pricingLoading } = usePricing();
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike'>('landing');
+  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post'>('landing');
+  const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
   const [isBikeMode, setIsBikeMode] = useState(false);
 
   useEffect(() => {
@@ -339,6 +369,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         return {
           title: "Long Term Car Hire | Pattaya Rent a Car",
           description: "Looking for a car for a month or longer? Our long-term hire solutions offer the best value in Pattaya with flexible terms."
+        };
+      case 'blog':
+        return {
+          title: "Blog | Pattaya Rent a Car",
+          description: "Explore our blog for travel tips, local guides, and the latest news about car rentals in Pattaya."
+        };
+      case 'blog-post':
+        return {
+          title: "Blog Post | Pattaya Rent a Car",
+          description: "Read our latest blog post on Pattaya Rent a Car."
         };
       case 'results':
         return {
@@ -477,54 +517,50 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   });
 
   const calculateTotal = (car: WebsiteCar) => {
-    // Try Google Sheet pricing first
-    if (sheetPricing && selectedRange.from) {
-      const dateKey = format(selectedRange.from, "yyyy-MM-dd");
-      
-      // Find the best matching tab for the car name
-      const carNameLower = car.name.toLowerCase();
-      let searchName = carNameLower;
-      
-      // Use priceGridVehicle if available, otherwise fallback to name-based matching
-      if (car.priceGridVehicle) {
-        searchName = car.priceGridVehicle.toLowerCase();
-      } else {
-        if (carNameLower.includes('vios')) searchName = 'vios';
-        else if (carNameLower.includes('ativ')) searchName = 'ativ';
-        else if (carNameLower.includes('city')) searchName = 'city';
-        else if (carNameLower.includes('fortuner')) {
-          if (carNameLower.includes('new')) searchName = 'new fortuner';
-          else if (carNameLower.includes('old')) searchName = 'old fortuner';
-          else searchName = 'new fortuner';
-        }
-        else if (carNameLower.includes('yaris')) searchName = 'yaris';
-        else if (carNameLower.includes('veloz')) searchName = 'veloz';
-        else if (carNameLower.includes('everest')) searchName = 'everest';
-        else if (carNameLower.includes('benz')) searchName = 'benz';
-        else if (carNameLower.includes('revo')) searchName = 'revo';
-        else if (carNameLower.includes('extender')) searchName = 'extender';
-      }
+    const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
+    const carNameLower = car.name.toLowerCase();
+    let searchName = car.priceGridVehicle?.toLowerCase() || carNameLower;
 
-      const tabName = Object.keys(sheetPricing).find(tab => 
-        searchName === tab || tab.includes(searchName) || searchName.includes(tab)
+    if (!car.priceGridVehicle) {
+      if (carNameLower.includes('vios')) searchName = 'vios';
+      else if (carNameLower.includes('ativ')) searchName = 'ativ';
+      else if (carNameLower.includes('city')) searchName = 'city';
+      else if (carNameLower.includes('fortuner')) {
+        if (carNameLower.includes('new')) searchName = 'new fortuner';
+        else if (carNameLower.includes('old')) searchName = 'old fortuner';
+        else searchName = 'new fortuner';
+      }
+      else if (carNameLower.includes('yaris')) searchName = 'yaris';
+      else if (carNameLower.includes('veloz')) searchName = 'veloz';
+      else if (carNameLower.includes('everest')) searchName = 'everest';
+      else if (carNameLower.includes('benz')) searchName = 'benz';
+      else if (carNameLower.includes('revo')) searchName = 'revo';
+      else if (carNameLower.includes('extender')) searchName = 'extender';
+    }
+
+    const getPriceFromData = (pricingData: any) => {
+      if (!pricingData || !dateKey) return null;
+      
+      const tabName = Object.keys(pricingData).find(tab => 
+        searchName === tab.toLowerCase() || tab.toLowerCase().includes(searchName) || searchName.includes(tab.toLowerCase())
       );
 
       if (tabName) {
-        const pricing = sheetPricing[tabName];
-        const rates = pricing.data[dateKey];
+        const pricing = pricingData[tabName];
+        const rates = pricing.data ? pricing.data[dateKey] : (pricing.rates ? pricing.rates[dateKey] : null);
+        
         if (rates) {
           const duration = totalDays;
           let total = 0;
           let lastRate = 0;
           
-          pricing.headers.forEach((h, index) => {
+          pricing.headers.forEach((h: number, index: number) => {
             if (h <= duration) {
               total += rates[index];
               lastRate = rates[index];
             }
           });
 
-          // If duration exceeds headers, add the last rate for remaining 0.5 intervals
           const maxHeader = pricing.headers[pricing.headers.length - 1];
           if (duration > maxHeader) {
             const extraHalfDays = (duration - maxHeader) / 0.5;
@@ -534,22 +570,56 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           return total;
         }
       }
+      return null;
+    };
+
+    // 1. Try Primary Source (Sheet or DB based on settings)
+    const useSheet = settings?.useSheetDirectly ?? false;
+    let total = null;
+
+    if (useSheet) {
+      total = getPriceFromData(sheetPricing);
+    } else {
+      total = getPriceFromData(dbPricing);
     }
 
-    // Fallback to Firestore pricing rules or WebsiteCar base price
-    const searchName = car.priceGridVehicle || car.name;
-    const rule = pricingRules.find(r => r.carType === searchName);
+    // 2. Fallback to Secondary Source if primary failed
+    if (total === null) {
+      if (useSheet) {
+        total = getPriceFromData(dbPricing);
+      } else {
+        total = getPriceFromData(sheetPricing);
+      }
+    }
+
+    if (total !== null) return total;
+
+    // 3. Fallback to Firestore pricing rules (Standard Tiers)
+    const rule = pricingRules.find(r => r.carType === (car.priceGridVehicle || car.name));
     const baseRate = car.pricePerDay || 1200;
     
     if (!rule) return baseRate * totalDays;
 
     const days = totalDays;
     let dailyRate = baseRate;
-    if (days >= 30) dailyRate = rule.rates['30+'] || baseRate;
-    else if (days >= 15) dailyRate = rule.rates['15-29'] || baseRate;
-    else if (days >= 8) dailyRate = rule.rates['8-14'] || baseRate;
-    else if (days >= 4) dailyRate = rule.rates['4-7'] || baseRate;
-    else dailyRate = rule.rates['1-3'] || baseRate;
+    
+    // Find the highest tier that is <= days
+    const tiers = Object.keys(rule.rates)
+      .map(Number)
+      .filter(n => !isNaN(n))
+      .sort((a, b) => b - a);
+      
+    const matchingTier = tiers.find(t => days >= t);
+    if (matchingTier !== undefined) {
+      dailyRate = rule.rates[matchingTier.toString()] || baseRate;
+    } else {
+      // Fallback to old ranges if they exist (for backward compatibility)
+      if (days >= 30) dailyRate = rule.rates['30+'] || baseRate;
+      else if (days >= 15) dailyRate = rule.rates['15-29'] || baseRate;
+      else if (days >= 8) dailyRate = rule.rates['8-14'] || baseRate;
+      else if (days >= 4) dailyRate = rule.rates['4-7'] || baseRate;
+      else dailyRate = rule.rates['1-3'] || baseRate;
+    }
 
     return dailyRate * totalDays;
   };
@@ -595,6 +665,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       // Save to mail collection for Trigger Email extension
       await addDoc(collection(db, 'mail'), {
         to: 'info@pattayarentacar.com',
+        replyTo: formData.email,
         message: {
           subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
           html: `
@@ -632,6 +703,56 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     }
   };
 
+  const handlePageChange = (newView: string) => {
+    if (newView === 'blog') {
+      window.history.pushState({}, '', '/blog');
+    } else if (newView === 'landing') {
+      window.history.pushState({}, '', '/');
+    } else if (newView === 'rent-a-bike') {
+      window.history.pushState({}, '', '/rent-a-bike');
+    } else {
+      window.history.pushState({}, '', `/${newView}`);
+    }
+    setView(newView as any);
+    window.scrollTo(0, 0);
+  };
+
+  const handleBlogPostClick = (slug: string) => {
+    window.history.pushState({}, '', `/blog/${slug}`);
+    setSelectedBlogSlug(slug);
+    setView('blog-post');
+    window.scrollTo(0, 0);
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/blog') {
+        setView('blog');
+      } else if (path.startsWith('/blog/')) {
+        const slug = path.split('/')[2];
+        setSelectedBlogSlug(slug);
+        setView('blog-post');
+      } else if (path === '/rent-a-bike') {
+        setView('rent-a-bike');
+        setIsBikeMode(true);
+      } else if (path === '/about') {
+        setView('about');
+      } else if (path === '/contact') {
+        setView('contact');
+      } else if (path === '/long-term') {
+        setView('long-term');
+      } else {
+        setView('landing');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    handlePopState(); // Initial check
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-warm-bg flex items-center justify-center p-4">
@@ -652,7 +773,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               setIsSuccess(false);
               setView('landing');
             }}
-            className="w-full bg-brand-orange text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+            className={cn(
+              "w-full text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+              isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+            )}
           >
             {t('bookingModal.backToHome')}
           </button>
@@ -673,16 +797,29 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       <header className="sticky top-0 z-[60] bg-warm-bg/80 backdrop-blur-lg border-b border-black/5">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-12">
-            <img 
-              src={isBikeMode ? "/api/artifacts/artifact_1712270072000.png" : "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"} 
-              alt={isBikeMode ? "Pattaya Rent A Bike" : "Pattaya Rent A Car"} 
-              className="h-10 cursor-pointer"
-              onClick={() => {
-                setView('landing');
-                setIsBikeMode(false);
-              }}
-              referrerPolicy="no-referrer"
-            />
+            {isBikeMode ? (
+              <StorageImage 
+                path="PRAB-Logo-1.png"
+                alt="Pattaya Rent A Bike"
+                className="h-10 cursor-pointer"
+                onClick={() => {
+                  setView('landing');
+                  setIsBikeMode(false);
+                }}
+                fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
+              />
+            ) : (
+              <img 
+                src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
+                alt="Pattaya Rent A Car"
+                className="h-10 cursor-pointer"
+                onClick={() => {
+                  setView('landing');
+                  setIsBikeMode(false);
+                }}
+                referrerPolicy="no-referrer"
+              />
+            )}
             <nav className="hidden lg:flex items-center gap-8">
               <button 
                 onClick={() => {
@@ -691,7 +828,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 }}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  view === 'landing' && !isBikeMode ? "text-brand-orange" : "text-black/60 hover:text-black"
+                  view === 'landing' && !isBikeMode ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
                 )}
               >
                 {t('nav.rentACar')}
@@ -703,7 +840,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 }}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  isBikeMode ? "text-brand-orange" : "text-black/60 hover:text-black"
+                  isBikeMode ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
                 )}
               >
                 {t('nav.rentABike')}
@@ -712,25 +849,34 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 onClick={() => setView('long-term')}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  view === 'long-term' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                  view === 'long-term' ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
                 )}
               >
                 {t('nav.longTerm')}
               </button>
               <button 
-                onClick={() => setView('about')}
+                onClick={() => handlePageChange('about')}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  view === 'about' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                  view === 'about' ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
                 )}
               >
                 {t('nav.aboutUs')}
               </button>
               <button 
-                onClick={() => setView('contact')}
+                onClick={() => handlePageChange('blog')}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  view === 'contact' ? "text-brand-orange" : "text-black/60 hover:text-black"
+                  view === 'blog' || view === 'blog-post' ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
+                )}
+              >
+                Blog
+              </button>
+              <button 
+                onClick={() => handlePageChange('contact')}
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  view === 'contact' ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
                 )}
               >
                 {t('nav.contact')}
@@ -763,7 +909,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     onClick={() => setLanguage(lang.code as Language)}
                     className={cn(
                       "w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-colors",
-                      language === lang.code ? "bg-brand-orange text-white" : "text-black/60 hover:bg-black/5"
+                      language === lang.code 
+                        ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") 
+                        : "text-black/60 hover:bg-black/5"
                     )}
                   >
                     {lang.label}
@@ -798,62 +946,74 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               <div className="flex flex-col p-4 gap-4">
                 <button 
                   onClick={() => {
-                    setView('landing');
+                    handlePageChange('landing');
                     setIsBikeMode(false);
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    view === 'landing' && !isBikeMode ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                    view === 'landing' && !isBikeMode ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
                   )}
                 >
                   {t('nav.rentACar')}
                 </button>
                 <button 
                   onClick={() => {
-                    setView('rent-a-bike');
+                    handlePageChange('rent-a-bike');
                     setIsBikeMode(true);
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    isBikeMode ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                    isBikeMode ? "bg-brand-blue text-white" : "bg-black/5 text-black/60"
                   )}
                 >
                   {t('nav.rentABike')}
                 </button>
                 <button 
                   onClick={() => {
-                    setView('long-term');
+                    handlePageChange('long-term');
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    view === 'long-term' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                    view === 'long-term' ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
                   )}
                 >
                   {t('nav.longTerm')}
                 </button>
                 <button 
                   onClick={() => {
-                    setView('about');
+                    handlePageChange('about');
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    view === 'about' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                    view === 'about' ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
                   )}
                 >
                   {t('nav.aboutUs')}
                 </button>
                 <button 
                   onClick={() => {
-                    setView('contact');
+                    handlePageChange('blog');
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    view === 'contact' ? "bg-brand-orange text-white" : "bg-black/5 text-black/60"
+                    view === 'blog' || view === 'blog-post' ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
+                  )}
+                >
+                  Blog
+                </button>
+                <button 
+                  onClick={() => {
+                    handlePageChange('contact');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    view === 'contact' ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
                   )}
                 >
                   {t('nav.contact')}
@@ -874,20 +1034,24 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       </header>
 
       {/* Main Content */}
-      <main>
+      <div className="flex-1">
         {view === 'about' ? (
-          <AboutUs />
+          <AboutUs isBikeMode={isBikeMode} />
         ) : view === 'contact' ? (
-          <ContactUs />
+          <ContactUs isBikeMode={isBikeMode} />
         ) : view === 'long-term' ? (
-          <LongTermHire />
+          <LongTermHire isBikeMode={isBikeMode} />
+        ) : view === 'blog' ? (
+          <BlogList isBikeMode={isBikeMode} onPostClick={handleBlogPostClick} />
+        ) : view === 'blog-post' && selectedBlogSlug ? (
+          <BlogPostView isBikeMode={isBikeMode} slug={selectedBlogSlug} onBack={() => handlePageChange('blog')} />
         ) : view === 'landing' || view === 'rent-a-bike' ? (
           <>
             {/* Hero Section */}
           <section className="pt-24 pb-40 px-4 text-center">
             <h1 className="text-4xl md:text-6xl font-bold text-black mb-12 tracking-tight">
               {isBikeMode ? "Let's find your perfect bike." : t('hero.title')} <br />
-              <span className="text-brand-orange">{t('hero.subtitle')}</span>
+              <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('hero.subtitle')}</span>
             </h1>
 
             <div className="max-w-5xl mx-auto relative">
@@ -896,14 +1060,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                   onClick={() => setShowCalendar(true)}
                   className="flex-[1.5] p-8 text-left cursor-pointer hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
                 >
-                  <CalendarIcon className="text-brand-orange" size={28} />
+                  <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div>
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.pickupDate')}</p>
                     <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.from, 'EEE dd MMM')}</p>
                   </div>
                 </div>
                 <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
-                  <Clock className="text-brand-orange" size={28} />
+                  <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div className="flex-1">
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
                     <div className="relative">
@@ -924,14 +1088,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                   onClick={() => setShowCalendar(true)}
                   className="flex-[1.5] p-8 text-left cursor-pointer hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
                 >
-                  <CalendarIcon className="text-brand-orange" size={28} />
+                  <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div>
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.dropoffDate')}</p>
                     <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.to, 'EEE dd MMM')}</p>
                   </div>
                 </div>
                 <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
-                  <Clock className="text-brand-orange" size={28} />
+                  <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div className="flex-1">
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
                     <div className="relative">
@@ -949,8 +1113,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                   </div>
                 </div>
                 <button 
-                  onClick={() => setView('results')}
-                  className="bg-brand-orange text-white px-12 py-8 font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all flex items-center justify-center gap-3 active:scale-95 shadow-xl shadow-brand-orange/20"
+                  onClick={() => handlePageChange('results')}
+                  className={cn(
+                    "text-white px-12 py-8 font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all flex items-center justify-center gap-3 active:scale-95 shadow-xl",
+                    isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                  )}
                 >
                   {t('hero.search')} <ChevronRight size={20} />
                 </button>
@@ -963,11 +1130,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     setSelectedRange={setSelectedRange}
                     setShowCalendar={setShowCalendar}
                     calendarRef={calendarRef}
-                    setView={setView}
+                    setView={handlePageChange as any}
                     pickUpTime={pickUpTime}
                     setPickUpTime={setPickUpTime}
                     dropOffTime={dropOffTime}
                     setDropOffTime={setDropOffTime}
+                    isBikeMode={isBikeMode}
                   />
                 )}
               </AnimatePresence>
@@ -980,10 +1148,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
           </section>
 
-          <WhyChooseUs />
-          <GoogleReviews />
-          <FAQ />
-          <EnquiryForm />
+          <WhyChooseUs isBikeMode={isBikeMode} />
+          <GoogleReviews isBikeMode={isBikeMode} />
+          <FAQ isBikeMode={isBikeMode} />
+          <EnquiryForm isBikeMode={isBikeMode} />
         </>
       ) : (
         /* Results Page */
@@ -992,21 +1160,24 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           <div className="glass-card rounded-[2.5rem] p-8 mb-16 flex flex-wrap items-center justify-between gap-8">
             <div className="flex flex-wrap items-center gap-12 md:gap-20">
               <div className="flex items-center gap-6">
-                <CalendarIcon className="text-brand-orange" size={28} />
+                <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                 <div>
                   <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('results.pickup')}</p>
                   <p className="text-black font-mono text-lg tracking-tight">{format(selectedRange.from, 'EEE dd MMM')} <span className="text-black/40 ml-2">{pickUpTime}</span></p>
                 </div>
               </div>
               <div className="flex items-center gap-6">
-                <CalendarIcon className="text-brand-orange" size={28} />
+                <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                 <div>
                   <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('results.dropoff')}</p>
                   <p className="text-black font-mono text-lg tracking-tight">{format(selectedRange.to, 'EEE dd MMM')} <span className="text-black/40 ml-2">{dropOffTime}</span></p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-brand-orange/10 rounded-full flex items-center justify-center text-brand-orange">
+                <div className={cn(
+                  "w-12 h-12 rounded-full flex items-center justify-center",
+                  isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange"
+                )}>
                   <Clock size={24} />
                 </div>
                 <div className="text-3xl font-bold tracking-tighter">
@@ -1016,7 +1187,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => setView(isBikeMode ? 'rent-a-bike' : 'landing')}
+                onClick={() => handlePageChange(isBikeMode ? 'rent-a-bike' : 'landing')}
                 className="px-8 py-3 bg-black/5 text-black/60 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-black/10 transition-colors"
               >
                 {t('results.modifySearch')}
@@ -1088,7 +1259,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
             <button 
               onClick={() => setFilters({ seats: 'all', transmission: 'all', fuel: 'all', engine: 'all' })}
-              className="text-[10px] font-bold text-brand-orange uppercase tracking-widest hover:opacity-70 transition-opacity ml-auto"
+              className={cn(
+                "text-[10px] font-bold uppercase tracking-widest hover:opacity-70 transition-opacity ml-auto",
+                isBikeMode ? "text-brand-blue" : "text-brand-orange"
+              )}
             >
               {t('filters.reset')}
             </button>
@@ -1098,7 +1272,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           <div className="space-y-8">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-32 glass-card rounded-[3rem]">
-                <Loader2 className="animate-spin text-brand-orange mb-6" size={48} />
+                <Loader2 className={cn("animate-spin mb-6", isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={48} />
                 <p className="text-black/40 font-bold uppercase tracking-widest text-xs">Loading available vehicles...</p>
               </div>
             ) : loadingError ? (
@@ -1110,7 +1284,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <p className="text-black/60 mb-10 text-center max-w-md leading-relaxed">{loadingError}</p>
                 <button 
                   onClick={() => window.location.reload()}
-                  className="px-10 py-4 bg-brand-orange text-white font-bold uppercase tracking-widest text-xs rounded-full hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                  className={cn(
+                    "px-10 py-4 text-white font-bold uppercase tracking-widest text-xs rounded-full hover:opacity-90 transition-all shadow-lg",
+                    isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                  )}
                 >
                   Try Again
                 </button>
@@ -1123,16 +1300,22 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       <div className="space-y-8">
                         <div>
                           <h3 className="text-3xl font-bold text-black tracking-tight mb-2">{car.name} <span className="text-black/20 font-normal text-xl">{t('car.orSimilar')}</span></h3>
-                          <div className="inline-flex px-3 py-1 bg-brand-orange/10 rounded-full">
-                            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{t('car.model')} {car.yearRange || '2018 - 2021'}</p>
+                          <div className={cn(
+                            "inline-flex px-3 py-1 rounded-full",
+                            isBikeMode ? "bg-brand-blue/10" : "bg-brand-orange/10"
+                          )}>
+                            <p className={cn(
+                              "font-bold uppercase tracking-widest text-[10px]",
+                              isBikeMode ? "text-brand-blue" : "text-brand-orange"
+                            )}>{t('car.model')} {car.yearRange || '2018 - 2021'}</p>
                           </div>
                         </div>
                         
                         <ul className="grid grid-cols-2 gap-x-12 gap-y-4 text-[10px] font-bold uppercase tracking-widest text-black/40">
-                          <li className="flex items-center gap-3"><Users size={16} className="text-brand-orange" /> {t('car.seats', { count: car.passengers || 5 })}</li>
-                          <li className="flex items-center gap-3"><Settings size={16} className="text-brand-orange" /> {car.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
-                          <li className="flex items-center gap-3"><Zap size={16} className="text-brand-orange" /> {t('filters.engine')} {car.engineSize || '1.5'}</li>
-                          <li className="flex items-center gap-3"><Fuel size={16} className="text-brand-orange" /> {t(`car.${(car.fuelType || 'Petrol').toLowerCase()}`)}</li>
+                          <li className="flex items-center gap-3"><Users size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('car.seats', { count: car.passengers || 5 })}</li>
+                          <li className="flex items-center gap-3"><Settings size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {car.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
+                          <li className="flex items-center gap-3"><Zap size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('filters.engine')} {car.engineSize || '1.5'}</li>
+                          <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(car.fuelType || 'Petrol').toLowerCase()}`)}</li>
                         </ul>
 
                         <div className="bg-green-50/50 border border-green-500/10 rounded-2xl p-6 flex items-center gap-4 mt-8">
@@ -1145,12 +1328,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
                       <div className="flex flex-col items-end justify-between text-right">
                         <div className="relative mb-8">
-                          <div className="absolute inset-0 bg-brand-orange/5 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-                          <img 
-                            src={car.mainImage || `https://picsum.photos/seed/${car.name}/400/250`} 
+                          <div className={cn(
+                            "absolute inset-0 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-700",
+                            isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5"
+                          )} />
+                          <StorageImage 
+                            path={car.mainImage || `https://picsum.photos/seed/${car.name}/400/250`} 
                             alt={car.name} 
                             className="w-72 h-auto object-contain relative z-10 drop-shadow-2xl transform group-hover:scale-105 transition-transform duration-500"
-                            referrerPolicy="no-referrer"
+                            fallback={`https://picsum.photos/seed/${car.name}/400/250`}
                           />
                         </div>
                         <div className="space-y-4">
@@ -1163,13 +1349,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                               setSelectedCar(car);
                               setShowEnquiryModal(true);
                             }}
-                            className="w-full bg-brand-orange text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                            className={cn(
+                              "w-full text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                              isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                            )}
                           >
                             {t('car.viewDeal')}
                           </button>
                           <div className="flex items-center justify-end gap-6 text-[10px] font-bold uppercase tracking-widest text-black/20">
-                            <span className="hover:text-brand-orange cursor-pointer transition-colors">{t('car.subjectToAvailability')}</span>
-                            <span className="flex items-center gap-2 hover:text-brand-orange cursor-pointer transition-colors">
+                            <span className={cn("cursor-pointer transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('car.subjectToAvailability')}</span>
+                            <span className={cn("flex items-center gap-2 cursor-pointer transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>
                               <Info size={14} /> {t('car.importantInfo')}
                             </span>
                           </div>
@@ -1190,7 +1379,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 </p>
                 <button 
                   onClick={() => setFilters({ seats: 'all', transmission: 'all', fuel: 'all', engine: 'all' })}
-                  className="px-12 py-4 bg-brand-orange text-white rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                  className={cn(
+                    "px-12 py-4 text-white rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                    isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                  )}
                 >
                   {t('noResults.clearFilters')}
                 </button>
@@ -1206,8 +1398,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
                   <button 
-                    onClick={() => setView('landing')}
-                    className="w-full sm:w-auto px-12 py-4 bg-brand-orange text-white rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                    onClick={() => handlePageChange('landing')}
+                    className={cn(
+                      "w-full sm:w-auto px-12 py-4 text-white rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                      isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                    )}
                   >
                     {t('noResults.modifySearch')}
                   </button>
@@ -1258,16 +1453,22 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       referrerPolicy="no-referrer"
                     />
                     <h2 className="text-4xl font-bold text-black tracking-tight mb-4">{selectedCar.name} <span className="text-black/20 font-normal text-2xl">{t('car.orSimilar')}</span></h2>
-                    <div className="inline-flex px-3 py-1 bg-brand-orange/10 rounded-full mb-10">
-                      <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{t('car.model')} {selectedCar.yearRange || '2018 - 2021'}</p>
+                    <div className={cn(
+                      "inline-flex px-3 py-1 rounded-full mb-10",
+                      isBikeMode ? "bg-brand-blue/10" : "bg-brand-orange/10"
+                    )}>
+                      <p className={cn(
+                        "font-bold uppercase tracking-widest text-[10px]",
+                        isBikeMode ? "text-brand-blue" : "text-brand-orange"
+                      )}>{t('car.model')} {selectedCar.yearRange || '2018 - 2021'}</p>
                     </div>
                     
                     <ul className="grid grid-cols-2 gap-6 text-[10px] font-bold uppercase tracking-widest text-black/40 mb-12">
-                      <li className="flex items-center gap-3"><Users size={16} className="text-brand-orange" /> {t('car.seats', { count: selectedCar.passengers || 5 })}</li>
-                      <li className="flex items-center gap-3"><MessageSquare size={16} className="text-brand-orange" /> CD/USB/AUX</li>
-                      <li className="flex items-center gap-3"><CarIcon size={16} className="text-brand-orange" /> {selectedCar.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
-                      <li className="flex items-center gap-3"><Zap size={16} className="text-brand-orange" /> {t('filters.engine')} {selectedCar.engineSize || '1.5'}</li>
-                      <li className="flex items-center gap-3"><Fuel size={16} className="text-brand-orange" /> {t(`car.${(selectedCar.fuelType || 'Petrol').toLowerCase()}`)}</li>
+                      <li className="flex items-center gap-3"><Users size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('car.seats', { count: selectedCar.passengers || 5 })}</li>
+                      <li className="flex items-center gap-3"><MessageSquare size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> CD/USB/AUX</li>
+                      <li className="flex items-center gap-3"><CarIcon size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {selectedCar.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
+                      <li className="flex items-center gap-3"><Zap size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('filters.engine')} {selectedCar.engineSize || '1.5'}</li>
+                      <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(selectedCar.fuelType || 'Petrol').toLowerCase()}`)}</li>
                     </ul>
 
                     <div className="grid grid-cols-2 gap-8 mb-12">
@@ -1281,8 +1482,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       </div>
                     </div>
 
-                    <div className="mb-12 p-8 bg-brand-orange/5 rounded-[2rem] border border-brand-orange/10">
-                      <p className="text-brand-orange text-3xl font-bold tracking-tighter mb-2">{totalDays} {t('results.days')}</p>
+                    <div className={cn(
+                      "mb-12 p-8 rounded-[2rem] border",
+                      isBikeMode ? "bg-brand-blue/5 border-brand-blue/10" : "bg-brand-orange/5 border-brand-orange/10"
+                    )}>
+                      <p className={cn("text-3xl font-bold tracking-tighter mb-2", isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{totalDays} {t('results.days')}</p>
                       <p className="text-5xl font-bold tracking-tighter font-mono">THB {calculateTotal(selectedCar).toLocaleString()}</p>
                     </div>
 
@@ -1306,7 +1510,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
                   <div className="w-full md:w-80 flex flex-col items-center justify-start pt-20">
                     <div className="relative">
-                      <div className="absolute inset-0 bg-brand-orange/5 blur-3xl rounded-full scale-150" />
+                      <div className={cn(
+                        "absolute inset-0 blur-3xl rounded-full scale-150",
+                        isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5"
+                      )} />
                       <img 
                         src={selectedCar.mainImage || `https://picsum.photos/seed/${selectedCar.name}/400/250`} 
                         alt={selectedCar.name} 
@@ -1378,14 +1585,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         className={cn(
                           "w-full flex items-center justify-between p-6 rounded-2xl border-2 transition-all group",
                           formData.requireDelivery 
-                            ? "bg-brand-orange/5 border-brand-orange" 
+                            ? (isBikeMode ? "bg-brand-blue/5 border-brand-blue" : "bg-brand-orange/5 border-brand-orange")
                             : "bg-black/5 border-transparent hover:bg-black/10"
                         )}
                       >
                         <div className="flex items-center gap-4">
                           <div className={cn(
                             "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
-                            formData.requireDelivery ? "bg-brand-orange text-white" : "bg-black/10 text-black/40"
+                            formData.requireDelivery 
+                              ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") 
+                              : "bg-black/10 text-black/40"
                           )}>
                             <Truck size={24} />
                           </div>
@@ -1396,7 +1605,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         </div>
                         <div className={cn(
                           "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                          formData.requireDelivery ? "bg-brand-orange border-brand-orange" : "border-black/10"
+                          formData.requireDelivery 
+                            ? (isBikeMode ? "bg-brand-blue border-brand-blue" : "bg-brand-orange border-brand-orange") 
+                            : "border-black/10"
                         )}>
                           {formData.requireDelivery && <Check size={14} className="text-white" />}
                         </div>
@@ -1443,14 +1654,18 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       {t('bookingModal.disclaimer')}
                     </div>
 
-                    <div className="flex items-center justify-center gap-3 text-brand-orange font-bold uppercase tracking-widest text-[10px] mb-10 cursor-pointer hover:opacity-70 transition-opacity">
-                      <Info size={16} /> {t('car.importantInfo')}
+                    <div className="flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-[10px] mb-10 cursor-pointer hover:opacity-70 transition-opacity">
+                      <Info size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> 
+                      <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('car.importantInfo')}</span>
                     </div>
 
                     <button 
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full bg-brand-orange text-white py-5 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                      className={cn(
+                        "w-full text-white py-5 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                        isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                      )}
                     >
                       {isSubmitting ? t('enquiry.send') : t('bookingModal.submit')}
                     </button>
@@ -1462,9 +1677,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         )}
       </AnimatePresence>
 
-      </main>
+      </div>
 
-      <Footer onPageChange={(v) => setView(v as any)} isBikeMode={isBikeMode} />
+      <Footer onPageChange={handlePageChange} isBikeMode={isBikeMode} />
       <AIAssistant />
     </div>
   );

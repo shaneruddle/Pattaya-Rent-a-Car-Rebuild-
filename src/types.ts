@@ -94,6 +94,7 @@ export interface Transaction {
   date: string; // ISO string
   category: string;
   carId?: string;
+  bookingId?: string;
   accountId: string;
   toAccountId?: string;
   description?: string;
@@ -111,6 +112,16 @@ export interface PricingRule {
   rates: {
     [durationTier: string]: number;
   };
+}
+
+export interface PricingGrid {
+  id: string;
+  carType: string;
+  headers: number[];
+  rates: {
+    [date: string]: number[];
+  };
+  updatedAt?: string;
 }
 
 export interface WebsiteCar {
@@ -152,4 +163,21 @@ export interface UserProfile {
   displayName?: string;
   lastLogin?: string; // ISO string
   createdAt?: string; // ISO string
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  excerpt: string;
+  author: string;
+  authorId: string;
+  coverImage?: string;
+  category: string;
+  tags: string[];
+  status: 'Draft' | 'Published';
+  publishedAt?: string; // ISO string
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
 }

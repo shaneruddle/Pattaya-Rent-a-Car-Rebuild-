@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { MapPin, Phone, Mail, Clock, CheckCircle2, ShieldCheck, Car as CarIcon, MessageSquare, Send, Loader2, ChevronDown } from 'lucide-react';
+import { cn } from '../lib/utils';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useBusinessInfo } from '../hooks/useBusinessInfo';
 import { useLanguage } from '../LanguageContext';
 
-export const AboutUs: React.FC = () => {
+export const AboutUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
   return (
     <div className="bg-warm-bg min-h-screen pt-32 pb-20">
@@ -56,7 +57,7 @@ export const AboutUs: React.FC = () => {
               transition={{ delay: i * 0.1 }}
               className="p-10 bg-white/40 backdrop-blur-xl border border-white/40 shadow-2xl shadow-black/5 rounded-3xl"
             >
-              <div className="mb-8 text-brand-orange">{item.icon}</div>
+              <div className={cn("mb-8", isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{item.icon}</div>
               <h3 className="text-2xl font-bold tracking-tight mb-4">{item.title}</h3>
               <p className="text-black/50 leading-relaxed font-medium">{item.description}</p>
             </motion.div>
@@ -82,7 +83,7 @@ export const AboutUs: React.FC = () => {
   );
 };
 
-export const ContactUs: React.FC = () => {
+export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
   return (
@@ -103,7 +104,7 @@ export const ContactUs: React.FC = () => {
           <div className="space-y-12">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="p-8 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-xl shadow-black/5">
-                <div className="w-12 h-12 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center mb-6">
+                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6", isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange")}>
                   <MapPin size={24} />
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.location')}</h3>
@@ -113,17 +114,17 @@ export const ContactUs: React.FC = () => {
               </div>
 
               <div className="p-8 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-xl shadow-black/5">
-                <div className="w-12 h-12 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center mb-6">
+                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6", isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange")}>
                   <Phone size={24} />
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.phone')}</h3>
                 <p className="text-black/50 leading-relaxed font-medium text-sm">
-                  {info?.international_phone_number || '+66 (0) 81 123 4567'}
+                  {info?.international_phone_number || '+66 83 077 6928'}
                 </p>
               </div>
 
               <div className="p-8 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-xl shadow-black/5 min-w-0">
-                <div className="w-12 h-12 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center mb-6">
+                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6", isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange")}>
                   <Mail size={24} />
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.email')}</h3>
@@ -133,7 +134,7 @@ export const ContactUs: React.FC = () => {
               </div>
 
               <div className="p-8 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-xl shadow-black/5">
-                <div className="w-12 h-12 bg-brand-orange/10 text-brand-orange rounded-2xl flex items-center justify-center mb-6">
+                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6", isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange")}>
                   <Clock size={24} />
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.openingHours')}</h3>
@@ -180,7 +181,7 @@ export const ContactUs: React.FC = () => {
                 <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-black/30 font-bold">{t('contact.message')}</label>
                 <textarea rows={6} className="w-full bg-black/5 border-none rounded-2xl p-5 outline-none focus:bg-black/10 transition-all font-medium resize-none"></textarea>
               </div>
-              <button className="w-full bg-brand-orange text-white py-6 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs hover:opacity-90 transition-all flex items-center justify-center gap-4 shadow-xl shadow-brand-orange/20">
+              <button className={cn("w-full text-white py-6 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs hover:opacity-90 transition-all flex items-center justify-center gap-4 shadow-xl", isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20")}>
                 {t('contact.sendButton')} <Send size={16} />
               </button>
             </form>
@@ -191,7 +192,7 @@ export const ContactUs: React.FC = () => {
   );
 };
 
-export const LongTermHire: React.FC = () => {
+export const LongTermHire: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const { t } = useLanguage();
@@ -249,7 +250,7 @@ export const LongTermHire: React.FC = () => {
                 t('longTerm.benefit6')
               ].map((benefit, i) => (
                 <div key={i} className="flex items-center gap-4 p-4 bg-white/40 backdrop-blur-xl border border-white/40 rounded-2xl shadow-sm">
-                  <CheckCircle2 className="text-brand-orange w-5 h-5 shrink-0" />
+                  <CheckCircle2 className={cn("w-5 h-5 shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
                   <span className="text-sm font-bold text-black/70 tracking-tight">{benefit}</span>
                 </div>
               ))}
@@ -257,7 +258,7 @@ export const LongTermHire: React.FC = () => {
           </motion.div>
 
           <div className="relative">
-            <div className="absolute -inset-6 bg-brand-orange/5 rounded-[50px] -z-10 blur-3xl"></div>
+            <div className={cn("absolute -inset-6 rounded-[50px] -z-10 blur-3xl", isBikeMode ? "bg-brand-blue/5" : "bg-brand-orange/5")}></div>
             <img 
               src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=1000" 
               alt="Luxury Car" 
@@ -268,8 +269,8 @@ export const LongTermHire: React.FC = () => {
         </div>
 
         <div className="bg-black rounded-[60px] text-white p-12 md:p-24 overflow-hidden relative shadow-2xl shadow-black/40">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-brand-orange/20 blur-[120px] -mr-48 -mt-48"></div>
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-brand-orange/10 blur-[120px] -ml-48 -mb-48"></div>
+          <div className={cn("absolute top-0 right-0 w-96 h-96 blur-[120px] -mr-48 -mt-48", isBikeMode ? "bg-brand-blue/20" : "bg-brand-orange/20")}></div>
+          <div className={cn("absolute bottom-0 left-0 w-96 h-96 blur-[120px] -ml-48 -mb-48", isBikeMode ? "bg-brand-blue/10" : "bg-brand-orange/10")}></div>
           
           <div className="max-w-3xl mx-auto text-center mb-20 relative z-10">
             <h2 className="text-4xl md:text-6xl font-bold tracking-tighter mb-8 leading-none">{t('longTerm.quoteTitle')}</h2>
@@ -282,7 +283,7 @@ export const LongTermHire: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               className="max-w-xl mx-auto text-center py-20 relative z-10"
             >
-              <div className="w-24 h-24 bg-brand-orange/20 text-brand-orange rounded-full flex items-center justify-center mx-auto mb-10">
+              <div className={cn("w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-10", isBikeMode ? "bg-brand-blue/20 text-brand-blue" : "bg-brand-orange/20 text-brand-orange")}>
                 <CheckCircle2 size={48} />
               </div>
               <h3 className="text-4xl font-bold tracking-tight mb-6">{t('longTerm.successTitle')}</h3>
@@ -371,7 +372,7 @@ export const LongTermHire: React.FC = () => {
               <div className="md:col-span-2 pt-6">
                 <button 
                   disabled={isSubmitting}
-                  className="w-full bg-brand-orange text-white py-8 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs hover:opacity-90 transition-all flex items-center justify-center gap-4 disabled:opacity-50 shadow-2xl shadow-brand-orange/20"
+                  className={cn("w-full text-white py-8 rounded-2xl font-bold uppercase tracking-[0.3em] text-xs hover:opacity-90 transition-all flex items-center justify-center gap-4 disabled:opacity-50 shadow-2xl", isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20")}
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" /> : t('longTerm.requestQuote')}
                 </button>

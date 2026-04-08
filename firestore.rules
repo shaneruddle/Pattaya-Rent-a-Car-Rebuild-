@@ -57,14 +57,21 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
-    // Settings: Staff only
+    // Settings: Staff only, but allow public read for pricing settings
     match /settings/{settingId} {
-      allow read, write: if isStaff();
+      allow read: if settingId == 'pricing' || isStaff();
+      allow write: if isStaff();
     }
 
     // Pricing: Publicly readable, staff writable
     match /pricing/{pricingId} {
       allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Pricing Grid: Publicly readable, staff writable
+    match /pricing_grid/{gridId} {
+      allow get, list, read: if true;
       allow write: if isStaff();
     }
 
@@ -105,6 +112,18 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+    // AI Knowledge Base: Publicly readable, staff writable
+    match /ai_knowledge_base/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // FAQs: Publicly readable, staff writable
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
     // Rentals: Staff only
     match /rentals/{rentalId} {
       allow read, write: if isStaff();
@@ -119,6 +138,12 @@ service cloud.firestore {
     match /mail/{mailId} {
       allow create: if true;
       allow read, update, delete: if isStaff();
+    }
+
+    // Blog Posts: Publicly readable, staff writable
+    match /blog_posts/{postId} {
+      allow read: if true;
+      allow write: if isStaff();
     }
   }
 }
