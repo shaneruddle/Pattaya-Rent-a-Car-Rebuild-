@@ -3,7 +3,7 @@ import { useLanguage } from '../LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, HelpCircle, Search, X, MessageCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 
 interface FAQData {
@@ -85,21 +85,24 @@ export const FAQ: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [activeCategory, setActiveCategory] = useState<string>('Booking');
   const [dbFaqs, setDbFaqs] = useState<FAQData[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'faqs'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const faqData = snapshot.docs.map(doc => doc.data() as FAQData);
-      if (faqData.length > 0) {
-        setDbFaqs(faqData);
+    const fetchFaqs = async () => {
+      try {
+        const q = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+        const snapshot = await getDocs(q);
+        const faqData = snapshot.docs.map(doc => doc.data() as FAQData);
+        if (faqData.length > 0) {
+          setDbFaqs(faqData);
+        }
+      } catch (error) {
+        console.error('Error fetching FAQs:', error);
       }
-    }, (error) => {
-      console.error('Error fetching FAQs:', error);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchFaqs();
   }, []);
 
   // Get FAQ items from translations

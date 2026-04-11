@@ -39,4 +39,33 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.25);
   }
+
+  /* Quill Editor Styling */
+  .quill-editor-container .ql-toolbar.ql-snow {
+    @apply border-black/10 bg-white/40 rounded-t-2xl px-4 py-3;
+  }
+  .quill-editor-container .ql-container.ql-snow {
+    @apply border-black/10 bg-white/40 rounded-b-2xl text-xs font-medium h-96;
+  }
+  .quill-editor-container .ql-editor {
+    @apply px-4 py-3 min-h-[300px];
+  }
+  .quill-editor-container .ql-editor.ql-blank::before {
+    @apply text-black/20 italic;
+  }
+
+  /* Blog Content Styling (for HTML rendered via dangerouslySetInnerHTML) */
+  .blog-content {
+    @apply text-black/70 leading-relaxed;
+  }
+  .blog-content h1 { @apply font-serif italic text-3xl text-[#1A1A1A] mt-8 mb-4; }
+  .blog-content h2 { @apply font-serif italic text-2xl text-[#1A1A1A] mt-6 mb-3; }
+  .blog-content h3 { @apply font-serif italic text-xl text-[#1A1A1A] mt-4 mb-2; }
+  .blog-content p { @apply mb-4; }
+  .blog-content ul { @apply list-disc pl-6 mb-4; }
+  .blog-content ol { @apply list-decimal pl-6 mb-4; }
+  .blog-content blockquote { @apply border-l-4 border-brand-orange pl-4 italic my-6 text-black/60; }
+  .blog-content a { @apply text-brand-orange hover:underline; }
+  .blog-content img { @apply rounded-[32px] shadow-xl my-8 mx-auto; }
+  .blog-content strong { @apply text-[#1A1A1A] font-bold; }
 }

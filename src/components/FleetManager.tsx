@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, storage, logSystemActivity } from '../firebase';
 import { Car, VehicleLog } from '../types';
-import { format, parseISO, addMonths, differenceInDays, startOfDay } from 'date-fns';
+import { format, parseISO, addMonths, differenceInDays, startOfDay, isValid } from 'date-fns';
 import Papa from 'papaparse';
 import { 
   Search, 
@@ -30,7 +30,8 @@ import {
   Save,
   X,
   AlertCircle,
-  Download
+  Download,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -55,22 +56,28 @@ export const FleetManager: React.FC = () => {
   const safeFormatDate = (dateStr: string | undefined, formatStr: string) => {
     if (!dateStr) return 'N/A';
     try {
-      return format(parseISO(dateStr), formatStr);
+      const date = parseISO(dateStr);
+      if (!isValid(date)) return 'N/A';
+      return format(date, formatStr);
     } catch (e) {
-      return 'Invalid Date';
+      return 'N/A';
     }
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'cars'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
-      setCars(carsData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'cars');
-    });
-    return () => unsubscribe();
+    const fetchCars = async () => {
+      try {
+        const q = query(collection(db, 'cars'), orderBy('order', 'asc'));
+        const snapshot = await getDocs(q);
+        const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+        setCars(carsData);
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'cars');
+        setLoading(false);
+      }
+    };
+    fetchCars();
   }, []);
 
   useEffect(() => {
@@ -79,20 +86,22 @@ export const FleetManager: React.FC = () => {
       return;
     }
 
-    const q = query(
-      collection(db, 'vehicle_logs'), 
-      where('carId', '==', selectedCar.id),
-      orderBy('date', 'desc')
-    );
+    const fetchLogs = async () => {
+      try {
+        const q = query(
+          collection(db, 'vehicle_logs'), 
+          where('carId', '==', selectedCar.id),
+          orderBy('date', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VehicleLog));
+        setLogs(logsData);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, `vehicle_logs (carId: ${selectedCar.id})`);
+      }
+    };
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VehicleLog));
-      setLogs(logsData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `vehicle_logs (carId: ${selectedCar.id})`);
-    });
-    
-    return () => unsubscribe();
+    fetchLogs();
   }, [selectedCar]);
 
   const handleUpdateCar = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,13 +109,15 @@ export const FleetManager: React.FC = () => {
     if (!selectedCar) return;
 
     const formData = new FormData(e.currentTarget);
+    const make = (formData.get('make') as string) || '';
+    const model = (formData.get('model') as string) || '';
     const updatedData: Partial<Car> = {
-      name: (formData.get('name') as string) || 'Unnamed Vehicle',
+      name: `${make} ${model}`.trim() || selectedCar.name,
       plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
       type: (formData.get('type') as string) || 'Unknown',
       category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
-      make: (formData.get('make') as string) || '',
-      model: (formData.get('model') as string) || '',
+      make,
+      model,
       yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
       insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
       taxExpiry: (formData.get('taxExpiry') as string) || '',
@@ -305,13 +316,15 @@ export const FleetManager: React.FC = () => {
   const handleAddVehicle = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const make = (formData.get('make') as string) || '';
+    const model = (formData.get('model') as string) || '';
     const newVehicle: Omit<Car, 'id'> = {
-      name: (formData.get('name') as string) || 'Unnamed Vehicle',
+      name: `${make} ${model}`.trim() || 'Unnamed Vehicle',
       plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
       type: (formData.get('type') as string) || 'Unknown',
       category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
-      make: (formData.get('make') as string) || '',
-      model: (formData.get('model') as string) || '',
+      make,
+      model,
       yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
       insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
       taxExpiry: (formData.get('taxExpiry') as string) || '',
@@ -345,6 +358,87 @@ export const FleetManager: React.FC = () => {
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleDeduplicate = async () => {
+    if (cars.length === 0) return;
+
+    toast('Deduplicate Fleet?', {
+      description: "This will identify and remove duplicate vehicles based on plate numbers. The vehicle with the most information will be kept.",
+      action: {
+        label: "Deduplicate",
+        onClick: async () => {
+          toast.promise(async () => {
+            const normalizedCars = cars.map(car => {
+              // Normalize plate: remove spaces and extract numeric part
+              const plateClean = car.plateNumber.replace(/\s+/g, '');
+              const numericPart = plateClean.match(/\d+$/)?.[0] || plateClean;
+              
+              // Calculate info score: count non-empty fields
+              let score = 0;
+              const fieldsToCheck: (keyof Car)[] = [
+                'imageUrl', 'engine', 'fuel', 'transmission', 'audio', 
+                'insuranceExpiry', 'taxExpiry', 'yearOfManufacture', 
+                'currentKms', 'lastOilChangeKms', 'owner'
+              ];
+              
+              fieldsToCheck.forEach(field => {
+                if (car[field] !== undefined && car[field] !== null && car[field] !== '' && car[field] !== 0) {
+                  score++;
+                }
+              });
+
+              return {
+                ...car,
+                groupKey: `${car.make.toLowerCase().trim()}_${car.model.toLowerCase().trim()}_${numericPart}`,
+                score
+              };
+            });
+
+            const groups = new Map<string, typeof normalizedCars>();
+            normalizedCars.forEach(car => {
+              const existing = groups.get(car.groupKey) || [];
+              groups.set(car.groupKey, [...existing, car]);
+            });
+
+            const batch = writeBatch(db);
+            let removedCount = 0;
+
+            groups.forEach((groupCars) => {
+              if (groupCars.length > 1) {
+                // Sort by score descending, then by ID to be deterministic
+                groupCars.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+                
+                // Keep the first one (highest score), delete the rest
+                const toKeep = groupCars[0];
+                const toDelete = groupCars.slice(1);
+                
+                toDelete.forEach(car => {
+                  batch.delete(doc(db, 'cars', car.id));
+                  removedCount++;
+                });
+              }
+            });
+
+            if (removedCount > 0) {
+              await batch.commit();
+              await logSystemActivity(
+                'Deduplicate Fleet',
+                `Deduplicated fleet: removed ${removedCount} duplicate records`,
+                'Fleet',
+                { removedCount }
+              );
+            }
+
+            return removedCount;
+          }, {
+            loading: 'Analyzing fleet for duplicates...',
+            success: (count) => count > 0 ? `Successfully removed ${count} duplicates!` : 'No duplicates found.',
+            error: 'Failed to deduplicate fleet'
+          });
+        }
+      }
+    });
+  };
 
   const handleExportCSV = () => {
     if (cars.length === 0) {
@@ -389,96 +483,138 @@ export const FleetManager: React.FC = () => {
     toast.success('Fleet exported successfully');
   };
 
-  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement> | string) => {
+    const parseCSVDate = (dateStr: string) => {
+      if (!dateStr || dateStr === '-' || dateStr === 'N/A') return new Date().toISOString();
+      
+      // Handle DD/MM/YYYY
+      if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+          if (!isNaN(d.getTime())) return d.toISOString();
+        }
+      }
+      
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d.toISOString();
+      
+      return new Date().toISOString();
+    };
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
-      complete: async (results) => {
-        const data = results.data as any[];
-        
-        // Map common CSV headers to our Car type
-        const validData = data.map(item => {
-          const plate = item.plate_number || item.plate || item.license_plate;
-          if (!plate) return null;
+    const processData = async (results: any) => {
+      const data = results.data as any[];
+      const existingCarsMap = new Map(cars.map(c => [c.plateNumber, c]));
+      
+      const toUpdate: { id: string, data: any }[] = [];
+      const toCreate: any[] = [];
 
-          // Check if already exists
-          if (cars.some(c => c.plateNumber === plate)) return null;
+      data.forEach(item => {
+        const plate = item.plate_number || item.plate || item.license_plate || item['plate_number'];
+        if (!plate) return;
 
-          return {
-            name: item.name || `${item.make || ''} ${item.model || ''} ${item.color || ''}`.trim() || 'Unknown Vehicle',
-            plateNumber: plate,
-            type: item.type || (item.model?.toLowerCase().includes('n-max') ? 'Scooter' : 'Motorbike'),
-            category: item.category || 'Motorbike',
-            make: item.make || '',
-            model: item.model || '',
-            yearOfManufacture: parseInt(item.year) || 2023,
-            insuranceExpiry: item.insurance_expiry || new Date(Date.now() + 31536000000).toISOString(),
-            taxExpiry: item.tax_expiry || new Date(Date.now() + 31536000000).toISOString(),
-            owner: item.owner || 'PRAC',
-            currentKms: parseInt(item.kms) || 0,
-            lastOilChangeKms: parseInt(item.last_oil_change_kms) || 0,
-            lastOilChangeDate: item.last_oil_change_date || new Date().toISOString(),
-            fuel: item.fuel || 'Gasoline 95',
-            engine: item.engine || '125cc',
-            transmission: item.transmission || 'Automatic',
-            audio: item.audio || 'N/A',
-            isActive: item.is_active === undefined ? true : (item.is_active === 'true' || item.is_active === true),
-            imageUrl: item.image_url || '',
-            order: Number(item.order) || cars.length
-          };
-        }).filter(item => item !== null);
+        const mappedData = {
+          name: item.name || `${item.make || ''} ${item.model || ''}`.trim() || 'Unknown Vehicle',
+          plateNumber: plate,
+          type: item.type || (item.model?.toLowerCase().includes('n-max') ? 'Scooter' : 'Motorbike'),
+          category: (item.category as any) || (item.type?.toLowerCase().includes('motorbike') ? 'Motorbike' : 'Car'),
+          make: item.make || '',
+          model: item.model || '',
+          yearOfManufacture: parseInt(item.year) || 2023,
+          insuranceExpiry: parseCSVDate(item.insurance_expiry),
+          taxExpiry: parseCSVDate(item.tax_expiry),
+          owner: item.owner || 'PRAC',
+          currentKms: parseInt(item.kms) || 0,
+          lastOilChangeKms: parseInt(item.last_oil_change_kms) || 0,
+          lastOilChangeDate: parseCSVDate(item.last_oil_change_date),
+          fuel: item.fuel || 'Gasoline 95',
+          engine: item.engine || '',
+          transmission: item.transmission || 'Automatic',
+          audio: item.audio || 'N/A',
+          isActive: item.is_active === undefined ? true : (String(item.is_active).toLowerCase() === 'true'),
+          imageUrl: item.image_url || '',
+          order: Number(item.order) || cars.length,
+          updatedAt: new Date().toISOString()
+        };
 
-        if (validData.length === 0) {
-          toast.error('No new valid vehicles found in CSV. Ensure headers like "plate_number" are present.');
-          return;
+        const existing = existingCarsMap.get(plate);
+        if (existing) {
+          toUpdate.push({ id: existing.id, data: mappedData });
+        } else {
+          toCreate.push({
+            ...mappedData,
+            createdAt: new Date().toISOString()
+          });
+        }
+      });
+
+      if (toUpdate.length === 0 && toCreate.length === 0) {
+        toast.error('No valid vehicles found in CSV.');
+        return;
+      }
+
+      toast.promise(async () => {
+        const allOps = [
+          ...toUpdate.map(item => ({ type: 'update', ...item })),
+          ...toCreate.map(item => ({ type: 'create', data: item }))
+        ];
+
+        const chunks = [];
+        for (let i = 0; i < allOps.length; i += 500) {
+          chunks.push(allOps.slice(i, i + 500));
         }
 
-        toast.promise(async () => {
-          const chunks = [];
-          for (let i = 0; i < validData.length; i += 500) {
-            chunks.push(validData.slice(i, i + 500));
-          }
-
-          const { fetchWithRetry } = await import('../lib/api');
+        let totalProcessed = 0;
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          const fleetCollection = collection(db, 'cars');
           
-          for (const chunk of chunks) {
-            const response = await fetchWithRetry('/api/fleet/import-csv', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ data: chunk })
-            });
-            
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.details || error.error || 'Failed to import chunk');
+          chunk.forEach(op => {
+            if (op.type === 'update') {
+              batch.update(doc(fleetCollection, op.id), op.data);
+            } else {
+              batch.set(doc(fleetCollection), op.data);
             }
-          }
+          });
           
-          await logSystemActivity(
-            'CSV Import',
-            `Imported ${validData.length} vehicles via CSV`,
-            'Fleet',
-            { count: validData.length }
-          );
+          await batch.commit();
+          totalProcessed += chunk.length;
+        }
+        
+        await logSystemActivity(
+          'CSV Import',
+          `Processed ${totalProcessed} vehicles via CSV (${toCreate.length} new, ${toUpdate.length} updated)`,
+          'Fleet',
+          { total: totalProcessed, created: toCreate.length, updated: toUpdate.length }
+        );
 
-          return validData.length;
-        }, {
-          loading: 'Importing vehicles...',
-          success: (count) => `Successfully imported ${count} vehicles!`,
-          error: 'Failed to import vehicles'
-        });
+        return { created: toCreate.length, updated: toUpdate.length };
+      }, {
+        loading: 'Processing vehicles...',
+        success: (res) => `Successfully processed ${res.created + res.updated} vehicles (${res.created} new, ${res.updated} updated)!`,
+        error: (err) => `Failed to process vehicles: ${err.message}`
+      });
+    };
 
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      },
-      error: (error) => {
-        console.error('PapaParse error:', error);
-        toast.error('Failed to parse CSV file');
-      }
-    });
+    if (typeof event === 'string') {
+      Papa.parse(event, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+        complete: processData
+      });
+    } else {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+        complete: processData
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleBulkImportBikes = async () => {
@@ -571,6 +707,9 @@ Yamaha,New Aerox,Red,4กย 1611`;
     let count = 0;
     
     toast.promise(async () => {
+      const { writeBatch, db } = await import('../firebase');
+      const { collection, doc, serverTimestamp } = await import('firebase/firestore');
+      
       const fleetCollection = collection(db, 'cars');
       const bikesToImport: any[] = [];
 
@@ -611,41 +750,48 @@ Yamaha,New Aerox,Red,4กย 1611`;
         chunks.push(bikesToImport.slice(i, i + 500));
       }
 
-      const { fetchWithRetry } = await import('../lib/api');
-      
+      let totalImported = 0;
       for (const chunk of chunks) {
-        const response = await fetchWithRetry('/api/fleet/import-csv', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: chunk })
+        const batch = writeBatch(db);
+        
+        chunk.forEach(bike => {
+          const newDocRef = doc(fleetCollection);
+          batch.set(newDocRef, {
+            ...bike,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         });
         
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.details || error.error || 'Failed to import chunk');
-        }
+        await batch.commit();
+        totalImported += chunk.length;
       }
 
       await logSystemActivity(
         'Bulk Import Bikes',
-        `Imported ${bikesToImport.length} bikes via bulk import`,
+        `Imported ${totalImported} bikes via bulk import`,
         'Fleet',
-        { count: bikesToImport.length }
+        { count: totalImported }
       );
 
-      return bikesToImport.length;
+      return totalImported;
     }, {
       loading: 'Importing bikes...',
       success: (data) => `Successfully imported ${data} bikes!`,
-      error: 'Failed to import bikes'
+      error: (err) => `Failed to import bikes: ${err.message}`
     });
   };
 
   const filteredCars = cars.filter(car => 
     car.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    car.make.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    car.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
     car.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     car.owner.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const activeCarsCount = cars.filter(c => c.category === 'Car' && c.isActive !== false).length;
+  const activeBikesCount = cars.filter(c => (c.category === 'Motorbike' || c.type === 'Scooter' || c.type === 'Motorbike') && c.isActive !== false).length;
 
   if (loading) {
     return (
@@ -658,9 +804,24 @@ Yamaha,New Aerox,Red,4กย 1611`;
   return (
     <div className="flex-1 flex flex-col h-full bg-warm-bg overflow-hidden">
       <div className="p-8 border-b border-white/20 bg-white/40 backdrop-blur-xl flex items-center justify-between">
-        <div>
-          <h1 className="font-serif italic text-4xl text-[#1A1A1A]">Fleet Manager</h1>
-          <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Detailed Vehicle Records & Maintenance Logs</p>
+        <div className="flex items-center gap-8">
+          <div>
+            <h1 className="font-serif italic text-4xl text-[#1A1A1A]">Fleet Manager</h1>
+            <div className="flex items-center gap-4 mt-1">
+              <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] font-medium">Detailed Vehicle Records & Maintenance Logs</p>
+              <div className="h-3 w-[1px] bg-[#1A1A1A]/10" />
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]">{activeCarsCount} Active Cars</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]">{activeBikesCount} Active Bikes</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <input 
@@ -674,13 +835,20 @@ Yamaha,New Aerox,Red,4กย 1611`;
             onClick={() => fileInputRef.current?.click()}
             className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
           >
-            <Zap size={14} /> Import CSV
+            <Download size={14} /> Import CSV
           </button>
           <button 
             onClick={handleExportCSV}
             className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
           >
             <Download size={14} /> Export CSV
+          </button>
+          <button 
+            onClick={handleDeduplicate}
+            className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
+            title="Remove duplicate vehicles based on plate numbers"
+          >
+            <Copy size={14} /> Deduplicate
           </button>
           <button 
             onClick={() => setIsAddingVehicle(true)}
@@ -717,21 +885,20 @@ Yamaha,New Aerox,Red,4กย 1611`;
               )}
             >
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-white/40 flex items-center justify-center overflow-hidden border border-white/60 shadow-sm">
-                  {car.imageUrl ? (
-                    <img src={car.imageUrl} alt={car.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <ImageIcon size={20} className="text-[#1A1A1A]/20" />
-                  )}
-                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-bold text-sm truncate text-[#1A1A1A]">{car.name}</p>
+                    <p className="font-bold text-sm truncate text-[#1A1A1A]">
+                      {car.make && car.model ? `${car.make} ${car.model}` : car.name}
+                    </p>
                     {car.isActive === false && (
                       <span className="bg-red-100/80 backdrop-blur-sm text-red-600 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0">Sold/Inactive</span>
                     )}
                   </div>
-                  <p className="text-[10px] text-[#1A1A1A]/50 uppercase tracking-widest font-medium">{car.plateNumber}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="bg-white border-2 border-[#1A1A1A]/80 text-[#1A1A1A] px-2.5 py-1 rounded-md shadow-sm text-[10px] font-bold tracking-widest font-mono leading-none flex items-center justify-center min-w-[80px]">
+                      {car.plateNumber}
+                    </span>
+                  </div>
                 </div>
                 <ChevronRight size={16} className={cn("text-[#1A1A1A]/20 transition-transform", selectedCar?.id === car.id ? "rotate-90 text-brand-orange" : "")} />
               </div>
@@ -769,8 +936,23 @@ Yamaha,New Aerox,Red,4กย 1611`;
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-4">
                         <div>
-                          <h2 className="text-3xl font-bold text-[#1A1A1A] tracking-tight">{selectedCar.name}</h2>
-                          <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] font-bold mt-1">{selectedCar.plateNumber} • {selectedCar.category}</p>
+                          <h2 className="text-3xl font-bold text-[#1A1A1A] tracking-tight">
+                            {selectedCar.make && selectedCar.model ? `${selectedCar.make} ${selectedCar.model}` : selectedCar.name}
+                          </h2>
+                          <div className="flex items-center gap-4 mt-3">
+                            <div className="bg-white border-2 border-[#1A1A1A] text-[#1A1A1A] px-4 py-2 rounded-xl shadow-md flex flex-col items-center justify-center min-w-[120px]">
+                              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#1A1A1A]/40 mb-0.5">Thailand</span>
+                              <span className="text-xl font-black tracking-widest font-mono leading-none">
+                                {selectedCar.plateNumber}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] font-bold">
+                                {selectedCar.category} • {selectedCar.type}
+                              </span>
+                              <span className="text-[#1A1A1A]/40 text-[9px] font-medium uppercase tracking-widest mt-0.5">Vehicle ID: {selectedCar.id.slice(0, 8)}</span>
+                            </div>
+                          </div>
                         </div>
                         <button 
                           onClick={() => setIsEditing(!isEditing)}
@@ -924,10 +1106,6 @@ Yamaha,New Aerox,Red,4กย 1611`;
                       <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-xl">
                         <h3 className="font-serif italic text-2xl mb-6 text-[#1A1A1A]">Edit Vehicle Details</h3>
                         <form onSubmit={handleUpdateCar} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Display Name</label>
-                            <input name="name" defaultValue={selectedCar.name} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
-                          </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Plate Number</label>
                             <input name="plateNumber" defaultValue={selectedCar.plateNumber} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
@@ -1126,7 +1304,7 @@ Yamaha,New Aerox,Red,4กย 1611`;
                                       <div className="flex justify-between items-start mb-2">
                                         <div>
                                           <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">{log.type}</span>
-                                          <p className="text-sm font-medium text-[#1A1A1A]/60 mt-0.5">{format(parseISO(log.date), 'dd MMM yyyy • HH:mm')}</p>
+                                          <p className="text-sm font-medium text-[#1A1A1A]/60 mt-0.5">{safeFormatDate(log.date, 'dd MMM yyyy • HH:mm')}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="text-[10px] font-bold uppercase tracking-widest bg-white/60 border border-white/80 px-2.5 py-1 rounded-full text-[#1A1A1A]/60 shadow-sm">By {log.user}</span>
@@ -1274,10 +1452,6 @@ Yamaha,New Aerox,Red,4กย 1611`;
 
               <form onSubmit={handleAddVehicle} className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Display Name</label>
-                    <input name="name" placeholder="e.g. Toyota Vios" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
-                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Plate Number</label>
                     <input name="plateNumber" placeholder="e.g. 1กข 1234" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />

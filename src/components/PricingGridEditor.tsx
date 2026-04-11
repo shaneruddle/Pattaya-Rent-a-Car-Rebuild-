@@ -130,15 +130,21 @@ export const PricingGridEditor: React.FC<PricingGridEditorProps> = ({ carType, o
   };
 
   const removeHeader = (index: number) => {
-    if (!confirm('Are you sure you want to remove this duration tier?')) return;
-    
-    setGrid(prev => {
-      const newHeaders = prev.headers.filter((_, i) => i !== index);
-      const newRates = { ...prev.rates };
-      Object.keys(newRates).forEach(date => {
-        newRates[date] = newRates[date].filter((_, i) => i !== index);
-      });
-      return { ...prev, headers: newHeaders, rates: newRates };
+    toast('Remove this duration tier?', {
+      description: "This will remove the column and all associated rates.",
+      action: {
+        label: "Remove",
+        onClick: () => {
+          setGrid(prev => {
+            const newHeaders = prev.headers.filter((_, i) => i !== index);
+            const newRates = { ...prev.rates };
+            Object.keys(newRates).forEach(date => {
+              newRates[date] = newRates[date].filter((_, i) => i !== index);
+            });
+            return { ...prev, headers: newHeaders, rates: newRates };
+          });
+        }
+      }
     });
   };
 

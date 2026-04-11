@@ -52,11 +52,18 @@
       "type": "object",
       "properties": {
         "firstName": { "type": "string", "description": "Customer's first name." },
-        "lastName": { "type": "string", "description": "Customer's last name." },
+        "lastName": { "type": "string", "description": "Customer's last name (Surname)." },
         "email": { "type": "string", "format": "email", "description": "Customer's unique email address." },
         "mobileNumber": { "type": "string", "description": "Customer's contact number." },
         "address": { "type": "string", "description": "Customer's physical address." },
+        "addressHotel": { "type": "string", "description": "Customer's hotel or temporary address." },
         "dob": { "type": "string", "format": "date", "description": "Customer's date of birth." },
+        "drivingLicence": { "type": "string", "description": "Customer's driving licence number." },
+        "bikeLicenceExpiry": { "type": "string", "format": "date", "description": "Bike licence expiry date." },
+        "carLicenceExpiry": { "type": "string", "format": "date", "description": "Car licence expiry date." },
+        "notes": { "type": "string", "description": "Additional notes about the customer." },
+        "creationDate": { "type": "string", "format": "date-time", "description": "When the customer record was created." },
+        "uniqueId": { "type": "string", "description": "A unique identifier for the customer." },
         "location": {
           "type": "object",
           "properties": {
@@ -308,6 +315,32 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "slug", "content", "author", "authorId", "status", "createdAt", "updatedAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A customer review.",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "description": "e.g., Google, Website, Facebook" },
+        "reply": { "type": "string", "description": "The response to the review." },
+        "repliedAt": { "type": "string", "format": "date-time" },
+        "isAutomated": { "type": "boolean" }
+      },
+      "required": ["customerName", "rating", "comment", "date"]
+    },
+    "ReviewSettings": {
+      "title": "ReviewSettings",
+      "description": "Settings for review management.",
+      "type": "object",
+      "properties": {
+        "autoReplyEnabled": { "type": "boolean" },
+        "autoReplyTemplate": { "type": "string" },
+        "minRatingForAutoReply": { "type": "integer" }
+      }
     }
   },
   "firestore": {
@@ -382,6 +415,14 @@
     "/blog_posts/{postId}": {
       "schema": "BlogPost",
       "description": "Collection of blog posts."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Collection of customer reviews."
+    },
+    "/review_settings/{settingId}": {
+      "schema": "ReviewSettings",
+      "description": "Settings for review management."
     }
   }
 }

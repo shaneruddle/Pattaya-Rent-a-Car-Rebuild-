@@ -145,5 +145,16 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isStaff();
     }
+
+    // Reviews: Publicly readable and creatable, staff writable
+    match /reviews/{reviewId} {
+      allow read, create: if true;
+      allow update, delete: if isStaff();
+    }
+
+    // Review Settings: Staff only
+    match /review_settings/{settingId} {
+      allow read, write: if isStaff();
+    }
   }
 }

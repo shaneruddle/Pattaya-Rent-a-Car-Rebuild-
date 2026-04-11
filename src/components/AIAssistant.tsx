@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { useLanguage } from '../LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Loader2, Bot } from 'lucide-react';
+import { safeLocalStorage } from '../lib/storage';
 
 export const AIAssistant: React.FC = () => {
   const { t, language } = useLanguage();
@@ -22,33 +23,61 @@ export const AIAssistant: React.FC = () => {
     }
   }, [messages]);
 
-  useEffect(() => {
-    const fetchKnowledgeBase = async () => {
-      try {
-        // Fetch from custom knowledge base
-        const qKB = query(collection(db, 'ai_knowledge_base'), where('isActive', '==', true));
-        const snapshotKB = await getDocs(qKB);
-        const pairsKB = snapshotKB.docs.map(doc => {
-          const data = doc.data();
-          return `Question: ${data.question}\nAnswer: ${data.answer}`;
-        });
+  const [lastKBFetch, setLastKBFetch] = useState(() => {
+    const cached = safeLocalStorage.getItem('prac_ai_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
 
-        // Fetch from FAQs
-        const qFAQ = query(collection(db, 'faqs'), orderBy('order', 'asc'));
-        const snapshotFAQ = await getDocs(qFAQ);
-        const pairsFAQ = snapshotFAQ.docs.map(doc => {
-          const data = doc.data();
-          return `Category: ${data.category}\nQuestion: ${data.q}\nAnswer: ${data.a}`;
-        });
+  const fetchKnowledgeBase = async () => {
+    // Cache for 60 minutes
+    const CACHE_DURATION = 60 * 60 * 1000;
+    const isCacheValid = Date.now() - lastKBFetch < CACHE_DURATION;
 
-        const combinedKnowledge = [...pairsKB, ...pairsFAQ].join('\n\n');
-        setKnowledgeBase(combinedKnowledge);
-      } catch (error) {
-        console.error('Error fetching AI knowledge base:', error);
+    if (knowledgeBase && isCacheValid) return;
+
+    if (!knowledgeBase && isCacheValid) {
+      const cached = safeLocalStorage.getItem('prac_cached_ai_kb');
+      if (cached) {
+        setKnowledgeBase(cached);
+        return;
       }
-    };
+    }
+
+    try {
+      // Fetch from custom knowledge base
+      const qKB = query(collection(db, 'ai_knowledge_base'), where('isActive', '==', true));
+      const snapshotKB = await getDocs(qKB);
+      const pairsKB = snapshotKB.docs.map(doc => {
+        const data = doc.data();
+        return `Question: ${data.question}\nAnswer: ${data.answer}`;
+      });
+
+      // Fetch from FAQs
+      const qFAQ = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+      const snapshotFAQ = await getDocs(qFAQ);
+      const pairsFAQ = snapshotFAQ.docs.map(doc => {
+        const data = doc.data();
+        return `Category: ${data.category}\nQuestion: ${data.q}\nAnswer: ${data.a}`;
+      });
+
+      const combinedKnowledge = [...pairsKB, ...pairsFAQ].join('\n\n');
+      setKnowledgeBase(combinedKnowledge);
+      const now = Date.now();
+      setLastKBFetch(now);
+      safeLocalStorage.setItem('prac_ai_last_fetch', now.toString());
+      safeLocalStorage.setItem('prac_cached_ai_kb', combinedKnowledge);
+    } catch (error: any) {
+      console.error('Error fetching AI knowledge base:', error);
+      if (error.message?.includes('Quota exceeded') || error.code === 'resource-exhausted') {
+        setKnowledgeBase('Knowledge base temporarily unavailable due to high traffic.');
+      }
+    }
+  };
+
+  const handleOpen = () => {
+    setIsOpen(true);
     fetchKnowledgeBase();
-  }, []);
+  };
 
   const initChat = () => {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
@@ -152,7 +181,7 @@ export const AIAssistant: React.FC = () => {
     <>
       {/* Floating Button */}
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={handleOpen}
         className="fixed bottom-6 left-6 z-[9999] w-14 h-14 bg-[#f27d26] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group"
         aria-label={t('aiAssistant.cta')}
       >

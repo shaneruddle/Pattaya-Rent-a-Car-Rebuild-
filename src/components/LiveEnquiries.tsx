@@ -159,13 +159,20 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
   };
 
   const deleteEnquiry = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this enquiry?')) return;
-    try {
-      await deleteDoc(doc(db, 'bookings', id));
-      toast.success('Enquiry deleted');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'bookings');
-    }
+    toast('Delete this enquiry?', {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await deleteDoc(doc(db, 'bookings', id));
+            toast.success('Enquiry deleted');
+          } catch (error) {
+            handleFirestoreError(error, OperationType.DELETE, 'bookings');
+          }
+        }
+      }
+    });
   };
 
   const copyEmailTemplate = (enquiry: Booking) => {

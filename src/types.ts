@@ -33,7 +33,14 @@ export interface Customer {
   email: string;
   mobileNumber?: string;
   address?: string;
+  addressHotel?: string;
   dob?: string;
+  drivingLicence?: string;
+  bikeLicenceExpiry?: string;
+  carLicenceExpiry?: string;
+  notes?: string;
+  creationDate?: string;
+  uniqueId?: string;
   location?: {
     lat: number;
     lng: number;
@@ -180,4 +187,23 @@ export interface BlogPost {
   publishedAt?: string; // ISO string
   createdAt: string; // ISO string
   updatedAt: string; // ISO string
+}
+
+export interface Review {
+  id: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  date: string; // ISO string
+  source: string; // Google, Website, etc.
+  reply?: string;
+  repliedAt?: string; // ISO string
+  isAutomated?: boolean;
+}
+
+export interface ReviewSettings {
+  id: string;
+  autoReplyEnabled: boolean;
+  autoReplyTemplate: string;
+  minRatingForAutoReply: number;
 }

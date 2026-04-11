@@ -1,10 +1,9 @@
 {
-  "projectId": "gen-lang-client-0665145746",
-  "appId": "1:1006739531410:web:88ad1f95c0933ceec6a84b",
-  "apiKey": "AIzaSyBT6SmEop0pPT200FzG6RjKCh7tZRwtnCQ",
-  "authDomain": "gen-lang-client-0665145746.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-59a5488f-bdb0-4f82-91c1-26c5dc2e731d",
-  "storageBucket": "gen-lang-client-0665145746.firebasestorage.app",
-  "messagingSenderId": "1006739531410",
-  "measurementId": ""
+  "projectId": "pattaya-rent-a-car-rebuild",
+  "appId": "1:700448424476:web:decc171236cf00c14615d9",
+  "apiKey": "AIzaSyApBrBSnN-Tz8G-0hhLbJwyvVkoeMtJ_Ng",
+  "authDomain": "pattaya-rent-a-car-rebuild.firebaseapp.com",
+  "storageBucket": "pattaya-rent-a-car-rebuild.firebasestorage.app",
+  "messagingSenderId": "700448424476",
+  "measurementId": "G-F57N3F3ZT8"
 }

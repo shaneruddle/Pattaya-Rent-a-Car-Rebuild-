@@ -260,8 +260,17 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                         <div className="flex-1 flex items-center gap-4 min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
                             <CarIcon size={14} className="text-brand-orange/60 shrink-0" />
-                            <span className="font-bold text-sm text-[#1A1A1A] truncate">
-                              {car ? `${car.name} (${car.plateNumber})` : <span className="text-brand-orange italic">Unassigned Vehicle</span>}
+                            <span className="font-bold text-sm text-[#1A1A1A] truncate flex items-center gap-2">
+                              {car ? (
+                                <>
+                                  <span>{car.make && car.model ? `${car.make} ${car.model}` : car.name}</span>
+                                  <span className="bg-white border border-[#1A1A1A]/20 px-1.5 py-0.5 rounded text-[8px] font-bold font-mono shadow-sm leading-none">
+                                    {car.plateNumber}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-brand-orange italic">Unassigned Vehicle</span>
+                              )}
                             </span>
                           </div>
                           
@@ -420,8 +429,19 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Vehicle</p>
-                      <p className="font-bold text-[#1A1A1A]">
-                        {cars.find(c => c.id === viewingBooking.carId)?.name || <span className="text-brand-orange italic">Unassigned Vehicle</span>}
+                      <p className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                        {(() => {
+                          const car = cars.find(c => c.id === viewingBooking.carId);
+                          if (!car) return <span className="text-brand-orange italic">Unassigned Vehicle</span>;
+                          return (
+                            <>
+                              <span>{car.make && car.model ? `${car.make} ${car.model}` : car.name}</span>
+                              <span className="bg-white border border-[#1A1A1A]/20 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono shadow-sm">
+                                {car.plateNumber}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </p>
                     </div>
                   </div>

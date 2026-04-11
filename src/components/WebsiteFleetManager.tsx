@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   collection, 
-  onSnapshot, 
+  getDocs, 
   query, 
   orderBy, 
   addDoc, 
@@ -10,7 +10,7 @@ import {
   doc 
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, handleFirestoreError, OperationType, auth, storage, writeBatch, getDocs, logSystemActivity } from '../firebase';
+import { db, handleFirestoreError, OperationType, auth, storage, writeBatch, logSystemActivity } from '../firebase';
 import { WebsiteCar } from '../types';
 import { 
   Plus, 
@@ -40,6 +40,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { SEED_WEBSITE_CARS } from '../seedData';
+import { safeLocalStorage } from '../lib/storage';
 
 export const WebsiteFleetManager: React.FC = () => {
   const [cars, setCars] = useState<WebsiteCar[]>([]);
@@ -50,17 +51,51 @@ export const WebsiteFleetManager: React.FC = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
 
+  const [lastFetch, setLastFetch] = useState(() => {
+    const cached = safeLocalStorage.getItem('prac_website_fleet_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
+
   useEffect(() => {
-    const q = query(collection(db, 'website_cars'), orderBy('displayOrder', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar));
-      setCars(carsData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'website_cars');
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const fetchCars = async () => {
+      // Cache for 15 minutes
+      const CACHE_DURATION = 15 * 60 * 1000;
+      const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
+
+      if (cars.length > 0 && isCacheValid) {
+        setLoading(false);
+        return;
+      }
+
+      if (cars.length === 0 && isCacheValid) {
+        const cached = safeLocalStorage.getItem('prac_cached_website_fleet');
+        if (cached) {
+          try {
+            setCars(JSON.parse(cached));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached website fleet:', e);
+          }
+        }
+      }
+
+      try {
+        const q = query(collection(db, 'website_cars'), orderBy('displayOrder', 'asc'));
+        const snapshot = await getDocs(q);
+        const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar));
+        setCars(carsData);
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_website_fleet_last_fetch', now.toString(), true);
+        safeLocalStorage.setItem('prac_cached_website_fleet', JSON.stringify(carsData), true);
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'website_cars');
+        setLoading(false);
+      }
+    };
+    fetchCars();
   }, []);
 
   const handleSeedData = async () => {

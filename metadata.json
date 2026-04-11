@@ -1,5 +1,7 @@
 {
-  "name": "PRAC Master Scheduler",
+  "name": "Pattaya Rent a Car System Rebuild",
   "description": "Professional car rental management dashboard for Pattaya Rent a Car (PRAC).",
-  "requestFramePermissions": ["camera"]
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

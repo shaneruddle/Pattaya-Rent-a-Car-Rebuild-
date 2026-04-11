@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, orderBy, onSnapshot, where, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { Rental, Car, Customer } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
 import { Calendar, User, Car as CarIcon, Search, Clock, ShieldCheck, Eye, X, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { safeLocalStorage } from '../lib/storage';
 
 interface RentalsProps {
   cars: Car[];
@@ -20,27 +22,86 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
   const [fallbackPhotos, setFallbackPhotos] = useState<string[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
 
+  const [lastFetch, setLastFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_rentals_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
+
   useEffect(() => {
-    const q = query(collection(db, 'rentals'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const rentalsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rental));
-      setRentals(rentalsData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'rentals');
-    });
+    const fetchData = async (force = false) => {
+      const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+      const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
-    // Fetch customers for names
-    const qCust = query(collection(db, 'customers'));
-    const unsubscribeCust = onSnapshot(qCust, (snapshot) => {
-      const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-      setCustomers(customersData);
-    });
+      if (rentals.length === 0 && isCacheValid) {
+        const cachedRentals = safeLocalStorage.getItem('prac_cached_rentals');
+        const cachedCustomers = safeLocalStorage.getItem('prac_cached_rentals_customers');
+        if (cachedRentals && cachedCustomers) {
+          try {
+            setRentals(JSON.parse(cachedRentals));
+            setCustomers(JSON.parse(cachedCustomers));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached rentals data:', e);
+          }
+        }
+      }
 
-    return () => {
-      unsubscribe();
-      unsubscribeCust();
+      try {
+        // Fetch rentals
+        const q = query(collection(db, 'rentals'), orderBy('createdAt', 'desc'));
+        const rentalsSnapshot = await getDocs(q);
+        const rentalsData = rentalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rental));
+        setRentals(rentalsData);
+
+        // Fetch customers
+        const qCust = query(collection(db, 'customers'));
+        const customersSnapshot = await getDocs(qCust);
+        const customersData = customersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        setCustomers(customersData);
+        
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_rentals_last_fetch', now.toString(), true);
+        safeLocalStorage.setItem('prac_cached_rentals', JSON.stringify(rentalsData), true);
+        
+        // Prune customer data for cache
+        const prunedCustomers = customersData.map(c => ({
+          id: c.id,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          email: c.email,
+          mobileNumber: c.mobileNumber
+        }));
+        safeLocalStorage.setItem('prac_cached_rentals_customers', JSON.stringify(prunedCustomers), true);
+
+        setLoading(false);
+      } catch (error: any) {
+        console.error("Rentals: Firestore error:", error);
+        setLoading(false);
+        const errorMessage = error.message || String(error);
+
+        // Fallback to stale cache
+        const cachedRentals = safeLocalStorage.getItem('prac_cached_rentals');
+        const cachedCustomers = safeLocalStorage.getItem('prac_cached_rentals_customers');
+        if (cachedRentals && cachedCustomers) {
+          try {
+            setRentals(JSON.parse(cachedRentals));
+            setCustomers(JSON.parse(cachedCustomers));
+            toast.error("Using cached rentals data.");
+            return;
+          } catch (e) {}
+        }
+
+        if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
+          toast.error("Firestore quota exceeded. Using cached data if available.");
+        } else {
+          handleFirestoreError(error, OperationType.LIST, 'rentals_data');
+        }
+      }
     };
+
+    fetchData();
   }, []);
 
   const fetchFallbackPhotos = async (rentalId: string) => {

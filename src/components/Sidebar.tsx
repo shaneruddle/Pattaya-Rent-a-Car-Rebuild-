@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck, Image as ImageIcon, X, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck, Image as ImageIcon, X, FileText, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage } from '../firebase';
@@ -12,8 +12,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'review_management' | 'migration';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'review_management' | 'migration') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -28,8 +28,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     }
   }, [isMobile]);
 
-  const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'traffic_insights', 'image_management'].includes(currentView);
-  const isMarketingView = ['marketing_faq', 'blog'].includes(currentView);
+  const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'traffic_insights', 'image_management', 'migration'].includes(currentView);
+  const isMarketingView = ['marketing_faq', 'blog', 'review_management'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
@@ -322,6 +322,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <FileText size={14} /> Blog
                             </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('review_management');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'review_management' 
+                                  ? "bg-brand-orange text-white shadow-md" 
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <Zap size={14} /> Reviews
+                            </button>
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -423,6 +437,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                                 )}
                               >
                                 <Shield size={14} /> User Management
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => {
+                                  onViewChange('migration');
+                                  if (isMobile) setIsMobileMenuOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                  currentView === 'migration' 
+                                    ? "bg-brand-orange text-white shadow-md" 
+                                    : "text-[#1A1A1A]/50 hover:bg-white/40"
+                                )}
+                              >
+                                <RefreshCw size={14} /> Database Migration
                               </button>
                             )}
                           </motion.div>
@@ -596,6 +626,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       title="Blog"
                     >
                       <FileText size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onViewChange('review_management')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'review_management' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="Review Management"
+                    >
+                      <Zap size={16} />
                     </button>
                   </motion.div>
                 )}

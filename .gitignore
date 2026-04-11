@@ -1,6 +1,12 @@
 node_modules/
 build/
 dist/
+out/
+.next/
+.cache/
+.parcel-cache/
+.temp/
+temp/
 coverage/
 .DS_Store
 *.log

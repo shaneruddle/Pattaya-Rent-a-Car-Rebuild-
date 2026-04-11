@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { PricingRule, PricingGrid, WebsiteCar } from '../types';
 import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database, CloudDownload, Calendar, Check, Edit3 } from 'lucide-react';
@@ -80,43 +80,37 @@ export const PricingManager: React.FC = () => {
   }, [dragStart, dragEnd, rules]);
 
   useEffect(() => {
-    const qFleet = query(collection(db, 'website_cars'), orderBy('name', 'asc'));
-    const unsubscribeFleet = onSnapshot(qFleet, (snapshot) => {
-      const fleetData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar));
-      setFleetCars(fleetData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'website_cars');
-    });
+    const fetchData = async () => {
+      try {
+        // Fetch Fleet
+        const qFleet = query(collection(db, 'website_cars'), orderBy('name', 'asc'));
+        const fleetSnapshot = await getDocs(qFleet);
+        const fleetData = fleetSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar));
+        setFleetCars(fleetData);
 
-    const unsubscribeRules = onSnapshot(collection(db, 'pricing'), (snapshot) => {
-      const pricingData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-      setRules(pricingData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'pricing');
-    });
+        // Fetch Rules
+        const rulesSnapshot = await getDocs(collection(db, 'pricing'));
+        const pricingData = rulesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
+        setRules(pricingData);
 
-    const unsubscribeGrids = onSnapshot(collection(db, 'pricing_grid'), (snapshot) => {
-      const gridData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingGrid));
-      setGrids(gridData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'pricing_grid');
-      setLoading(false);
-    });
+        // Fetch Grids
+        const gridsSnapshot = await getDocs(collection(db, 'pricing_grid'));
+        const gridData = gridsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingGrid));
+        setGrids(gridData);
+        setLoading(false);
 
-    // Load settings if they exist
-    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'pricing'), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(snapshot.data() as PricingSettings);
+        // Fetch Settings
+        const settingsDoc = await getDoc(doc(db, 'settings', 'pricing'));
+        if (settingsDoc.exists()) {
+          setSettings(settingsDoc.data() as PricingSettings);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'pricing_data');
+        setLoading(false);
       }
-    });
-
-    return () => {
-      unsubscribeFleet();
-      unsubscribeRules();
-      unsubscribeGrids();
-      unsubscribeSettings();
     };
+
+    fetchData();
   }, []);
 
   const handleSync = async () => {

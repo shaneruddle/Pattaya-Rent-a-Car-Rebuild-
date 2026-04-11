@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   collection, 
-  onSnapshot, 
+  getDocs, 
   query, 
   orderBy, 
   addDoc, 
@@ -30,7 +30,8 @@ import {
   Globe,
   Tag,
   User,
-  Calendar
+  Calendar,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -38,6 +39,8 @@ import { cn } from '../lib/utils';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ReactMarkdown from 'react-markdown';
 import { parse, unparse } from 'papaparse';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 export const BlogManager: React.FC = () => {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -50,16 +53,19 @@ export const BlogManager: React.FC = () => {
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'blog_posts'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
-      setPosts(postsData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'blog_posts');
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const fetchPosts = async () => {
+      try {
+        const q = query(collection(db, 'blog_posts'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
+        setPosts(postsData);
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'blog_posts');
+        setLoading(false);
+      }
+    };
+    fetchPosts();
   }, []);
 
   const handleExportCSV = () => {
@@ -237,6 +243,8 @@ export const BlogManager: React.FC = () => {
         await updateDoc(doc(db, 'blog_posts', id), updateData);
         toast.success('Blog post updated');
         
+        setPosts(prev => prev.map(p => p.id === id ? { ...p, ...updateData } : p));
+        
         await logSystemActivity(
           'Update Blog Post',
           `Updated blog post: ${postData.title}`,
@@ -245,8 +253,10 @@ export const BlogManager: React.FC = () => {
         );
       } else {
         const docRef = await addDoc(collection(db, 'blog_posts'), postData);
+        const newPostWithId = { ...postData, id: docRef.id };
         toast.success('Blog post created');
-        setSelectedPost({ ...postData, id: docRef.id });
+        setSelectedPost(newPostWithId);
+        setPosts(prev => [newPostWithId, ...prev]);
         
         await logSystemActivity(
           'Create Blog Post',
@@ -262,22 +272,29 @@ export const BlogManager: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this post?')) return;
-    
-    try {
-      await deleteDoc(doc(db, 'blog_posts', id));
-      toast.success('Blog post deleted');
-      if (selectedPost?.id === id) setSelectedPost(null);
-      
-      await logSystemActivity(
-        'Delete Blog Post',
-        `Deleted blog post ID: ${id}`,
-        'Website',
-        { postId: id }
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `blog_posts/${id}`);
-    }
+    toast('Delete this post?', {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await deleteDoc(doc(db, 'blog_posts', id));
+            toast.success('Blog post deleted');
+            setPosts(prev => prev.filter(p => p.id !== id));
+            if (selectedPost?.id === id) setSelectedPost(null);
+            
+            await logSystemActivity(
+              'Delete Blog Post',
+              `Deleted blog post ID: ${id}`,
+              'Website',
+              { postId: id }
+            );
+          } catch (error) {
+            handleFirestoreError(error, OperationType.DELETE, `blog_posts/${id}`);
+          }
+        }
+      }
+    });
   };
 
   const handlePublish = async (post: BlogPost) => {
@@ -293,6 +310,12 @@ export const BlogManager: React.FC = () => {
       }
 
       await updateDoc(doc(db, 'blog_posts', post.id), updateData);
+      
+      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...updateData } : p));
+      if (selectedPost?.id === post.id) {
+        setSelectedPost(prev => prev ? { ...prev, ...updateData } : null);
+      }
+      
       toast.success(newStatus === 'Published' ? 'Post published!' : 'Post moved to drafts');
       
       await logSystemActivity(
@@ -330,16 +353,36 @@ export const BlogManager: React.FC = () => {
     post.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const publishedCount = posts.filter(p => p.status === 'Published').length;
+  const draftCount = posts.filter(p => p.status === 'Draft').length;
+
   return (
     <div className="flex flex-col h-full bg-warm-bg">
       {/* Header */}
       <div className="p-8 bg-white/60 backdrop-blur-xl border-b border-black/10 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif italic text-[#1A1A1A] flex items-center gap-3">
-            <FileText className="text-brand-orange" size={28} />
-            Blog Manager
-          </h1>
-          <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Create and manage your website content</p>
+        <div className="flex items-center gap-8">
+          <div>
+            <h1 className="text-3xl font-serif italic text-[#1A1A1A] flex items-center gap-3">
+              <FileText className="text-brand-orange" size={28} />
+              Blog Manager
+            </h1>
+            <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Create and manage your website content</p>
+          </div>
+          
+          <div className="flex items-center gap-4 border-l border-black/10 pl-8">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Published</span>
+              <span className="text-xl font-serif italic text-green-600">{publishedCount}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Drafts</span>
+              <span className="text-xl font-serif italic text-gray-400">{draftCount}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Total</span>
+              <span className="text-xl font-serif italic text-[#1A1A1A]">{posts.length}</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -458,18 +501,31 @@ export const BlogManager: React.FC = () => {
                       {isEditing ? 'Cancel' : 'Edit Post'}
                     </button>
                     {!isEditing && (
-                      <button
-                        onClick={() => setPreviewMode(!previewMode)}
-                        className={cn(
-                          "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-                          previewMode 
-                            ? "bg-[#1A1A1A] text-white" 
-                            : "bg-white/80 text-[#1A1A1A] hover:bg-white"
+                      <>
+                        <button
+                          onClick={() => setPreviewMode(!previewMode)}
+                          className={cn(
+                            "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
+                            previewMode 
+                              ? "bg-[#1A1A1A] text-white" 
+                              : "bg-white/80 text-[#1A1A1A] hover:bg-white"
+                          )}
+                        >
+                          <Eye size={14} />
+                          {previewMode ? 'Close Preview' : 'Preview'}
+                        </button>
+                        {selectedPost.status === 'Published' && (
+                          <a
+                            href={`/blog/${selectedPost.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 bg-white/80 text-[#1A1A1A] hover:bg-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-black/5"
+                          >
+                            <ExternalLink size={14} />
+                            View Live
+                          </a>
                         )}
-                      >
-                        <Eye size={14} />
-                        {previewMode ? 'Close Preview' : 'Preview'}
-                      </button>
+                      </>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -578,14 +634,22 @@ export const BlogManager: React.FC = () => {
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Content (Markdown Supported)</label>
-                        <textarea 
-                          required
+                      <div className="quill-editor-container">
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Content</label>
+                        <ReactQuill 
+                          theme="snow"
                           value={selectedPost.content}
-                          onChange={(e) => setSelectedPost({...selectedPost, content: e.target.value})}
-                          className="w-full px-4 py-3 bg-white/40 border border-black/10 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange/20 h-96 font-mono"
+                          onChange={(content) => setSelectedPost({...selectedPost, content})}
                           placeholder="Write your post content here..."
+                          modules={{
+                            toolbar: [
+                              [{ 'header': [1, 2, 3, false] }],
+                              ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                              [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
+                              ['link', 'image'],
+                              ['clean']
+                            ],
+                          }}
                         />
                       </div>
 
@@ -618,9 +682,10 @@ export const BlogManager: React.FC = () => {
                       <span className="flex items-center gap-2"><Calendar size={14} /> {new Date(selectedPost.createdAt).toLocaleDateString()}</span>
                       <span className="flex items-center gap-2"><Tag size={14} /> {selectedPost.category}</span>
                     </div>
-                    <div className="markdown-body">
-                      <ReactMarkdown>{selectedPost.content}</ReactMarkdown>
-                    </div>
+                    <div 
+                      className="blog-content"
+                      dangerouslySetInnerHTML={{ __html: selectedPost.content }}
+                    />
                   </div>
                 ) : (
                   <div className="space-y-8">

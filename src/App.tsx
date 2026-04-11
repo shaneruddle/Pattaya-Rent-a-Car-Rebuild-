@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy, addDoc, doc, setDoc, getDocFromServer } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, limit, where } from 'firebase/firestore';
 import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType } from './firebase';
 import { Car, Booking } from './types';
 import { Sidebar } from './components/Sidebar';
@@ -28,14 +28,18 @@ import { TrafficInsights } from './components/TrafficInsights';
 import { ImageManagement } from './components/ImageManagement';
 import { MarketingFAQ } from './components/MarketingFAQ';
 import { BlogManager } from './components/BlogManager';
+import { ReviewManagement } from './components/ReviewManagement';
+import { MigrationTool } from './components/MigrationTool';
 import { LiveEnquiries } from './components/LiveEnquiries';
+import { AIAssistant } from './components/AIAssistant';
 import { NewRental } from './components/NewRental';
 import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { LogIn, Loader2 } from 'lucide-react';
-import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
+import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
+import { safeLocalStorage } from './lib/storage';
 
 import { BookingEngine } from './components/BookingEngine';
 import { LanguageProvider } from './LanguageContext';
@@ -52,6 +56,7 @@ export default function App() {
           <Helmet>
             <title>Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005</title>
             <meta name="description" content="Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today." />
+            <link rel="icon" type="image/jpeg" href="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=2bca69cd-f667-4ea4-9ff2-5ea04fce3c23" />
             <meta property="og:title" content="Pattaya Rent a Car | Trusted Car Rental in Pattaya" />
             <meta property="og:description" content="Pattaya's most trusted car rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
             <meta property="og:url" content="https://pattayarentacar.com/" />
@@ -74,7 +79,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'review_management' | 'migration'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -95,6 +100,10 @@ function AppContent() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [newBookingTrigger, setNewBookingTrigger] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [lastDataFetch, setLastDataFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
 
   const isStaff = useMemo(() => {
     const email = user?.email?.toLowerCase().trim();
@@ -119,21 +128,6 @@ function AppContent() {
       }
     }
   }, [isMobile, isAdmin, user, isStaff, currentView]);
-
-  useEffect(() => {
-    // Warm up camera permission early to avoid repeated prompts later
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-          // Immediately stop the tracks as we only wanted to trigger the permission prompt
-          stream.getTracks().forEach(track => track.stop());
-          console.log('AppContent: Camera permission warmed up successfully');
-        })
-        .catch(err => {
-          console.warn('AppContent: Camera permission warmup failed or denied:', err);
-        });
-    }
-  }, []);
 
   useEffect(() => {
     console.log('AppContent: Setting up auth listener');
@@ -171,6 +165,116 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
+  const fetchData = React.useCallback(async (force = false) => {
+    // Cache for 10 minutes to save quota
+    const CACHE_DURATION = 10 * 60 * 1000;
+    const isCacheValid = !force && (Date.now() - lastDataFetch < CACHE_DURATION);
+
+    if (cars.length > 0 && isCacheValid) {
+      console.log('AppContent: Using in-memory cached data');
+      return;
+    }
+
+    // Try to load from localStorage if in-memory is empty but cache is still valid
+    if (cars.length === 0 && isCacheValid) {
+      const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
+      const cachedBookings = safeLocalStorage.getItem('prac_cached_bookings');
+      const cachedLogs = safeLocalStorage.getItem('prac_cached_logs');
+
+      if (cachedCars && cachedBookings && cachedLogs) {
+        try {
+          console.log('AppContent: Using localStorage cached data');
+          setCars(JSON.parse(cachedCars));
+          setBookings(JSON.parse(cachedBookings));
+          setLogs(JSON.parse(cachedLogs));
+          return;
+        } catch (e) {
+          console.error('Error parsing cached data:', e);
+        }
+      }
+    }
+
+    try {
+      console.log('AppContent: Fetching fresh data from Firestore...');
+      const carsQuery = query(collection(db, 'cars'), orderBy('order', 'asc'));
+      let carsSnapshot;
+      try {
+        carsSnapshot = await getDocs(carsQuery);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'cars');
+        return;
+      }
+      
+      const carsData = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+      const sortedCars = carsData.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setCars(sortedCars);
+
+      // Limit bookings to last 6 months to save quota
+      const sixMonthsAgo = subMonths(new Date(), 6).toISOString();
+      const bookingsQuery = query(
+        collection(db, 'bookings'), 
+        where('startDate', '>=', sixMonthsAgo),
+        limit(500)
+      );
+      
+      let bookingsSnapshot;
+      try {
+        bookingsSnapshot = await getDocs(bookingsQuery);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'bookings');
+        return;
+      }
+      
+      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      setBookings(bookingsData);
+
+      const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(100));
+      let logsSnapshot;
+      try {
+        logsSnapshot = await getDocs(logsQuery);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'system_logs');
+        return;
+      }
+      
+      const logsData = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
+      setLogs(logsData);
+
+      // Update cache
+      const now = Date.now();
+      setLastDataFetch(now);
+      setLastError(null);
+      safeLocalStorage.setItem('prac_last_fetch', now.toString(), true);
+      safeLocalStorage.setItem('prac_cached_cars', JSON.stringify(sortedCars), true);
+      safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
+      safeLocalStorage.setItem('prac_cached_logs', JSON.stringify(logsData), true);
+    } catch (error: any) {
+      console.error('Error fetching initial data:', error);
+      const errorMessage = error.message || String(error);
+      setLastError(`Data Fetch Error: ${errorMessage}`);
+      
+      // Fallback to stale localStorage if fetch fails
+      const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
+      const cachedBookings = safeLocalStorage.getItem('prac_cached_bookings');
+      const cachedLogs = safeLocalStorage.getItem('prac_cached_logs');
+      
+      if (cachedCars && cachedBookings && cachedLogs) {
+        try {
+          setCars(JSON.parse(cachedCars));
+          setBookings(JSON.parse(cachedBookings));
+          setLogs(JSON.parse(cachedLogs));
+          toast.error("Failed to fetch fresh data. Using cached data.");
+        } catch (e) {
+          console.error('Error parsing stale cache:', e);
+        }
+      }
+
+      if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
+        toast.error("Firestore quota exceeded. Please switch to your own Blaze plan project.");
+      }
+    }
+  }, [lastDataFetch, cars.length]);
+
   useEffect(() => {
     if (!user || !isStaff) {
       console.log('Not attaching listeners: user=', !!user, 'isStaff=', isStaff);
@@ -183,7 +287,7 @@ function AppContent() {
         const userDocRef = doc(db, 'users', user.uid);
         let docSnap;
         try {
-          docSnap = await getDocFromServer(userDocRef);
+          docSnap = await getDoc(userDocRef);
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
           return;
@@ -220,46 +324,8 @@ function AppContent() {
     ensureUserDoc();
 
     console.log('Fetching data for user:', user.email);
-
-    const carsQuery = query(collection(db, 'cars'), orderBy('order', 'asc'));
-    const unsubscribeCars = onSnapshot(carsQuery, (snapshot) => {
-      const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
-      console.log('Fetched cars count:', carsData.length);
-      setCars(carsData.sort((a, b) => (a.order || 0) - (b.order || 0)));
-    }, (error) => {
-      console.error('Error fetching cars:', error);
-      setLastError(`Cars: ${error.message}`);
-      handleFirestoreError(error, OperationType.LIST, 'cars');
-    });
-
-    const bookingsQuery = collection(db, 'bookings');
-    const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
-      const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      console.log('Fetched bookings count:', bookingsData.length);
-      setBookings(bookingsData);
-    }, (error) => {
-      console.error('Error fetching bookings:', error);
-      setLastError(`Bookings: ${error.message}`);
-      handleFirestoreError(error, OperationType.LIST, 'bookings');
-    });
-
-    const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'));
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
-      console.log('Fetched logs count:', logsData.length);
-      setLogs(logsData);
-    }, (error) => {
-      console.error('Error fetching logs:', error);
-      setLastError(`Logs: ${error.message}`);
-      handleFirestoreError(error, OperationType.LIST, 'system_logs');
-    });
-
-    return () => {
-      unsubscribeCars();
-      unsubscribeBookings();
-      unsubscribeLogs();
-    };
-  }, [user, isStaff]);
+    fetchData();
+  }, [user, isStaff, fetchData]);
 
   useEffect(() => {
     if (!user || loading) return;
@@ -562,9 +628,17 @@ function AppContent() {
                 </p>
               )}
               {lastError && (
-                <p className="text-red-500 font-bold mt-1">
-                  ❌ {lastError}
-                </p>
+                <div className="bg-red-50 border border-red-200 p-4 rounded-2xl mb-6 flex items-center justify-between">
+                  <p className="text-red-500 font-bold text-xs">
+                    ❌ {lastError}
+                  </p>
+                  <button 
+                    onClick={() => fetchData(true)}
+                    className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all"
+                  >
+                    Retry Fetch
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -637,12 +711,17 @@ function AppContent() {
             <MarketingFAQ />
           ) : currentView === 'blog' ? (
             <BlogManager />
+          ) : currentView === 'review_management' ? (
+            <ReviewManagement />
+          ) : currentView === 'migration' ? (
+            <MigrationTool onComplete={() => fetchData(true)} />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <BookingEngine onLoginClick={() => {}} />
             </div>
           )}
         </main>
+        <AIAssistant />
         <Toaster position="bottom-right" toastOptions={{
           style: {
             background: 'rgba(255, 255, 255, 0.8)',

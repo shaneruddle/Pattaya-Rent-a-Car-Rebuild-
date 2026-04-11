@@ -44,7 +44,13 @@ export const useBusinessInfo = () => {
             setError('Invalid response format from server');
           }
         } else {
-          setError('Failed to fetch business info');
+          const contentType = response.headers.get("content-type");
+          if (response.status === 403 && contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            setError(data.details || 'Google Maps Billing not enabled');
+          } else {
+            setError('Failed to fetch business info');
+          }
         }
       } catch (err) {
         setError('Error connecting to business info API');

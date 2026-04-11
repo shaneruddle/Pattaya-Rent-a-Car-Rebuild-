@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { translations } from '../translations';
 import { cn } from '../lib/utils';
+import { safeLocalStorage } from '../lib/storage';
 
 interface FAQ {
   id: string;
@@ -24,18 +25,52 @@ export const MarketingFAQ: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({ q: '', a: '', category: 'General', order: 0 });
 
-  useEffect(() => {
-    const q = query(collection(db, 'faqs'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const faqData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FAQ));
-      setFaqs(faqData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'faqs');
-      setLoading(false);
-    });
+  const [lastFetch, setLastFetch] = useState(() => {
+    const cached = safeLocalStorage.getItem('prac_faq_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
 
-    return () => unsubscribe();
+  useEffect(() => {
+    const fetchFaqs = async () => {
+      // Cache for 30 minutes
+      const CACHE_DURATION = 30 * 60 * 1000;
+      const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
+
+      if (faqs.length > 0 && isCacheValid) {
+        setLoading(false);
+        return;
+      }
+
+      if (faqs.length === 0 && isCacheValid) {
+        const cached = safeLocalStorage.getItem('prac_cached_faqs');
+        if (cached) {
+          try {
+            setFaqs(JSON.parse(cached));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached FAQs:', e);
+          }
+        }
+      }
+
+      try {
+        const q = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+        const snapshot = await getDocs(q);
+        const faqData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FAQ));
+        setFaqs(faqData);
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_faq_last_fetch', now.toString());
+        safeLocalStorage.setItem('prac_cached_faqs', JSON.stringify(faqData));
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'faqs');
+        setLoading(false);
+      }
+    };
+
+    fetchFaqs();
   }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -65,38 +100,56 @@ export const MarketingFAQ: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this FAQ?')) return;
-    try {
-      await deleteDoc(doc(db, 'faqs', id));
-      toast.success('FAQ deleted successfully');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `faqs/${id}`);
-    }
+    toast('Delete this FAQ?', {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await deleteDoc(doc(db, 'faqs', id));
+            toast.success('FAQ deleted successfully');
+            setFaqs(prev => prev.filter(f => f.id !== id));
+          } catch (error) {
+            handleFirestoreError(error, OperationType.DELETE, `faqs/${id}`);
+          }
+        }
+      }
+    });
   };
 
   const seedFromTranslations = async () => {
-    if (faqs.length > 0) {
-      if (!window.confirm('This will add FAQs from translations.ts to your current list. Continue?')) return;
-    }
-    
-    try {
-      const batch = writeBatch(db);
-      const items = translations.en.faq.items;
-      
-      items.forEach((item, index) => {
-        const newDocRef = doc(collection(db, 'faqs'));
-        batch.set(newDocRef, {
-          q: item.q,
-          a: item.a,
-          category: item.category || 'General',
-          order: faqs.length + index
+    const doImport = async () => {
+      try {
+        const batch = writeBatch(db);
+        const items = translations.en.faq.items;
+        
+        items.forEach((item, index) => {
+          const newDocRef = doc(collection(db, 'faqs'));
+          batch.set(newDocRef, {
+            q: item.q,
+            a: item.a,
+            category: item.category || 'General',
+            order: faqs.length + index
+          });
         });
+        
+        await batch.commit();
+        toast.success(`Imported ${items.length} FAQs from translations`);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, 'faqs');
+      }
+    };
+
+    if (faqs.length > 0) {
+      toast('Import FAQs?', {
+        description: "This will add FAQs from translations.ts to your current list.",
+        action: {
+          label: "Import",
+          onClick: doImport
+        }
       });
-      
-      await batch.commit();
-      toast.success(`Imported ${items.length} FAQs from translations`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'faqs');
+    } else {
+      doImport();
     }
   };
 

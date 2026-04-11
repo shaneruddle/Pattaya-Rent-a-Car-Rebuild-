@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BlogPost } from '../types';
 import { Search, Calendar, User, ChevronRight, Tag } from 'lucide-react';
@@ -19,19 +19,25 @@ export const BlogList: React.FC<BlogListProps> = ({ onPostClick, isBikeMode }) =
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'blog_posts'),
-      where('status', '==', 'Published'),
-      orderBy('publishedAt', 'desc')
-    );
+    const fetchPosts = async () => {
+      try {
+        const q = query(
+          collection(db, 'blog_posts'),
+          where('status', '==', 'Published'),
+          orderBy('publishedAt', 'desc')
+        );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
-      setPosts(postsData);
-      setLoading(false);
-    });
+        const snapshot = await getDocs(q);
+        const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
+        setPosts(postsData);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching blog posts:', error);
+        setLoading(false);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchPosts();
   }, []);
 
   const categories = ['All', ...Array.from(new Set(posts.map(p => p.category)))];

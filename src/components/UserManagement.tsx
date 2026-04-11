@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
 import { Shield, User as UserIcon, Mail, Clock, Trash2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
@@ -13,17 +13,20 @@ export const UserManagement: React.FC = () => {
   const [updating, setUpdating] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('email', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-      setUsers(usersData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
-      setLoading(false);
-    });
+    const fetchUsers = async () => {
+      try {
+        const q = query(collection(db, 'users'), orderBy('email', 'asc'));
+        const snapshot = await getDocs(q);
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+        setUsers(usersData);
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+        setLoading(false);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchUsers();
   }, []);
 
   const handleRoleChange = async (userId: string, newRole: 'admin' | 'staff') => {
@@ -40,15 +43,22 @@ export const UserManagement: React.FC = () => {
   };
 
   const handleDeleteUser = async (user: UserProfile) => {
-    if (!window.confirm(`Are you sure you want to remove ${user.email}? This will revoke their access.`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'users', user.id));
-      toast.success('User removed');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${user.id}`);
-      toast.error('Failed to remove user');
-    }
+    toast(`Remove ${user.email}?`, {
+      description: "This will revoke their access immediately.",
+      action: {
+        label: "Remove",
+        onClick: async () => {
+          try {
+            await deleteDoc(doc(db, 'users', user.id));
+            toast.success('User removed');
+            setUsers(prev => prev.filter(u => u.id !== user.id));
+          } catch (error) {
+            handleFirestoreError(error, OperationType.DELETE, `users/${user.id}`);
+            toast.error('Failed to remove user');
+          }
+        }
+      }
+    });
   };
 
   const formatLastLogin = (dateString?: string) => {

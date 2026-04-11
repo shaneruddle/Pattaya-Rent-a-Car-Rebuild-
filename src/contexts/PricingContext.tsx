@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { safeLocalStorage } from '../lib/storage';
 
 import { fetchWithRetry } from '../lib/api';
 
-import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { PricingGrid } from '../types';
 
@@ -24,34 +25,84 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [settings, setSettings] = useState<{ useSheetDirectly: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastFetch, setLastFetch] = useState(0);
+  const [lastFetch, setLastFetch] = useState(() => {
+    const cached = safeLocalStorage.getItem('prac_pricing_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
 
-  useEffect(() => {
-    // Listen to DB Pricing Grid
-    const unsubscribeGrids = onSnapshot(collection(db, 'pricing_grid'), (snapshot) => {
+  const fetchDbPricing = useCallback(async () => {
+    // Cache for 10 minutes
+    const CACHE_DURATION = 10 * 60 * 1000;
+    const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
+
+    if (dbPricing && isCacheValid) return;
+
+    if (!dbPricing && isCacheValid) {
+      const cached = safeLocalStorage.getItem('prac_cached_pricing');
+      if (cached) {
+        try {
+          setDbPricing(JSON.parse(cached));
+          return;
+        } catch (e) {
+          console.error('Error parsing cached pricing:', e);
+        }
+      }
+    }
+
+    try {
+      const snapshot = await getDocs(collection(db, 'pricing_grid'));
       const pricingMap: { [carType: string]: PricingGrid } = {};
       snapshot.docs.forEach(doc => {
         pricingMap[doc.id.toLowerCase()] = { id: doc.id, ...doc.data() } as PricingGrid;
       });
       setDbPricing(pricingMap);
-    }, (error) => {
+      const now = Date.now();
+      setLastFetch(now);
+      safeLocalStorage.setItem('prac_pricing_last_fetch', now.toString());
+      safeLocalStorage.setItem('prac_cached_pricing', JSON.stringify(pricingMap));
+    } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'pricing_grid');
-    });
+    }
+  }, [dbPricing, lastFetch]);
 
-    // Listen to Settings
-    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'pricing'), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(snapshot.data() as any);
-      } else {
-        setSettings({ useSheetDirectly: false });
+  const fetchSettings = useCallback(async () => {
+    // Cache for 10 minutes
+    const CACHE_DURATION = 10 * 60 * 1000;
+    const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
+
+    if (settings && isCacheValid) return;
+
+    if (!settings && isCacheValid) {
+      const cached = safeLocalStorage.getItem('prac_cached_pricing_settings');
+      if (cached) {
+        try {
+          setSettings(JSON.parse(cached));
+          return;
+        } catch (e) {
+          console.error('Error parsing cached settings:', e);
+        }
       }
-    });
+    }
 
-    return () => {
-      unsubscribeGrids();
-      unsubscribeSettings();
-    };
-  }, []);
+    try {
+      const snapshot = await getDoc(doc(db, 'settings', 'pricing'));
+      let settingsData: { useSheetDirectly: boolean };
+      if (snapshot.exists()) {
+        settingsData = snapshot.data() as any;
+      } else {
+        settingsData = { useSheetDirectly: false };
+      }
+      setSettings(settingsData);
+      safeLocalStorage.setItem('prac_cached_pricing_settings', JSON.stringify(settingsData));
+    } catch (error) {
+      console.error('Error fetching pricing settings:', error);
+    }
+  }, [settings, lastFetch]);
+
+  useEffect(() => {
+    fetchDbPricing();
+    fetchSettings();
+  }, [fetchDbPricing, fetchSettings]);
 
   const fetchPricing = useCallback(async (force = false) => {
     // Avoid fetching sheet too often if not needed

@@ -7,6 +7,7 @@ import { db, OperationType, handleFirestoreError, logSystemActivity } from '../f
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { safeLocalStorage } from '../lib/storage';
 import { DayPicker, DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import { LocationPicker } from './LocationPicker';
@@ -53,11 +54,59 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const [lastFetch, setLastFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_timeline_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
+
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-    });
-    return () => unsubscribe();
+    const fetchCustomers = async (force = false) => {
+      const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+      const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
+
+      if (customers.length === 0 && isCacheValid) {
+        const cached = safeLocalStorage.getItem('prac_cached_timeline_customers');
+        if (cached) {
+          try {
+            setCustomers(JSON.parse(cached));
+            return;
+          } catch (e) {
+            console.error('Error parsing cached timeline customers:', e);
+          }
+        }
+      }
+
+      try {
+        const snapshot = await getDocs(collection(db, 'customers'));
+        const customerData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        setCustomers(customerData);
+        
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_timeline_last_fetch', now.toString(), true);
+        
+        // Prune customer data for cache to save space
+        const prunedCustomers = customerData.map(c => ({
+          id: c.id,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          email: c.email,
+          mobileNumber: c.mobileNumber
+        }));
+        safeLocalStorage.setItem('prac_cached_timeline_customers', JSON.stringify(prunedCustomers), true);
+      } catch (error: any) {
+        console.error('Error fetching customers for timeline:', error);
+        
+        // Fallback to stale cache
+        const cached = safeLocalStorage.getItem('prac_cached_timeline_customers');
+        if (cached) {
+          try {
+            setCustomers(JSON.parse(cached));
+          } catch (e) {}
+        }
+      }
+    };
+    fetchCustomers();
   }, []);
 
   const filteredCustomers = useMemo(() => {
@@ -513,8 +562,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                   <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
                     <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
                     <Icon size={10} className={cn("shrink-0", typeStyles.color)} />
-                    <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">{car.name}</span>
-                    <span className="text-[8px] text-[#1A1A1A]/60 font-mono leading-tight">{car.plateNumber}</span>
+                    <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">
+                      {car.make && car.model ? `${car.make} ${car.model}` : car.name}
+                    </span>
+                    <span className="text-[8px] bg-white border border-[#1A1A1A]/20 px-1 rounded shadow-sm text-[#1A1A1A] font-mono leading-tight font-bold">
+                      {car.plateNumber}
+                    </span>
                   </div>
                   <div className="flex relative">
                     {daysInMonth.map(day => (
@@ -680,9 +733,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1 ml-1">
                     {formData.carId ? (
-                      <>
-                        {cars.find(c => c.id === formData.carId)?.name} • {cars.find(c => c.id === formData.carId)?.plateNumber}
-                      </>
+                      (() => {
+                        const car = cars.find(c => c.id === formData.carId);
+                        if (!car) return <span className="text-brand-orange">Unassigned Vehicle</span>;
+                        return (
+                          <span className="flex items-center gap-2">
+                            <span>{car.make && car.model ? `${car.make} ${car.model}` : car.name}</span>
+                            <span className="bg-white border border-[#1A1A1A]/20 px-1.5 py-0.5 rounded text-[8px] font-bold font-mono shadow-sm">
+                              {car.plateNumber}
+                            </span>
+                          </span>
+                        );
+                      })()
                     ) : (
                       <span className="text-brand-orange">Unassigned Vehicle</span>
                     )}
@@ -1000,7 +1062,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                             <option value="">Unassigned</option>
                             {cars.map(car => (
                               <option key={car.id} value={car.id}>
-                                {car.name} • {car.plateNumber}
+                                {car.make && car.model ? `${car.make} ${car.model}` : car.name} • {car.plateNumber}
                               </option>
                             ))}
                           </select>

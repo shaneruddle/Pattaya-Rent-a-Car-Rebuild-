@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import Papa from 'papaparse';
+import { LocationPicker } from './LocationPicker';
 import { 
   Users, 
   Search, 
@@ -20,11 +21,13 @@ import {
   Loader2, 
   ChevronRight,
   ExternalLink,
-  User
+  User,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { safeLocalStorage } from '../lib/storage';
 
 export const CRM: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -35,25 +38,102 @@ export const CRM: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [formLocation, setFormLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const safeFormat = (dateValue: any, formatStr: string, fallback: string = 'N/A') => {
+    if (!dateValue) return fallback;
+    try {
+      let date: Date;
+      if (typeof dateValue === 'string') {
+        date = parseISO(dateValue);
+      } else if (dateValue && typeof dateValue.toDate === 'function') {
+        date = dateValue.toDate();
+      } else if (dateValue instanceof Date) {
+        date = dateValue;
+      } else {
+        date = new Date(dateValue);
+      }
+      
+      if (!isValid(date)) return fallback;
+      return format(date, formatStr);
+    } catch (e) {
+      return fallback;
+    }
+  };
+
+  const safeFormatForInput = (dateValue: any) => {
+    const formatted = safeFormat(dateValue, "yyyy-MM-dd'T'HH:mm", '');
+    return formatted || format(new Date(), "yyyy-MM-dd'T'HH:mm");
+  };
+
+  const [lastFetch, setLastFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_crm_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
 
   useEffect(() => {
-    const q = query(collection(db, 'customers'), orderBy('firstName', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const customerData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-      setCustomers(customerData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'customers');
-    });
+    const fetchData = async (force = false) => {
+      const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+      const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
-    const carsUnsubscribe = onSnapshot(collection(db, 'cars'), (snapshot) => {
-      setCars(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car)));
-    });
+      if (customers.length === 0 && isCacheValid) {
+        const cachedCustomers = safeLocalStorage.getItem('prac_cached_customers');
+        const cachedCars = safeLocalStorage.getItem('prac_cached_crm_cars');
+        if (cachedCustomers && cachedCars) {
+          try {
+            setCustomers(JSON.parse(cachedCustomers));
+            setCars(JSON.parse(cachedCars));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached CRM data:', e);
+          }
+        }
+      }
 
-    return () => {
-      unsubscribe();
-      carsUnsubscribe();
+      try {
+        const q = query(collection(db, 'customers'), orderBy('firstName', 'asc'));
+        const snapshot = await getDocs(q);
+        const customerData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        setCustomers(customerData);
+        
+        const carsSnapshot = await getDocs(collection(db, 'cars'));
+        const carsData = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+        setCars(carsData);
+        
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_crm_last_fetch', now.toString(), true);
+        safeLocalStorage.setItem('prac_cached_customers', JSON.stringify(customerData), true);
+        safeLocalStorage.setItem('prac_cached_crm_cars', JSON.stringify(carsData), true);
+
+        setLoading(false);
+      } catch (error: any) {
+        console.error("CRM: Firestore error:", error);
+        setLoading(false);
+        const errorMessage = error.message || String(error);
+
+        // Fallback to stale cache
+        const cachedCustomers = safeLocalStorage.getItem('prac_cached_customers');
+        const cachedCars = safeLocalStorage.getItem('prac_cached_crm_cars');
+        if (cachedCustomers && cachedCars) {
+          try {
+            setCustomers(JSON.parse(cachedCustomers));
+            setCars(JSON.parse(cachedCars));
+            toast.error("Using cached CRM data.");
+            return;
+          } catch (e) {}
+        }
+
+        if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
+          toast.error("Firestore quota exceeded. Using cached data if available.");
+        } else {
+          handleFirestoreError(error, OperationType.LIST, 'customers');
+        }
+      }
     };
+
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -62,23 +142,63 @@ export const CRM: React.FC = () => {
       return;
     }
 
-    const q = query(
-      collection(db, 'bookings'),
-      where('email', '==', selectedCustomer.email)
-    );
+    const fetchHistory = async () => {
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('email', '==', selectedCustomer.email)
+        );
+        const snapshot = await getDocs(q);
+        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+        setCustomerHistory(history.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+      } catch (error) {
+        console.error("Error fetching customer history:", error);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      // Sort client-side because we might not have a composite index for email + date yet
-      setCustomerHistory(history.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
-    }, (error) => {
-      console.error("Error fetching customer history:", error);
-    });
-
-    return () => unsubscribe();
+    fetchHistory();
   }, [selectedCustomer]);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportCSV = () => {
+    if (customers.length === 0) {
+      toast.error('No customers to export');
+      return;
+    }
+
+    const exportData = customers.map(c => ({
+      'Unique ID': c.uniqueId || '',
+      'First Name': c.firstName,
+      'Surname': c.lastName || '',
+      'Email': c.email,
+      'Mobile Number': c.mobileNumber || '',
+      'Date of Birth': c.dob || '',
+      'Address': c.address || '',
+      'Address / Hotel': c.addressHotel || '',
+      'Driving Licence': c.drivingLicence || '',
+      'Bike Licence Expiry': c.bikeLicenceExpiry || '',
+      'Car Licence Expiry': c.carLicenceExpiry || '',
+      'Notes': c.notes || '',
+      'Creation Date': c.creationDate || '',
+      'Latitude': c.location?.lat || '',
+      'Longitude': c.location?.lng || '',
+      'Location Address': c.location?.address || ''
+    }));
+
+    const csv = Papa.unparse(exportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `crm_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success("CRM data exported successfully");
+  };
 
   const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -92,67 +212,110 @@ export const CRM: React.FC = () => {
         const data = results.data as any[];
         
         // Map common CSV headers to our Customer type
-        const validData = data.map(item => {
-          const email = item.email || item.email_address;
-          const firstName = item.first_name || item.name?.split(' ')[0] || item.firstname;
-          if (!email || !firstName) return null;
+        const seenEmails = new Set<string>();
+        const existingEmails = new Set(customers.map(c => c.email.toLowerCase()));
+        let skippedDuplicates = 0;
+        let skippedInvalid = 0;
 
-          // Check if already exists
-          if (customers.some(c => c.email.toLowerCase() === email.toLowerCase())) return null;
+        const validData = data.map(item => {
+          // Normalize keys to find values regardless of exact header name
+          const getVal = (keys: string[]) => {
+            for (const k of keys) {
+              const normalizedK = k.toLowerCase().replace(/\s+/g, '_');
+              if (item[normalizedK] !== undefined) return item[normalizedK];
+            }
+            return null;
+          };
+
+          const email = getVal(['email', 'email_address', 'e-mail', 'mail', 'customer_email']);
+          const firstName = getVal(['first_name', 'name', 'firstname', 'first', 'given_name']);
+          
+          if (!email || !firstName) {
+            skippedInvalid++;
+            return null;
+          }
+
+          const lowerEmail = email.toLowerCase().trim();
+
+          // Check for duplicates in database OR within the CSV itself
+          if (existingEmails.has(lowerEmail) || seenEmails.has(lowerEmail)) {
+            skippedDuplicates++;
+            return null;
+          }
+
+          seenEmails.add(lowerEmail);
 
           return {
             firstName,
-            lastName: item.last_name || item.name?.split(' ').slice(1).join(' ') || item.lastname || '',
-            email,
-            mobileNumber: item.mobile_number || item.phone || item.mobile || '',
-            address: item.address || '',
-            dob: item.dob || item.date_of_birth || '',
+            lastName: getVal(['surname', 'last_name', 'lastname', 'last', 'family_name']) || '',
+            email: lowerEmail,
+            mobileNumber: getVal(['mobile_number', 'phone', 'mobile', 'tel', 'telephone']) || '',
+            address: getVal(['address', 'permanent_address']) || '',
+            addressHotel: getVal(['address_/_hotel', 'address_hotel', 'hotel', 'staying_at']) || '',
+            dob: getVal(['date_of_birth', 'dob', 'birth_date']) || '',
+            drivingLicence: getVal(['driving_licence', 'licence', 'license', 'dl']) || '',
+            bikeLicenceExpiry: getVal(['bike_licence_expiry', 'bike_expiry']) || '',
+            carLicenceExpiry: getVal(['car_licence_expiry', 'car_expiry']) || '',
+            notes: getVal(['notes', 'comments', 'remarks']) || '',
+            creationDate: getVal(['creation_date', 'created_at', 'date']) || new Date().toISOString(),
+            uniqueId: getVal(['unique_id', 'id', 'customer_id']) || '',
             location: {
-              lat: parseFloat(item.lat || item.latitude) || 0,
-              lng: parseFloat(item.lng || item.longitude) || 0,
-              address: item.location_address || item.location_label || ''
+              lat: parseFloat(getVal(['lat', 'latitude']) || '0') || 0,
+              lng: parseFloat(getVal(['lng', 'longitude']) || '0') || 0,
+              address: getVal(['location_address', 'location_label', 'location']) || ''
             }
           };
         }).filter(item => item !== null);
 
+        console.log(`Import Summary: ${validData.length} valid, ${skippedDuplicates} duplicates, ${skippedInvalid} invalid rows.`);
+
         if (validData.length === 0) {
-          toast.error('No new valid customers found in CSV. Ensure headers like "email" and "first_name" are present.');
+          toast.error(`No new customers to import. (${skippedDuplicates} duplicates skipped, ${skippedInvalid} invalid rows)`);
           return;
         }
 
         toast.promise(async () => {
+          const { writeBatch, db } = await import('../firebase');
+          const { collection, doc, serverTimestamp } = await import('firebase/firestore');
+          
           const chunks = [];
           for (let i = 0; i < validData.length; i += 500) {
             chunks.push(validData.slice(i, i + 500));
           }
 
-          const { fetchWithRetry } = await import('../lib/api');
-          
-          for (const chunk of chunks) {
-            const response = await fetchWithRetry('/api/crm/import-csv', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ data: chunk })
+          let totalImported = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            console.log(`Importing chunk ${i + 1}/${chunks.length} (${chunk.length} customers)...`);
+            const batch = writeBatch(db);
+            const customersRef = collection(db, 'customers');
+            
+            chunk.forEach(customer => {
+              const newDocRef = doc(customersRef);
+              batch.set(newDocRef, {
+                ...customer,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
             });
             
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.details || error.error || 'Failed to import chunk');
-            }
+            await batch.commit();
+            totalImported += chunk.length;
+            console.log(`Successfully committed chunk ${i + 1}. Total imported: ${totalImported}`);
           }
           
           await logSystemActivity(
             'CSV Import',
-            `Imported ${validData.length} customers via CSV`,
+            `Imported ${totalImported} customers via CSV`,
             'CRM',
-            { count: validData.length }
+            { count: totalImported }
           );
 
-          return validData.length;
+          return totalImported;
         }, {
           loading: 'Importing customers...',
           success: (count) => `Successfully imported ${count} customers!`,
-          error: 'Failed to import customers'
+          error: (err) => `Failed to import customers: ${err.message}`
         });
 
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -174,10 +337,17 @@ export const CRM: React.FC = () => {
       email: formData.get('email') as string,
       mobileNumber: formData.get('mobileNumber') as string,
       address: formData.get('address') as string,
+      addressHotel: formData.get('addressHotel') as string,
       dob: formData.get('dob') as string,
+      drivingLicence: formData.get('drivingLicence') as string,
+      bikeLicenceExpiry: formData.get('bikeLicenceExpiry') as string,
+      carLicenceExpiry: formData.get('carLicenceExpiry') as string,
+      notes: formData.get('notes') as string,
+      creationDate: formData.get('creationDate') as string || (isAdding ? new Date().toISOString() : selectedCustomer?.creationDate),
+      uniqueId: formData.get('uniqueId') as string,
       location: {
-        lat: parseFloat(formData.get('lat') as string) || 0,
-        lng: parseFloat(formData.get('lng') as string) || 0,
+        lat: formLocation?.lat || 0,
+        lng: formLocation?.lng || 0,
         address: formData.get('locationAddress') as string
       }
     };
@@ -260,7 +430,11 @@ export const CRM: React.FC = () => {
       <div className="p-8 border-b border-white/20 bg-white/40 backdrop-blur-xl flex items-center justify-between">
         <div>
           <h1 className="font-serif italic text-4xl text-[#141414]">CRM</h1>
-          <p className="text-[#141414]/60 uppercase tracking-widest text-[10px] mt-1">Customer Relationship Management</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-[#141414]/60 uppercase tracking-widest text-[10px]">Customer Relationship Management</p>
+            <span className="w-1 h-1 rounded-full bg-[#141414]/20" />
+            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{customers.length} Total Customers</p>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -281,6 +455,12 @@ export const CRM: React.FC = () => {
             className="hidden"
           />
           <button 
+            onClick={handleExportCSV}
+            className="bg-white/40 backdrop-blur-md border border-white/60 text-[#141414] px-6 py-2.5 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm"
+          >
+            <Download size={16} /> Export CSV
+          </button>
+          <button 
             onClick={() => fileInputRef.current?.click()}
             className="bg-white/40 backdrop-blur-md border border-white/60 text-[#141414] px-6 py-2.5 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-white/60 transition-all shadow-sm"
           >
@@ -290,6 +470,7 @@ export const CRM: React.FC = () => {
             onClick={() => {
               setIsAdding(true);
               setSelectedCustomer(null);
+              setFormLocation({ lat: 12.914909448882886, lng: 100.86727314994509 }); // Default to office
             }}
             className="bg-brand-orange text-white px-6 py-2.5 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-orange/20"
           >
@@ -309,6 +490,7 @@ export const CRM: React.FC = () => {
                   setSelectedCustomer(customer);
                   setIsEditing(false);
                   setIsAdding(false);
+                  setFormLocation(customer.location || null);
                 }}
                 className={cn(
                   "w-full p-5 text-left border-b border-white/5 transition-all hover:bg-white/40",
@@ -320,7 +502,7 @@ export const CRM: React.FC = () => {
                     <User size={22} className="text-brand-orange" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-[#141414] truncate">{customer.firstName} {customer.lastName}</p>
+                    <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
                     <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
                   </div>
                   <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
@@ -367,11 +549,22 @@ export const CRM: React.FC = () => {
                   <form onSubmit={handleSaveCustomer} className="space-y-8">
                     <div className="grid grid-cols-2 gap-8">
                       <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Unique ID</label>
+                        <input name="uniqueId" defaultValue={selectedCustomer?.uniqueId} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" placeholder="e.g. CUST-001" />
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Creation Date</label>
+                        <input name="creationDate" type="datetime-local" defaultValue={safeFormatForInput(selectedCustomer?.creationDate)} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-2.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">First Name *</label>
                         <input name="firstName" defaultValue={selectedCustomer?.firstName} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" required />
                       </div>
                       <div className="space-y-2.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Last Name</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Surname</label>
                         <input name="lastName" defaultValue={selectedCustomer?.lastName} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
                       </div>
                     </div>
@@ -392,9 +585,37 @@ export const CRM: React.FC = () => {
                       <input name="dob" type="date" defaultValue={selectedCustomer?.dob} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
                     </div>
 
-                    <div className="space-y-2.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Address</label>
-                      <textarea name="address" defaultValue={selectedCustomer?.address} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold min-h-[100px] resize-none transition-all" />
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Address</label>
+                        <textarea name="address" defaultValue={selectedCustomer?.address} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold min-h-[80px] resize-none transition-all" />
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Address / Hotel</label>
+                        <textarea name="addressHotel" defaultValue={selectedCustomer?.addressHotel} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold min-h-[80px] resize-none transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Driving Licence</label>
+                        <input name="drivingLicence" defaultValue={selectedCustomer?.drivingLicence} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Notes</label>
+                        <input name="notes" defaultValue={selectedCustomer?.notes} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Bike Licence Expiry</label>
+                        <input name="bikeLicenceExpiry" type="date" defaultValue={selectedCustomer?.bikeLicenceExpiry} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Car Licence Expiry</label>
+                        <input name="carLicenceExpiry" type="date" defaultValue={selectedCustomer?.carLicenceExpiry} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                      </div>
                     </div>
 
                     <div className="space-y-6 pt-6 border-t border-white/20">
@@ -402,14 +623,37 @@ export const CRM: React.FC = () => {
                         <MapPin size={16} className="text-brand-orange" />
                         <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60">Home Location (Coordinates)</p>
                       </div>
+
+                      <div className="bg-white/40 rounded-3xl overflow-hidden border border-white/60 shadow-inner">
+                        <LocationPicker 
+                          location={formLocation || undefined} 
+                          onChange={(loc) => setFormLocation(loc)}
+                          height="300px"
+                        />
+                      </div>
+
                       <div className="grid grid-cols-2 gap-8">
                         <div className="space-y-2.5">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Latitude</label>
-                          <input name="lat" type="number" step="any" defaultValue={selectedCustomer?.location?.lat} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                          <input 
+                            name="lat" 
+                            type="number" 
+                            step="any" 
+                            value={formLocation?.lat || ''} 
+                            onChange={(e) => setFormLocation(prev => ({ ...prev!, lat: parseFloat(e.target.value) || 0 }))}
+                            className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" 
+                          />
                         </div>
                         <div className="space-y-2.5">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Longitude</label>
-                          <input name="lng" type="number" step="any" defaultValue={selectedCustomer?.location?.lng} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                          <input 
+                            name="lng" 
+                            type="number" 
+                            step="any" 
+                            value={formLocation?.lng || ''} 
+                            onChange={(e) => setFormLocation(prev => ({ ...prev!, lng: parseFloat(e.target.value) || 0 }))}
+                            className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" 
+                          />
                         </div>
                       </div>
                       <div className="space-y-2.5">
@@ -439,19 +683,26 @@ export const CRM: React.FC = () => {
                   <div className="flex justify-between items-start mb-12 relative">
                     <div className="flex items-center gap-8">
                       <div className="w-24 h-24 rounded-[32px] bg-brand-orange text-white flex items-center justify-center text-4xl font-serif italic shadow-2xl shadow-brand-orange/30">
-                        {selectedCustomer.firstName[0]}{selectedCustomer.lastName?.[0] || ''}
+                        {selectedCustomer.firstName[0].toUpperCase()}{selectedCustomer.lastName?.[0]?.toUpperCase() || ''}
                       </div>
                       <div>
-                        <h2 className="text-5xl font-bold text-[#141414] tracking-tight">{selectedCustomer.firstName} {selectedCustomer.lastName}</h2>
+                        <h2 className="text-5xl font-bold text-[#141414] tracking-tight">{(selectedCustomer.firstName + ' ' + (selectedCustomer.lastName || '')).toUpperCase()}</h2>
                         <div className="flex items-center gap-3 mt-2">
-                          <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[10px] font-bold uppercase tracking-widest rounded-full">Active Customer</span>
-                          <p className="text-[#141414]/40 uppercase tracking-widest text-[10px]">Since {format(parseISO(new Date().toISOString()), 'yyyy')}</p>
+                          <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[10px] font-bold uppercase tracking-widest rounded-full">
+                            {selectedCustomer.uniqueId || 'Active Customer'}
+                          </span>
+                          <p className="text-[#141414]/40 uppercase tracking-widest text-[10px]">
+                            Since {safeFormat(selectedCustomer.creationDate, 'dd MMM yyyy', format(new Date(), 'yyyy'))}
+                          </p>
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <button 
-                        onClick={() => setIsEditing(true)}
+                        onClick={() => {
+                          setIsEditing(true);
+                          setFormLocation(selectedCustomer.location || null);
+                        }}
                         className="p-4 bg-white/40 hover:bg-white/80 text-[#141414] rounded-2xl border border-white/60 shadow-sm transition-all hover:scale-110"
                       >
                         <Edit2 size={22} />
@@ -491,7 +742,20 @@ export const CRM: React.FC = () => {
                             <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center border border-white/60 group-hover:bg-brand-orange/10 transition-colors">
                               <Cake size={18} className="text-brand-orange" />
                             </div>
-                            <p className="font-bold text-sm text-[#141414]">{selectedCustomer.dob ? format(parseISO(selectedCustomer.dob), 'dd MMM yyyy') : 'No DOB'}</p>
+                            <p className="font-bold text-sm text-[#141414]">{safeFormat(selectedCustomer.dob, 'dd MMM yyyy', 'No DOB')}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-brand-orange uppercase tracking-widest">Licence & Notes</p>
+                        <div className="space-y-2 pt-2">
+                          <p className="text-xs font-bold text-[#141414]"><span className="text-[#141414]/40 uppercase tracking-widest text-[9px] mr-2">Driving Licence:</span> {selectedCustomer.drivingLicence || 'N/A'}</p>
+                          <p className="text-xs font-bold text-[#141414]"><span className="text-[#141414]/40 uppercase tracking-widest text-[9px] mr-2">Bike Expiry:</span> {selectedCustomer.bikeLicenceExpiry || 'N/A'}</p>
+                          <p className="text-xs font-bold text-[#141414]"><span className="text-[#141414]/40 uppercase tracking-widest text-[9px] mr-2">Car Expiry:</span> {selectedCustomer.carLicenceExpiry || 'N/A'}</p>
+                          <div className="mt-4 p-3 bg-white/40 rounded-xl border border-white/60">
+                            <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mb-1">Notes</p>
+                            <p className="text-xs text-[#141414]/60 italic leading-relaxed">{selectedCustomer.notes || 'No notes'}</p>
                           </div>
                         </div>
                       </div>
@@ -499,13 +763,27 @@ export const CRM: React.FC = () => {
 
                     <div className="md:col-span-2 space-y-8">
                       <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-brand-orange uppercase tracking-widest">Address & Location</p>
+                        <p className="text-[10px] font-bold text-brand-orange uppercase tracking-widest">Address & Hotel</p>
                         <div className="space-y-6 pt-2">
-                          <div className="flex items-start gap-4 group">
-                            <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center border border-white/60 group-hover:bg-brand-orange/10 transition-colors shrink-0">
-                              <MapPin size={18} className="text-brand-orange" />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="flex items-start gap-4 group">
+                              <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center border border-white/60 group-hover:bg-brand-orange/10 transition-colors shrink-0">
+                                <MapPin size={18} className="text-brand-orange" />
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-bold text-[#141414]/40 uppercase tracking-widest mb-1">Permanent Address</p>
+                                <p className="font-bold text-sm text-[#141414] leading-relaxed">{selectedCustomer.address || 'No address provided'}</p>
+                              </div>
                             </div>
-                            <p className="font-bold text-sm text-[#141414] leading-relaxed pt-2">{selectedCustomer.address || 'No address provided'}</p>
+                            <div className="flex items-start gap-4 group">
+                              <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center border border-white/60 group-hover:bg-brand-orange/10 transition-colors shrink-0">
+                                <MapPin size={18} className="text-brand-orange" />
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-bold text-[#141414]/40 uppercase tracking-widest mb-1">Address / Hotel</p>
+                                <p className="font-bold text-sm text-[#141414] leading-relaxed">{selectedCustomer.addressHotel || 'No hotel provided'}</p>
+                              </div>
+                            </div>
                           </div>
                           {selectedCustomer.location?.lat && selectedCustomer.location?.lng && (
                             <div className="pl-14">
@@ -572,7 +850,7 @@ export const CRM: React.FC = () => {
                                   <div className="flex items-center gap-6 mt-4">
                                     <div className="flex items-center gap-2.5 text-xs font-bold text-[#141414]/60 bg-white/40 px-3 py-1.5 rounded-xl border border-white/60">
                                       <History size={14} className="text-brand-orange" />
-                                      {format(parseISO(booking.startDate), 'dd MMM')} - {format(parseISO(booking.endDate), 'dd MMM yyyy')}
+                                      {safeFormat(booking.startDate, 'dd MMM')} - {safeFormat(booking.endDate, 'dd MMM yyyy')}
                                     </div>
                                   </div>
                                 </div>

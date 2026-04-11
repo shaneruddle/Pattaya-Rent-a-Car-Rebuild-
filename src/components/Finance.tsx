@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, Timestamp, where, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, doc, deleteDoc, Timestamp, where, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { Transaction, Account, Car, Booking } from '../types';
 import { format, startOfDay, endOfDay, isSameDay, parseISO, isWithinInterval } from 'date-fns';
+import * as Papa from 'papaparse';
 import { 
   Plus, 
   ArrowUpRight, 
@@ -19,11 +20,14 @@ import {
   Trash2,
   Edit2,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Download,
+  Upload
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { safeLocalStorage } from '../lib/storage';
 
 interface FinanceProps {
   cars: Car[];
@@ -85,7 +89,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     if (!showModal && successAction) {
       // Use a small delay to ensure the modal animation has finished
       const timer = setTimeout(() => {
-        window.alert(successAction);
+        toast.success(successAction);
         setSuccessAction(null);
       }, 300);
       return () => clearTimeout(timer);
@@ -109,43 +113,92 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     }
   }, [preFill, accounts]);
 
+  const [lastFetch, setLastFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_finance_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
+
   useEffect(() => {
-    const unsubscribeAccounts = onSnapshot(collection(db, 'accounts'), (snapshot) => {
-      const accountsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-      setAccounts(accountsData);
-      
-      // Initialize accounts if they don't exist
-      if (accountsData.length === 0) {
-        const initialAccounts = [
-          "Kasikorn company bank",
-          "Kasikorn personal bank",
-          "Cash",
-          "Krungthai bank"
-        ];
-        initialAccounts.forEach(name => {
-          addDoc(collection(db, 'accounts'), { name, balance: 0 }).catch(error => {
-            handleFirestoreError(error, OperationType.CREATE, 'accounts');
-          });
-        });
+    const fetchData = async (force = false) => {
+      const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+      const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
+
+      if (accounts.length === 0 && isCacheValid) {
+        const cachedAccounts = safeLocalStorage.getItem('prac_cached_accounts');
+        const cachedTransactions = safeLocalStorage.getItem('prac_cached_transactions');
+        if (cachedAccounts && cachedTransactions) {
+          try {
+            setAccounts(JSON.parse(cachedAccounts));
+            setTransactions(JSON.parse(cachedTransactions));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached finance data:', e);
+          }
+        }
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'accounts');
-    });
 
-    const transactionsQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
-    const unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setTransactions(transactionsData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'transactions');
-      setLoading(false);
-    });
+      try {
+        // Fetch Accounts
+        const accountsSnapshot = await getDocs(collection(db, 'accounts'));
+        let accountsData = accountsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
+        
+        // Initialize accounts if they don't exist
+        if (accountsData.length === 0) {
+          const initialAccounts = [
+            "Kasikorn company bank",
+            "Kasikorn personal bank",
+            "Cash",
+            "Krungthai bank"
+          ];
+          const newAccounts = [];
+          for (const name of initialAccounts) {
+            const docRef = await addDoc(collection(db, 'accounts'), { name, balance: 0 });
+            newAccounts.push({ id: docRef.id, name, balance: 0 } as Account);
+          }
+          accountsData = newAccounts;
+        }
+        setAccounts(accountsData);
 
-    return () => {
-      unsubscribeAccounts();
-      unsubscribeTransactions();
+        // Fetch Transactions
+        const transactionsQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        const transactionsData = transactionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+        setTransactions(transactionsData);
+        
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_finance_last_fetch', now.toString(), true);
+        safeLocalStorage.setItem('prac_cached_accounts', JSON.stringify(accountsData), true);
+        safeLocalStorage.setItem('prac_cached_transactions', JSON.stringify(transactionsData), true);
+
+        setLoading(false);
+      } catch (error: any) {
+        console.error("Finance: Firestore error:", error);
+        setLoading(false);
+        const errorMessage = error.message || String(error);
+
+        // Fallback to stale cache
+        const cachedAccounts = safeLocalStorage.getItem('prac_cached_accounts');
+        const cachedTransactions = safeLocalStorage.getItem('prac_cached_transactions');
+        if (cachedAccounts && cachedTransactions) {
+          try {
+            setAccounts(JSON.parse(cachedAccounts));
+            setTransactions(JSON.parse(cachedTransactions));
+            toast.error("Using cached finance data.");
+            return;
+          } catch (e) {}
+        }
+
+        if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
+          toast.error("Firestore quota exceeded. Using cached data if available.");
+        } else {
+          handleFirestoreError(error, OperationType.LIST, 'finance_data');
+        }
+      }
     };
+
+    fetchData();
   }, []);
 
   const handleTransactionSubmit = async (e: React.FormEvent) => {
@@ -434,6 +487,133 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
 
   const totalBalance = useMemo(() => accounts.reduce((sum, acc) => sum + acc.balance, 0), [accounts]);
 
+  const handleExportCSV = () => {
+    const exportData = transactions.map(tx => ({
+      Date: format(parseISO(tx.date), 'yyyy-MM-dd HH:mm'),
+      Type: tx.type,
+      Category: tx.category,
+      Account: accounts.find(a => a.id === tx.accountId)?.name || 'Unknown',
+      'To Account': tx.toAccountId ? accounts.find(a => a.id === tx.toAccountId)?.name : '',
+      Vehicle: tx.carId ? cars.find(c => c.id === tx.carId)?.name : '',
+      Description: tx.description,
+      Amount: tx.amount
+    }));
+
+    const csv = Papa.unparse(exportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `finance_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success("Finance data exported successfully");
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const loadingToast = toast.loading("Importing transactions...");
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const data = results.data as any[];
+        let importedCount = 0;
+        let errorCount = 0;
+
+        const localBalances = new Map<string, number>();
+        accounts.forEach(acc => localBalances.set(acc.id, acc.balance));
+
+        for (const row of data) {
+          try {
+            const type = row.Type as 'Income' | 'Expense' | 'Transfer';
+            const amount = parseFloat(row.Amount);
+            const date = row.Date;
+            const category = row.Category;
+            const accountName = row.Account;
+            const toAccountName = row['To Account'];
+            const vehicleName = row.Vehicle;
+            const description = row.Description;
+
+            if (isNaN(amount) || !type || !date || !accountName) {
+              errorCount++;
+              continue;
+            }
+
+            const account = accounts.find(a => a.name.toLowerCase() === accountName.toLowerCase());
+            if (!account) {
+              errorCount++;
+              continue;
+            }
+
+            let toAccountId = '';
+            if (type === 'Transfer' && toAccountName) {
+              const toAccount = accounts.find(a => a.name.toLowerCase() === toAccountName.toLowerCase());
+              if (toAccount) toAccountId = toAccount.id;
+            }
+
+            const car = vehicleName ? cars.find(c => c.name.toLowerCase() === vehicleName.toLowerCase()) : null;
+
+            await addDoc(collection(db, 'transactions'), {
+              type,
+              amount,
+              date: date.includes('T') ? date : format(new Date(date), "yyyy-MM-dd'T'HH:mm"),
+              category,
+              accountId: account.id,
+              toAccountId: toAccountId || null,
+              carId: car?.id || null,
+              description: description || '',
+            });
+
+            if (type === 'Transfer' && toAccountId) {
+              const currentFromBalance = localBalances.get(account.id) || 0;
+              const newFromBalance = currentFromBalance - amount;
+              localBalances.set(account.id, newFromBalance);
+              await updateDoc(doc(db, 'accounts', account.id), { balance: newFromBalance });
+
+              const currentToBalance = localBalances.get(toAccountId) || 0;
+              const newToBalance = currentToBalance + amount;
+              localBalances.set(toAccountId, newToBalance);
+              await updateDoc(doc(db, 'accounts', toAccountId), { balance: newToBalance });
+            } else {
+              const currentBalance = localBalances.get(account.id) || 0;
+              const newBalance = type === 'Income' ? currentBalance + amount : currentBalance - amount;
+              localBalances.set(account.id, newBalance);
+              await updateDoc(doc(db, 'accounts', account.id), { balance: newBalance });
+            }
+
+            importedCount++;
+          } catch (err) {
+            console.error("Error importing row:", err);
+            errorCount++;
+          }
+        }
+
+        toast.dismiss(loadingToast);
+        if (importedCount > 0) {
+          toast.success(`Successfully imported ${importedCount} transactions`);
+          await logSystemActivity(
+            'Import Transactions',
+            `Imported ${importedCount} transactions from CSV`,
+            'Finance',
+            { count: importedCount }
+          );
+        }
+        if (errorCount > 0) {
+          toast.error(`Failed to import ${errorCount} rows. Check format.`);
+        }
+        
+        e.target.value = '';
+      }
+    });
+  };
+
   return (
     <div className="flex-1 overflow-auto bg-warm-bg p-8">
       <div className="max-w-7xl mx-auto space-y-10">
@@ -444,6 +624,22 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
             <p className="text-[#141414]/60 uppercase tracking-[0.2em] text-[10px] font-bold">Financial Operations & Tracking</p>
           </div>
           <div className="flex gap-4">
+            <button 
+              onClick={handleExportCSV}
+              className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2"
+              title="Export to CSV"
+            >
+              <Download size={16} /> Export
+            </button>
+            <label className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2 cursor-pointer">
+              <Upload size={16} /> Import
+              <input 
+                type="file" 
+                accept=".csv" 
+                className="hidden" 
+                onChange={handleImportCSV}
+              />
+            </label>
             <button 
               onClick={() => openModal('Income')}
               className="h-12 px-8 bg-green-500 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-green-500/20 flex items-center gap-2"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity, storage } from '../firebase';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { Car, PricingRule, WebsiteCar } from '../types';
@@ -33,6 +33,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { safeLocalStorage } from '../lib/storage';
 import { StorageImage } from './StorageImage';
 import { WhyChooseUs, GoogleReviews, EnquiryForm, Footer } from './HomeSections';
 import { FAQ } from './FAQ';
@@ -223,10 +224,20 @@ const Calendar: React.FC<CalendarProps> = ({
   };
 
   return (
-    <div 
-      ref={calendarRef} 
-      className="absolute top-full left-1/2 -translate-x-1/2 mt-4 rounded-[40px] overflow-hidden z-[100] w-[700px] max-w-[95vw] shadow-2xl border-4"
-      style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321', borderColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+    <motion.div 
+      ref={calendarRef}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      className={cn(
+        "rounded-[40px] overflow-hidden z-[100] shadow-2xl border-4 transition-all",
+        "fixed inset-x-4 top-[5%] bottom-[5%] md:absolute md:top-full md:left-1/2 md:-translate-x-1/2 md:mt-4 md:w-[700px] md:max-w-[95vw] md:bottom-auto md:inset-x-auto",
+        "overflow-y-auto custom-scrollbar"
+      )}
+      style={{ 
+        backgroundColor: isBikeMode ? '#0084ff' : '#FF6321', 
+        borderColor: isBikeMode ? '#0084ff' : '#FF6321' 
+      }}
     >
       <div className="flex flex-col md:flex-row relative border-b border-white/10">
         <button 
@@ -247,60 +258,62 @@ const Calendar: React.FC<CalendarProps> = ({
       </div>
 
       {/* Time Selection Section */}
-      <div className="grid grid-cols-2 border-b border-white/10">
-        <div className="p-8 border-r border-white/10">
+      <div className="grid grid-cols-1 md:grid-cols-2 border-b border-white/10">
+        <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-white/10">
           <div className="flex items-start gap-4">
-            <span className="text-6xl font-bold text-white/40 leading-none">
+            <span className="text-4xl md:text-6xl font-bold text-white/40 leading-none">
               {tempRange.from ? format(tempRange.from, 'd') : '--'}
             </span>
             <div>
-              <p className="text-white font-bold text-lg leading-tight">
+              <p className="text-white font-bold text-base md:text-lg leading-tight">
                 {tempRange.from ? format(tempRange.from, 'MMMM yyyy') : 'Select Date'}
               </p>
-              <p className="text-white/60 text-sm font-medium">
+              <p className="text-white/60 text-xs md:text-sm font-medium">
                 {tempRange.from ? format(tempRange.from, 'EEEE') : ''}
               </p>
             </div>
           </div>
-          <div className="mt-8 relative">
+          <div className="mt-6 md:mt-8 relative">
             <select 
               value={pickUpTime}
               onChange={(e) => setPickUpTime(e.target.value)}
-              className="w-full bg-transparent text-white text-5xl font-bold outline-none appearance-none cursor-pointer"
+              className="w-full bg-transparent text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {timeOptions.map(time => (
                 <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
               ))}
             </select>
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none" />
+            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none md:hidden" />
+            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none hidden md:block" />
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-6 md:p-8">
           <div className="flex items-start gap-4">
-            <span className="text-6xl font-bold text-white/40 leading-none">
+            <span className="text-4xl md:text-6xl font-bold text-white/40 leading-none">
               {tempRange.to ? format(tempRange.to, 'd') : '--'}
             </span>
             <div>
-              <p className="text-white font-bold text-lg leading-tight">
+              <p className="text-white font-bold text-base md:text-lg leading-tight">
                 {tempRange.to ? format(tempRange.to, 'MMMM yyyy') : 'Select Date'}
               </p>
-              <p className="text-white/60 text-sm font-medium">
+              <p className="text-white/60 text-xs md:text-sm font-medium">
                 {tempRange.to ? format(tempRange.to, 'EEEE') : ''}
               </p>
             </div>
           </div>
-          <div className="mt-8 relative">
+          <div className="mt-6 md:mt-8 relative">
             <select 
               value={dropOffTime}
               onChange={(e) => setDropOffTime(e.target.value)}
-              className="w-full bg-transparent text-white text-5xl font-bold outline-none appearance-none cursor-pointer"
+              className="w-full bg-transparent text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {timeOptions.map(time => (
                 <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
               ))}
             </select>
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none" />
+            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none md:hidden" />
+            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none hidden md:block" />
           </div>
         </div>
       </div>
@@ -312,21 +325,21 @@ const Calendar: React.FC<CalendarProps> = ({
         </span>
       </div>
 
-      <div className="p-8 flex items-center justify-end gap-4 bg-black/10">
+      <div className="p-6 md:p-8 flex items-center justify-end gap-4 bg-black/10">
         <button 
           onClick={() => setShowCalendar(false)}
-          className="px-10 py-4 bg-[#ff3b30] text-white rounded-2xl font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all shadow-lg"
+          className="flex-1 md:flex-none px-6 md:px-10 py-4 bg-[#ff3b30] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] md:text-sm hover:opacity-90 transition-all shadow-lg"
         >
           Cancel
         </button>
         <button 
           onClick={handleApply}
-          className="px-10 py-4 bg-[#4cd964] text-white rounded-2xl font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all shadow-lg"
+          className="flex-1 md:flex-none px-6 md:px-10 py-4 bg-[#4cd964] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] md:text-sm hover:opacity-90 transition-all shadow-lg"
         >
           Apply
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -433,48 +446,82 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
   const calendarRef = useRef<HTMLDivElement>(null);
 
+  const [lastFetch, setLastFetch] = useState<number>(() => {
+    const cached = safeLocalStorage.getItem('prac_be_last_fetch');
+    return cached ? parseInt(cached) : 0;
+  });
+
   useEffect(() => {
     console.log('BookingEngine: Starting car data fetch...');
-    // Add a safety timeout to prevent infinite loading if Firestore is unresponsive
-    const timeout = setTimeout(() => {
-      setLoading(prevLoading => {
-        if (prevLoading) {
-          console.warn('Firestore onSnapshot timed out for "cars" collection');
-          setLoadingError('Connection timed out. Please check your internet or try again.');
-          return false;
+    
+    const fetchData = async (force = false) => {
+      const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+      const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
+
+      if (cars.length === 0 && isCacheValid) {
+        const cachedCars = safeLocalStorage.getItem('prac_be_cached_cars');
+        const cachedPricing = safeLocalStorage.getItem('prac_be_cached_pricing');
+        if (cachedCars && cachedPricing) {
+          try {
+            console.log('BookingEngine: Using cached data');
+            setCars(JSON.parse(cachedCars));
+            setPricingRules(JSON.parse(cachedPricing));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Error parsing cached data:', e);
+          }
         }
-        return prevLoading;
-      });
-    }, 10000);
-
-    const unsubscribe = onSnapshot(collection(db, 'website_cars'), (snapshot) => {
-      console.log(`BookingEngine: Received snapshot with ${snapshot.docs.length} website cars`);
-      clearTimeout(timeout);
-      const carsData = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar))
-        .filter(car => car.isActive !== false);
-      setCars(carsData.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)));
-      setLoading(false);
-      setLoadingError(null);
-    }, (error) => {
-      console.error('BookingEngine: Firestore error:', error);
-      clearTimeout(timeout);
-      setLoading(false);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setLoadingError(`Failed to load vehicles: ${errorMessage}`);
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'website_cars');
-      } catch (e) {
-        console.error('Error in handleFirestoreError:', e);
       }
-    });
 
-    const unsubscribePricing = onSnapshot(collection(db, 'pricing'), (snapshot) => {
-      const pricingData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-      setPricingRules(pricingData);
-    }, (error) => {
-      console.error('BookingEngine: Pricing fetch error:', error);
-    });
+      try {
+        console.log('BookingEngine: Fetching fresh data from Firestore...');
+        const carsSnapshot = await getDocs(collection(db, 'website_cars'));
+        console.log(`BookingEngine: Received snapshot with ${carsSnapshot.docs.length} website cars`);
+        const carsData = carsSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as WebsiteCar))
+          .filter(car => car.isActive !== false);
+        const sortedCars = carsData.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+        setCars(sortedCars);
+        
+        const pricingSnapshot = await getDocs(collection(db, 'pricing'));
+        const pricingData = pricingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
+        setPricingRules(pricingData);
+        
+        const now = Date.now();
+        setLastFetch(now);
+        safeLocalStorage.setItem('prac_be_last_fetch', now.toString());
+        safeLocalStorage.setItem('prac_be_cached_cars', JSON.stringify(sortedCars));
+        safeLocalStorage.setItem('prac_be_cached_pricing', JSON.stringify(pricingData));
+
+        setLoading(false);
+        setLoadingError(null);
+      } catch (error: any) {
+        console.error('BookingEngine: Firestore error:', error);
+        setLoading(false);
+        const errorMessage = error.message || String(error);
+        
+        // Fallback to stale cache on error
+        const cachedCars = safeLocalStorage.getItem('prac_be_cached_cars');
+        const cachedPricing = safeLocalStorage.getItem('prac_be_cached_pricing');
+        if (cachedCars && cachedPricing) {
+          try {
+            setCars(JSON.parse(cachedCars));
+            setPricingRules(JSON.parse(cachedPricing));
+            toast.error("Using cached car data due to connection issues.");
+            return;
+          } catch (e) {}
+        }
+
+        if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
+          setLoadingError('The system is currently at maximum capacity for today. Please try again tomorrow or contact us directly.');
+        } else {
+          setLoadingError(`Failed to load vehicles: ${errorMessage}`);
+        }
+      }
+    };
+
+    fetchData();
 
     const handleClickOutside = (event: MouseEvent) => {
       if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
@@ -484,8 +531,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
-      unsubscribe();
-      unsubscribePricing();
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
@@ -864,15 +909,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 {t('nav.aboutUs')}
               </button>
               <button 
-                onClick={() => handlePageChange('blog')}
-                className={cn(
-                  "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                  view === 'blog' || view === 'blog-post' ? (isBikeMode ? "text-brand-blue" : "text-brand-orange") : "text-black/60 hover:text-black"
-                )}
-              >
-                Blog
-              </button>
-              <button 
                 onClick={() => handlePageChange('contact')}
                 className={cn(
                   "text-[10px] font-bold uppercase tracking-widest transition-colors",
@@ -996,18 +1032,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 </button>
                 <button 
                   onClick={() => {
-                    handlePageChange('blog');
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={cn(
-                    "w-full text-left px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-colors",
-                    view === 'blog' || view === 'blog-post' ? (isBikeMode ? "bg-brand-blue text-white" : "bg-brand-orange text-white") : "bg-black/5 text-black/60"
-                  )}
-                >
-                  Blog
-                </button>
-                <button 
-                  onClick={() => {
                     handlePageChange('contact');
                     setIsMobileMenuOpen(false);
                   }}
@@ -1056,16 +1080,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
             <div className="max-w-5xl mx-auto relative">
               <div className="flex flex-col md:flex-row items-stretch glass-card rounded-[2.5rem] overflow-hidden">
-                <div 
+                <button 
                   onClick={() => setShowCalendar(true)}
-                  className="flex-[1.5] p-8 text-left cursor-pointer hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
+                  className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
                 >
                   <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div>
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.pickupDate')}</p>
                     <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.from, 'EEE dd MMM')}</p>
                   </div>
-                </div>
+                </button>
                 <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
                   <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div className="flex-1">
@@ -1084,16 +1108,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     </div>
                   </div>
                 </div>
-                <div 
+                <button 
                   onClick={() => setShowCalendar(true)}
-                  className="flex-[1.5] p-8 text-left cursor-pointer hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
+                  className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
                 >
                   <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div>
                     <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.dropoffDate')}</p>
                     <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.to, 'EEE dd MMM')}</p>
                   </div>
-                </div>
+                </button>
                 <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
                   <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                   <div className="flex-1">
@@ -1125,18 +1149,27 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
               <AnimatePresence>
                 {showCalendar && (
-                  <Calendar 
-                    selectedRange={selectedRange}
-                    setSelectedRange={setSelectedRange}
-                    setShowCalendar={setShowCalendar}
-                    calendarRef={calendarRef}
-                    setView={handlePageChange as any}
-                    pickUpTime={pickUpTime}
-                    setPickUpTime={setPickUpTime}
-                    dropOffTime={dropOffTime}
-                    setDropOffTime={setDropOffTime}
-                    isBikeMode={isBikeMode}
-                  />
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowCalendar(false)}
+                      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] md:hidden"
+                    />
+                    <Calendar 
+                      selectedRange={selectedRange}
+                      setSelectedRange={setSelectedRange}
+                      setShowCalendar={setShowCalendar}
+                      calendarRef={calendarRef}
+                      setView={handlePageChange as any}
+                      pickUpTime={pickUpTime}
+                      setPickUpTime={setPickUpTime}
+                      dropOffTime={dropOffTime}
+                      setDropOffTime={setDropOffTime}
+                      isBikeMode={isBikeMode}
+                    />
+                  </>
                 )}
               </AnimatePresence>
 

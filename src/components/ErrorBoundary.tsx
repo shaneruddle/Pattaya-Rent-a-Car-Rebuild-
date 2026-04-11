@@ -76,10 +76,17 @@ export class ErrorBoundary extends React.Component<Props, State> {
             </div>
 
             {isRateLimit ? (
-              <p className="text-sm text-gray-600 mb-8 leading-relaxed">
-                The system is currently experiencing high traffic or has reached a temporary limit. 
-                Please wait a few moments and try again.
-              </p>
+              <div className="space-y-4 mb-8">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  The system has reached its daily data limit (Firestore Free Tier). 
+                  This usually resets at midnight Pacific Time.
+                </p>
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
+                  <p className="text-xs text-blue-700 font-medium">
+                    To fix this permanently, please upgrade to the <strong className="underline">Blaze (Pay-as-you-go)</strong> plan in your Firebase Console.
+                  </p>
+                </div>
+              </div>
             ) : (
               <p className="text-sm text-gray-600 mb-8 leading-relaxed">
                 We've encountered an issue. You can try refreshing the page or contact support if the problem persists.

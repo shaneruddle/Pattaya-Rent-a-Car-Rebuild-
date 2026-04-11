@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, getDocFromServer, writeBatch, getDocs } from 'firebase/firestore';
+import { initializeFirestore, collection, doc, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, getDocFromServer, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Import the Firebase configuration
@@ -13,11 +13,18 @@ if (!firebaseConfig || !firebaseConfig.projectId) {
 
 // Initialize Firebase SDK
 console.log('firebase.ts: Initializing Firebase SDK');
-console.log('firebase.ts: Config Project ID:', firebaseConfig.projectId);
-console.log('firebase.ts: Config Database ID:', firebaseConfig.firestoreDatabaseId);
+const config = firebaseConfig as any;
+console.log('firebase.ts: Config Project ID:', config.projectId);
+console.log('firebase.ts: Config Database ID:', config.firestoreDatabaseId);
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const app = initializeApp(config);
+
+// Use initializeFirestore with settings to improve connectivity in restricted environments
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  // If firestoreDatabaseId is provided, use it, otherwise it defaults to '(default)'
+}, config.firestoreDatabaseId);
+
 export const auth = getAuth(app);
 
 // Set persistence explicitly to ensure it works across domain redirects/popups
@@ -84,20 +91,26 @@ export const signInRedirect = async () => {
 };
 export const logOut = () => signOut(auth);
 
-// Test connection
-async function testConnection() {
+// Test connection to Firestore
+export async function testConnection() {
   try {
-    console.log("Firebase: Testing connection to database:", firebaseConfig.firestoreDatabaseId);
-    // Use 'system_config' which is also publicly readable for debugging
-    await getDocFromServer(doc(db, 'system_config', 'test_connection'));
-    console.log("Firebase: Connection test successful.");
+    console.log('firebase.ts: Testing Firestore connection...');
+    // Use getDocFromServer to bypass local cache and test real connectivity
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log('firebase.ts: Firestore connection test completed (document might not exist, but connection is OK)');
   } catch (error: any) {
-    console.error("Firebase: Connection test failed:", error);
-    if (error.message && (error.message.includes('NOT_FOUND') || error.message.includes('not-found'))) {
-      console.warn("Firebase: Database not found. This app might need to be re-provisioned or the project ID is incorrect.");
+    if (error.message && error.message.includes('the client is offline')) {
+      console.error("Firebase: CRITICAL - The client is offline. This usually means the Firestore configuration is incorrect or the database is not provisioned.");
+    } else if (error.message && error.message.includes('timeout')) {
+      console.error("Firebase: Firestore connection timed out. Check your network or project region.");
+    } else {
+      // Skip logging for other errors, as this is simply a connection test.
+      console.log('firebase.ts: Connection test finished with expected non-critical error:', error.message);
     }
   }
 }
+
+// Call testConnection on initialization
 testConnection();
 
 export enum OperationType {

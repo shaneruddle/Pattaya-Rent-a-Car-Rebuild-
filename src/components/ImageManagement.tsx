@@ -68,67 +68,81 @@ export const ImageManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !storage) return;
 
+    const performUpload = async () => {
+      setUploading(true);
+      setUploadProgress(0);
+
+      const storageRef = ref(storage, file.name);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        }, 
+        (error) => {
+          console.error('Upload failed:', error);
+          toast.error(`Upload failed: ${error.message}`);
+          setUploading(false);
+        }, 
+        async () => {
+          toast.success(`"${file.name}" uploaded successfully`);
+          setUploading(false);
+          setUploadProgress(0);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          
+          await logSystemActivity(
+            'Image Upload',
+            `Uploaded image "${file.name}" to storage`,
+            'System',
+            { fileName: file.name }
+          );
+          
+          fetchFiles();
+        }
+      );
+    };
+
     // Check if file already exists
     if (files.some(f => f.name === file.name)) {
-      const confirmOverwrite = window.confirm(`A file named "${file.name}" already exists. Do you want to overwrite it?`);
-      if (!confirmOverwrite) return;
-    }
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    const storageRef = ref(storage, file.name);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      }, 
-      (error) => {
-        console.error('Upload failed:', error);
-        toast.error(`Upload failed: ${error.message}`);
-        setUploading(false);
-      }, 
-      async () => {
-        toast.success(`"${file.name}" uploaded successfully`);
-        setUploading(false);
-        setUploadProgress(0);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        
-        await logSystemActivity(
-          'Image Upload',
-          `Uploaded image "${file.name}" to storage`,
-          'System',
-          { fileName: file.name }
-        );
-        
-        fetchFiles();
-      }
-    );
-  };
-
-  const handleDelete = async (file: StorageFile) => {
-    if (!window.confirm(`Are you sure you want to delete "${file.name}"? This action cannot be undone.`)) {
+      toast(`A file named "${file.name}" already exists.`, {
+        description: "Do you want to overwrite it?",
+        action: {
+          label: "Overwrite",
+          onClick: performUpload
+        }
+      });
       return;
     }
 
-    try {
-      await deleteObject(file.ref);
-      toast.success(`"${file.name}" deleted successfully`);
-      
-      await logSystemActivity(
-        'Image Deletion',
-        `Deleted image "${file.name}" from storage`,
-        'System',
-        { fileName: file.name }
-      );
-      
-      fetchFiles();
-    } catch (error: any) {
-      console.error('Delete failed:', error);
-      toast.error(`Delete failed: ${error.message}`);
-    }
+    performUpload();
+  };
+
+  const handleDelete = async (file: StorageFile) => {
+    toast(`Delete "${file.name}"?`, {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await deleteObject(file.ref);
+            toast.success(`"${file.name}" deleted successfully`);
+            
+            await logSystemActivity(
+              'Image Deletion',
+              `Deleted image "${file.name}" from storage`,
+              'System',
+              { fileName: file.name }
+            );
+            
+            fetchFiles();
+          } catch (error: any) {
+            console.error('Delete failed:', error);
+            toast.error(`Delete failed: ${error.message}`);
+          }
+        }
+      }
+    });
   };
 
   const handleRename = async (file: StorageFile) => {

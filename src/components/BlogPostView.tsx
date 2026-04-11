@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BlogPost } from '../types';
 import { Calendar, User, ChevronLeft, Tag, Share2, Facebook, Twitter, Link as LinkIcon } from 'lucide-react';
@@ -21,21 +21,27 @@ export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBike
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'blog_posts'),
-      where('slug', '==', slug),
-      where('status', '==', 'Published'),
-      limit(1)
-    );
+    const fetchPost = async () => {
+      try {
+        const q = query(
+          collection(db, 'blog_posts'),
+          where('slug', '==', slug),
+          where('status', '==', 'Published'),
+          limit(1)
+        );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setPost({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as BlogPost);
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          setPost({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as BlogPost);
+        }
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching blog post:', error);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchPost();
   }, [slug]);
 
   const handleShare = () => {
@@ -146,9 +152,10 @@ export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBike
           </div>
         )}
 
-        <div className="prose prose-lg max-w-none prose-headings:font-serif prose-headings:italic prose-headings:text-[#1A1A1A] prose-p:text-black/70 prose-p:leading-relaxed prose-a:text-brand-orange prose-strong:text-[#1A1A1A] prose-img:rounded-[32px] prose-img:shadow-xl">
-          <ReactMarkdown>{post.content}</ReactMarkdown>
-        </div>
+        <div 
+          className="prose prose-lg max-w-none prose-headings:font-serif prose-headings:italic prose-headings:text-[#1A1A1A] prose-p:text-black/70 prose-p:leading-relaxed prose-a:text-brand-orange prose-strong:text-[#1A1A1A] prose-img:rounded-[32px] prose-img:shadow-xl blog-content"
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
 
         <footer className="mt-20 pt-12 border-t border-black/5">
           <div className="flex flex-wrap gap-3 mb-12">

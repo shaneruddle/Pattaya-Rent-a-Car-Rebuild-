@@ -1,37 +1,36 @@
 
 import "dotenv/config";
 import fs from 'fs';
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+import path from "path";
+import { fileURLToPath } from "url";
 
-// Set environment variables BEFORE importing firebase-admin to ensure correct project context
+// Read config immediately
+const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
 const projectId = firebaseConfig.projectId;
 const databaseId = firebaseConfig.firestoreDatabaseId;
 
-const originalEnvProject = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
-console.log(`[Init] Original Project ID from env: ${originalEnvProject}`);
-console.log(`[Init] Target Project ID from config: ${projectId}`);
-console.log(`[Init] Target Database ID from config: ${databaseId}`);
+console.log('[Init] Initial Env GOOGLE_CLOUD_PROJECT:', process.env.GOOGLE_CLOUD_PROJECT);
+console.log('[Init] Initial Env GCLOUD_PROJECT:', process.env.GCLOUD_PROJECT);
+console.log('[Init] Initial Env GOOGLE_CLOUD_QUOTA_PROJECT:', process.env.GOOGLE_CLOUD_QUOTA_PROJECT);
 
 // Force environment variables to match the config project ID to ensure Admin SDK targets the correct project
 process.env.GOOGLE_CLOUD_PROJECT = projectId;
 process.env.GCLOUD_PROJECT = projectId;
+process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
 
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
-import path from "path";
-import { fileURLToPath } from "url";
 import * as XLSX from "xlsx";
 import { format, parse, isValid } from "date-fns";
 import admin from "firebase-admin";
-import { Firestore as AdminFirestore, getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
-import { GoogleGenAI, Type } from "@google/genai";
 import * as Papa from "papaparse";
-import fetch from "node-fetch";
 import https from "https";
+import fetch from "node-fetch";
 
 const httpsAgent = new https.Agent({ keepAlive: true });
 
@@ -39,7 +38,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
   "https://www.googleapis.com/auth/analytics.readonly",
   "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile"
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/business.manage"
 ];
 
 const dbId = databaseId && databaseId !== '(default)' ? databaseId : undefined;
@@ -58,8 +58,22 @@ try {
       storageBucket: firebaseConfig.storageBucket
     });
   }
-  firestore = dbId ? getFirestore(admin.app(), dbId) : getFirestore(admin.app());
-  console.log(`[Init] Firestore instance created immediately (Database: ${dbId || '(default)'})`);
+  
+  // Use the specific database ID if provided
+  if (dbId) {
+    console.log(`[Init] Using named database: ${dbId}`);
+    firestore = getFirestore(admin.app(), dbId);
+  } else {
+    console.log(`[Init] Using default database`);
+    firestore = getFirestore(admin.app());
+  }
+  
+  // Configure Firestore settings for better reliability
+  firestore.settings({
+    ignoreUndefinedProperties: true,
+  });
+  
+  console.log(`[Init] Firestore instance created successfully`);
 } catch (e) {
   console.error("[Init] Immediate Firestore initialization failed:", e);
 }
@@ -75,60 +89,87 @@ async function verifyFirestore() {
   const configDatabaseId = dbId;
   const startTime = Date.now();
   
-  const maxRetries = 30; // Increased retries to cover up to 15 minutes
+  const maxRetries = 20; // Reduced retries
   let lastError: any = null;
+
+  // Initial delay to let the environment settle - reduced to 5s to avoid blocking saveTokens
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       if (i > 0) {
-        // Exponential backoff with a cap
-        const delay = Math.min(10000 * i, 30000);
+        // Longer delay between retries
+        const delay = Math.min(30000 * i, 60000);
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         
-        // Less frequent logs
-        if (i % 5 === 0) {
-          logInit(`[Status] Still waiting for Google Cloud to sync permissions... (Elapsed: ${elapsed}s)`);
+        // Very infrequent logs to avoid alarming the user
+        if (i % 10 === 0) {
+          logInit(`[Status] Syncing permissions with Google Cloud... (Elapsed: ${elapsed}s)`);
         }
         
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
-      logInit(`Connection Attempt ${i + 1}/${maxRetries}... (Database: ${configDatabaseId || '(default)'})`);
+      // If we've failed a few times with a named database, try the default one as a fallback
+      let currentFirestore = firestore;
+      let currentDbId = configDatabaseId;
       
-      // Test connection with a simple read
-      const testDoc = firestore.collection('system_config').doc('test_connection');
-      console.log(`[Init] Testing read on ${testDoc.path}...`);
-      await testDoc.get();
+      // Try fallback much earlier (after 5 attempts)
+      if (i >= 5 && configDatabaseId && configDatabaseId !== '(default)') {
+        if (i === 5) logInit(`[Init] Named database syncing is taking longer than expected. Checking fallback...`);
+        currentFirestore = getFirestore(admin.app());
+        currentDbId = '(default)';
+      }
+
+      // Only log every 10th attempt or the first one
+      if (i === 0 || i % 10 === 0) {
+        logInit(`[Init] Connection Attempt ${i + 1}/${maxRetries}...`);
+      }
+      
+      // Test connection with a simple read with a timeout
+      const testDoc = currentFirestore.collection('system_config').doc('test_connection');
+      
+      // Use a promise race to implement a timeout for the get() call
+      const doc = await Promise.race([
+        testDoc.get(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore read timeout')), 10000))
+      ]) as any;
       
       // If read works, try a write to verify full permissions
       try {
-        console.log(`[Init] Read successful, testing write on ${testDoc.path}...`);
         await testDoc.set({ 
           timestamp: FieldValue.serverTimestamp(),
           status: 'ready',
           lastAttempt: i + 1,
           elapsed: Math.round((Date.now() - startTime) / 1000),
-          verifiedAt: new Date().toISOString()
+          verifiedAt: new Date().toISOString(),
+          databaseUsed: currentDbId || '(default)'
         }, { merge: true });
       } catch (writeErr: any) {
-        logInit(`Read successful, but write permissions are still syncing... (${writeErr.message})`);
+        // If write fails but read works, we are almost there
+        if (i % 10 === 0) {
+          logInit(`[Init] Read successful, still syncing write permissions...`);
+        }
         throw writeErr;
       }
       
-      logInit(`SUCCESS: Firestore is now connected and ready! (Total time: ${Math.round((Date.now() - startTime) / 1000)}s)`);
+      logInit(`[Init] SUCCESS: Firestore is now connected and ready!`);
+      firestore = currentFirestore; // Update global instance if fallback worked
       isFirestoreReady = true;
       return;
     } catch (err: any) {
       lastError = err;
       const errCode = err.code !== undefined ? err.code : 'UNKNOWN';
+      const isPermissionError = errCode === 5 || errCode === 7 || String(err.message).includes('PERMISSION_DENIED');
       
-      if (errCode === 7 || String(err.message).includes('PERMISSION_DENIED')) {
-        // Expected propagation error
-      } else {
-        logInit(`Connection attempt ${i + 1} encountered: [${errCode}] ${err.message}`);
+      // Log non-permission errors immediately as they are more likely to be configuration issues
+      if (!isPermissionError) {
+        logInit(`[Init] Connection attempt ${i + 1} failed with non-permission error: [${errCode}] ${err.message}`);
+      } else if (i === maxRetries - 1) {
+        logInit(`[Init] Final connection attempt failed: [${errCode}] ${err.message}`);
       }
       
-      if (errCode === 5 || errCode === 7 || String(err.message).includes('PERMISSION_DENIED')) {
+      if (isPermissionError || String(err.message).includes('timeout')) {
         continue;
       }
       
@@ -161,8 +202,15 @@ function handleFirestoreError(error: any, operation: string, path: string) {
     stack: error.stack ? error.stack.substring(0, 500) : undefined
   };
 
+  let userMessage = `${safeError.code || 'UNKNOWN'}: ${safeError.message}`;
+  
+  // Add helpful context for permission errors
+  if (safeError.code === 7 || safeError.message.includes('PERMISSION_DENIED')) {
+    userMessage += " (Tip: This usually means the database permissions aren't synced yet. Please use the 'Firebase Setup' tool in the chat to fix this.)";
+  }
+
   const errorInfo = {
-    error: `${safeError.code || 'UNKNOWN'}: ${safeError.message}`,
+    error: userMessage,
     code: safeError.code,
     details: safeError.details,
     operation,
@@ -172,67 +220,51 @@ function handleFirestoreError(error: any, operation: string, path: string) {
     env: process.env.NODE_ENV
   };
   console.error(`Firestore Error [${operation}] on ${currentProjectId}/${currentDatabaseId}:`, JSON.stringify(errorInfo, null, 2));
-  return null;
+  throw new Error(JSON.stringify(errorInfo));
 }
 
-// Google OAuth Setup
+// Google OAuth Setup - Placeholder for clean start
 const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.APP_URL}/api/auth/google/callback`;
 
-console.log(`Initializing OAuth Client with ID: ${clientId ? clientId.substring(0, 10) + '...' : 'MISSING'}`);
+function getRedirectUri() {
+  return process.env.GOOGLE_OAUTH_REDIRECT_URI || `${(process.env.APP_URL || '').replace(/\/$/, '')}/api/auth/google/callback`;
+}
 
 const oauth2Client = new OAuth2Client(
   clientId,
   clientSecret,
-  redirectUri
+  getRedirectUri()
 );
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const TOKEN_FILE = path.join(process.cwd(), 'google_oauth_tokens.json');
 
 async function getStoredTokens() {
-  if (!firestore || !isFirestoreReady) {
-    console.log("getStoredTokens called before Firestore is ready");
-    return null;
-  }
-  const path = 'system_config/google_oauth_tokens';
   try {
-    const doc = await firestore.collection('system_config').doc('google_oauth_tokens').get();
-    if (doc.exists) {
-      return doc.data();
+    if (fs.existsSync(TOKEN_FILE)) {
+      return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
     }
-    return null;
-  } catch (error: any) {
-    return handleFirestoreError(error, "GET", path);
+  } catch (e) {
+    console.error("[OAuth] Error reading local token file:", e);
   }
+  return null;
 }
 
-async function saveTokens(tokens: any) {
-  if (!firestore || !isFirestoreReady) {
-    console.error("saveTokens called before Firestore is ready");
-    return;
-  }
-  const path = 'system_config/google_oauth_tokens';
+async function saveTokens(newTokens: any) {
   try {
-    await firestore.collection('system_config').doc('google_oauth_tokens').set({
-      ...tokens,
-      updatedAt: FieldValue.serverTimestamp()
-    });
-  } catch (error: any) {
-    handleFirestoreError(error, "WRITE", path);
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify(newTokens));
+  } catch (e) {
+    console.error("[OAuth] Error saving tokens:", e);
   }
 }
 
 async function deleteTokens() {
-  if (!firestore || !isFirestoreReady) {
-    console.error("deleteTokens called before Firestore is ready");
-    return;
-  }
-  const path = 'system_config/google_oauth_tokens';
   try {
-    await firestore.collection('system_config').doc('google_oauth_tokens').delete();
-  } catch (error: any) {
-    handleFirestoreError(error, "DELETE", path);
+    if (fs.existsSync(TOKEN_FILE)) {
+      fs.unlinkSync(TOKEN_FILE);
+    }
+  } catch (e) {
+    console.error("[OAuth] Error deleting tokens:", e);
   }
 }
 
@@ -247,7 +279,8 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   // Give some time for logs to flush before exiting
-  setTimeout(() => process.exit(1), 1000);
+  // Increased delay to prevent tight restart loops
+  setTimeout(() => process.exit(1), 5000);
 });
 
 async function startServer() {
@@ -261,26 +294,46 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  app.get("/api/debug/firestore/logs", (req, res) => {
+    res.json({ 
+      logs: initLogs,
+      projectId,
+      databaseId,
+      isFirestoreReady,
+      firestoreDefined: !!firestore
+    });
+  });
+
   // Middleware to check if Firestore is ready
   app.use((req, res, next) => {
-    // Allow requests if firestore is initialized, even if full sync check (isFirestoreReady) is still running
-    if (req.path.startsWith('/api/') && req.path !== '/api/health' && !firestore) {
-      console.log(`[Middleware] 503 for ${req.path} - Firestore not ready`);
-      return res.status(503).json({ 
-        error: "Service Initializing", 
-        message: "Firestore is still connecting. Please wait a few moments." 
-      });
+    // Just log if Firestore is not ready yet, but don't block
+    if (req.path.startsWith('/api/') && req.path !== '/api/health' && req.path !== '/api/debug/firestore/logs' && !isFirestoreReady) {
+      console.log(`[Middleware] Warning: Firestore not fully verified yet for ${req.path}`);
     }
     next();
   });
 
   // API routes FIRST
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
-  });
-
   // Google OAuth Routes
   app.get("/api/auth/google/url", (req, res) => {
+    if (!clientId || !clientSecret) {
+      console.error("[OAuth] Missing Google OAuth credentials (GOOGLE_OAUTH_CLIENT_ID or GOOGLE_OAUTH_CLIENT_SECRET)");
+      return res.status(500).json({ 
+        error: "Google OAuth credentials not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to your environment variables." 
+      });
+    }
+
+    const currentRedirectUri = getRedirectUri();
+    console.log(`[OAuth] Generating auth URL with redirect_uri: ${currentRedirectUri}`);
+
+    // Update the client with the current redirect URI in case APP_URL changed
+    oauth2Client.setCredentials({}); // Clear any old creds
+    (oauth2Client as any).redirectUri = currentRedirectUri;
+
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
       scope: SCOPES,
@@ -289,9 +342,52 @@ async function startServer() {
     res.json({ url });
   });
 
-  app.get("/api/auth/google/callback", async (req, res) => {
+  app.get("/api/debug/oauth", (req, res) => {
+    res.json({
+      clientId: clientId ? `${clientId.substring(0, 10)}...` : 'MISSING',
+      clientSecret: clientSecret ? 'PRESENT' : 'MISSING',
+      redirectUri: getRedirectUri(),
+      appUrl: process.env.APP_URL,
+      googleOauthRedirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+      scopes: SCOPES
+    });
+  });
+
+  app.get("/api/debug/google-services", (req, res) => {
+    const services = Object.keys(google).filter(k => typeof (google as any)[k] === 'function');
+    res.json({ 
+      availableServices: services,
+      hasMyBusinessReviews: services.includes('mybusinessreviews'),
+      hasMyBusinessAccountManagement: services.includes('mybusinessaccountmanagement'),
+      hasMyBusinessBusinessInformation: services.includes('mybusinessbusinessinformation')
+    });
+  });
+
+  app.get("/api/debug/tokens", (req, res) => {
+    const exists = fs.existsSync(TOKEN_FILE);
+    let stats = null;
+    if (exists) {
+      stats = fs.statSync(TOKEN_FILE);
+    }
+    res.json({ 
+      exists, 
+      path: TOKEN_FILE,
+      size: stats?.size,
+      mtime: stats?.mtime
+    });
+  });
+
+  app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req, res) => {
     const { code } = req.query;
+    const currentRedirectUri = getRedirectUri();
+    console.log(`[OAuth] Callback received. Code: ${code ? 'PRESENT' : 'MISSING'}`);
+    console.log(`[OAuth] Using Client ID: ${clientId ? clientId.substring(0, 10) + '...' : 'MISSING'}`);
+    console.log(`[OAuth] Using Redirect URI: ${currentRedirectUri}`);
+
     try {
+      // Ensure the client is using the latest redirect URI
+      (oauth2Client as any).redirectUri = currentRedirectUri;
+      
       const { tokens } = await oauth2Client.getToken(code as string);
       oauth2Client.setCredentials(tokens);
       await saveTokens(tokens);
@@ -312,20 +408,29 @@ async function startServer() {
           </body>
         </html>
       `);
-    } catch (error) {
-      console.error("Error getting tokens:", error);
+    } catch (error: any) {
+      console.error("[OAuth] Error getting tokens:", error.message);
+      if (error.response && error.response.data) {
+        console.error("[OAuth] Error details:", JSON.stringify(error.response.data, null, 2));
+      }
+      
+      const errorMsg = error.response?.data?.error_description || error.message || "Failed to authenticate with Google";
+      
       res.send(`
         <html>
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR' }, '*');
+                window.opener.postMessage({ 
+                  type: 'OAUTH_AUTH_ERROR', 
+                  error: ${JSON.stringify(errorMsg)} 
+                }, '*');
                 window.close();
               } else {
-                window.location.href = "/?google_auth=error";
+                window.location.href = "/?google_auth=error&message=" + encodeURIComponent(${JSON.stringify(errorMsg)});
               }
             </script>
-            <p>Authentication failed. This window should close automatically.</p>
+            <p>Authentication failed: ${errorMsg}. This window should close automatically.</p>
           </body>
         </html>
       `);
@@ -472,82 +577,19 @@ async function startServer() {
     }
   });
 
-  // CSV Import Route for CRM (Customers)
-  app.post("/api/crm/import-csv", async (req, res) => {
-    const { data } = req.body;
-    if (!data || !Array.isArray(data)) {
-      return res.status(400).json({ error: "Invalid data format. Expected an array of objects." });
-    }
-
-    try {
-      console.log(`Importing ${data.length} customers to CRM...`);
-      const collection = firestore.collection('customers');
-      
-      const CHUNK_SIZE = 500;
-      let importedCount = 0;
-
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const chunk = data.slice(i, i + CHUNK_SIZE);
-        const batch = firestore.batch();
-        
-        for (const customer of chunk) {
-          if (customer.email && customer.firstName) {
-            const docRef = collection.doc();
-            batch.set(docRef, {
-              ...customer,
-              createdAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp()
-            });
-            importedCount++;
-          }
-        }
-        await batch.commit();
-      }
-
-      res.json({ success: true, count: importedCount });
-    } catch (error: any) {
-      console.error("CRM Import Error:", error);
-      res.status(500).json({ error: "Failed to import CRM data", details: error.message });
-    }
+  // Legacy API handlers to guide users to refresh their browser
+  app.post("/api/crm/import-csv", (req, res) => {
+    res.status(400).json({ 
+      error: "Legacy API", 
+      message: "This import method has been updated. Please refresh your browser (Ctrl+R or Cmd+R) to use the new, more reliable import system." 
+    });
   });
 
-  // CSV Import Route for Fleet (Vehicles)
-  app.post("/api/fleet/import-csv", async (req, res) => {
-    const { data } = req.body;
-    if (!data || !Array.isArray(data)) {
-      return res.status(400).json({ error: "Invalid data format. Expected an array of objects." });
-    }
-
-    try {
-      console.log(`Importing ${data.length} vehicles to Fleet...`);
-      const collection = firestore.collection('cars');
-      
-      const CHUNK_SIZE = 500;
-      let importedCount = 0;
-
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const chunk = data.slice(i, i + CHUNK_SIZE);
-        const batch = firestore.batch();
-        
-        for (const vehicle of chunk) {
-          if (vehicle.plateNumber && vehicle.name) {
-            const docRef = collection.doc();
-            batch.set(docRef, {
-              ...vehicle,
-              createdAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp()
-            });
-            importedCount++;
-          }
-        }
-        await batch.commit();
-      }
-
-      res.json({ success: true, count: importedCount });
-    } catch (error: any) {
-      console.error("Fleet Import Error:", error);
-      res.status(500).json({ error: "Failed to import Fleet data", details: error.message });
-    }
+  app.post("/api/fleet/import-csv", (req, res) => {
+    res.status(400).json({ 
+      error: "Legacy API", 
+      message: "This import method has been updated. Please refresh your browser (Ctrl+R or Cmd+R) to use the new, more reliable import system." 
+    });
   });
 
   // Debug route to check Firestore connection
@@ -593,17 +635,6 @@ async function startServer() {
     }
   });
 
-  app.get("/api/debug/firestore/logs", (req, res) => {
-    res.json({ 
-      logs: initLogs,
-      projectId,
-      databaseId,
-      originalEnvProject,
-      isFirestoreReady,
-      firestoreDefined: !!firestore
-    });
-  });
-
   app.post("/api/auth/google/disconnect", async (req, res) => {
     res.json({ success: true });
   });
@@ -624,15 +655,17 @@ async function startServer() {
       console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
       
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+
         const response = await fetch(url, {
-          method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           },
-          agent: httpsAgent,
-          // @ts-ignore - node-fetch specific
-          timeout: 300000 // 5 minutes for large spreadsheets
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -702,14 +735,19 @@ async function startServer() {
 
         return allData;
       } catch (error: any) {
-        console.error(`Pricing fetch failed: [${error.code || 'NO_CODE'}] ${error.message}`, error);
-        const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout');
+        console.error(`Pricing fetch failed: [${error.name || error.code || 'NO_CODE'}] ${error.message}`);
+        
+        const isTimeout = error.name === 'AbortError' || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout');
         const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' || 
                               error.code === 'ERR_STREAM_PREMATURE_CLOSE' || 
+                              error.code === 'ERR_BAD_RESPONSE' ||
+                              error.code === 'ERR_NETWORK' ||
                               error.message?.toLowerCase().includes('premature close') || 
                               error.message?.toLowerCase().includes('aborted') ||
-                              error.message?.toLowerCase().includes('stream has been aborted');
-        const status = error.response?.status;
+                              error.message?.toLowerCase().includes('stream has been aborted') ||
+                              error.message?.toLowerCase().includes('fetch failed');
+        
+        const status = error.response?.status || (error.message?.includes('status: ') ? parseInt(error.message.split('status: ')[1]) : null);
         const isRateLimit = status === 429 || status === 503;
 
         if (currentRetries > 0 && (isTimeout || isNetworkError || isRateLimit)) {
@@ -773,32 +811,29 @@ async function startServer() {
       });
   }, 30000);
 
+  // Google API Routes - Placeholder for clean start
   app.get("/api/reviews", async (req, res) => {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    const placeId = process.env.GOOGLE_PLACE_ID;
+    res.status(501).json({ error: "Google Maps API not yet configured" });
+  });
 
-    if (!apiKey || !placeId) {
-      console.warn('Google Maps API Key or Place ID not configured');
-      return res.status(500).json({ error: 'Google Maps API Key or Place ID not configured' });
-    }
+  app.get("/api/reviews/google-business", async (req, res) => {
+    res.status(501).json({ error: "Google Business API not yet configured" });
+  });
 
-    try {
-      console.log(`Fetching business details for placeId: ${placeId}`);
-      // Added geometry to fields for map coordinates
-      const response = await axios.get(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=reviews,rating,user_ratings_total,formatted_address,international_phone_number,opening_hours,geometry&key=${apiKey}`);
-      const data = response.data;
-      
-      if (data.status !== 'OK') {
-        console.error(`Google API error: ${data.status}`, data.error_message);
-        throw new Error(`Google API returned status: ${data.status}`);
-      }
+  app.get("/api/auth/google/url", (req, res) => {
+    res.status(501).json({ error: "Google Auth not yet configured" });
+  });
 
-      console.log('Successfully fetched business details');
-      res.json(data.result);
-    } catch (error) {
-      console.error('Error fetching Google business details:', error);
-      res.status(500).json({ error: 'Failed to fetch business details' });
-    }
+  app.get("/api/auth/google/callback", (req, res) => {
+    res.status(501).json({ error: "Google Auth not yet configured" });
+  });
+
+  app.get("/api/auth/google/status", (req, res) => {
+    res.json({ authenticated: false });
+  });
+
+  app.post("/api/auth/google/logout", (req, res) => {
+    res.json({ success: true });
   });
 
   // Catch-all for unhandled API routes
@@ -825,5 +860,6 @@ async function startServer() {
 
 startServer().catch(err => {
   console.error("CRITICAL: Failed to start server:", err);
-  process.exit(1);
+  // Delay exit to prevent tight restart loops
+  setTimeout(() => process.exit(1), 5000);
 });
