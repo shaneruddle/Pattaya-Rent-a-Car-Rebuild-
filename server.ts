@@ -26,21 +26,11 @@ import { format, parse, isValid } from "date-fns";
 import admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { google } from "googleapis";
-import { OAuth2Client } from "google-auth-library";
 import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 
 const httpsAgent = new https.Agent({ keepAlive: true });
-
-const SCOPES = [
-  "https://www.googleapis.com/auth/webmasters.readonly",
-  "https://www.googleapis.com/auth/analytics.readonly",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile",
-  "https://www.googleapis.com/auth/business.manage"
-];
 
 const dbId = databaseId && databaseId !== '(default)' ? databaseId : undefined;
 
@@ -223,53 +213,12 @@ function handleFirestoreError(error: any, operation: string, path: string) {
   throw new Error(JSON.stringify(errorInfo));
 }
 
-// Google OAuth Setup - Placeholder for clean start
-const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-
-function getRedirectUri() {
-  return process.env.GOOGLE_OAUTH_REDIRECT_URI || `${(process.env.APP_URL || '').replace(/\/$/, '')}/api/auth/google/callback`;
-}
-
-const oauth2Client = new OAuth2Client(
-  clientId,
-  clientSecret,
-  getRedirectUri()
-);
-
-const TOKEN_FILE = path.join(process.cwd(), 'google_oauth_tokens.json');
-
-async function getStoredTokens() {
-  try {
-    if (fs.existsSync(TOKEN_FILE)) {
-      return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error("[OAuth] Error reading local token file:", e);
-  }
-  return null;
-}
-
-async function saveTokens(newTokens: any) {
-  try {
-    fs.writeFileSync(TOKEN_FILE, JSON.stringify(newTokens));
-  } catch (e) {
-    console.error("[OAuth] Error saving tokens:", e);
-  }
-}
-
-async function deleteTokens() {
-  try {
-    if (fs.existsSync(TOKEN_FILE)) {
-      fs.unlinkSync(TOKEN_FILE);
-    }
-  } catch (e) {
-    console.error("[OAuth] Error deleting tokens:", e);
-  }
-}
-
 // Cache for pricing data
 let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
+let lastFetchTime = 0;
+let isFetching = false;
+let currentFetchPromise: Promise<any> | null = null;
+const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes cache for pricing data
 
 // Global crash handlers to prevent silent restarts
 process.on('unhandledRejection', (reason, promise) => {
@@ -318,135 +267,6 @@ async function startServer() {
   });
 
   // API routes FIRST
-  // Google OAuth Routes
-  app.get("/api/auth/google/url", (req, res) => {
-    if (!clientId || !clientSecret) {
-      console.error("[OAuth] Missing Google OAuth credentials (GOOGLE_OAUTH_CLIENT_ID or GOOGLE_OAUTH_CLIENT_SECRET)");
-      return res.status(500).json({ 
-        error: "Google OAuth credentials not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to your environment variables." 
-      });
-    }
-
-    const currentRedirectUri = getRedirectUri();
-    console.log(`[OAuth] Generating auth URL with redirect_uri: ${currentRedirectUri}`);
-
-    // Update the client with the current redirect URI in case APP_URL changed
-    oauth2Client.setCredentials({}); // Clear any old creds
-    (oauth2Client as any).redirectUri = currentRedirectUri;
-
-    const url = oauth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: SCOPES,
-      prompt: "consent"
-    });
-    res.json({ url });
-  });
-
-  app.get("/api/debug/oauth", (req, res) => {
-    res.json({
-      clientId: clientId ? `${clientId.substring(0, 10)}...` : 'MISSING',
-      clientSecret: clientSecret ? 'PRESENT' : 'MISSING',
-      redirectUri: getRedirectUri(),
-      appUrl: process.env.APP_URL,
-      googleOauthRedirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
-      scopes: SCOPES
-    });
-  });
-
-  app.get("/api/debug/google-services", (req, res) => {
-    const services = Object.keys(google).filter(k => typeof (google as any)[k] === 'function');
-    res.json({ 
-      availableServices: services,
-      hasMyBusinessReviews: services.includes('mybusinessreviews'),
-      hasMyBusinessAccountManagement: services.includes('mybusinessaccountmanagement'),
-      hasMyBusinessBusinessInformation: services.includes('mybusinessbusinessinformation')
-    });
-  });
-
-  app.get("/api/debug/tokens", (req, res) => {
-    const exists = fs.existsSync(TOKEN_FILE);
-    let stats = null;
-    if (exists) {
-      stats = fs.statSync(TOKEN_FILE);
-    }
-    res.json({ 
-      exists, 
-      path: TOKEN_FILE,
-      size: stats?.size,
-      mtime: stats?.mtime
-    });
-  });
-
-  app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req, res) => {
-    const { code } = req.query;
-    const currentRedirectUri = getRedirectUri();
-    console.log(`[OAuth] Callback received. Code: ${code ? 'PRESENT' : 'MISSING'}`);
-    console.log(`[OAuth] Using Client ID: ${clientId ? clientId.substring(0, 10) + '...' : 'MISSING'}`);
-    console.log(`[OAuth] Using Redirect URI: ${currentRedirectUri}`);
-
-    try {
-      // Ensure the client is using the latest redirect URI
-      (oauth2Client as any).redirectUri = currentRedirectUri;
-      
-      const { tokens } = await oauth2Client.getToken(code as string);
-      oauth2Client.setCredentials(tokens);
-      await saveTokens(tokens);
-      
-      // Send success message to parent window and close popup
-      res.send(`
-        <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
-                window.close();
-              } else {
-                window.location.href = "/?google_auth=success";
-              }
-            </script>
-            <p>Authentication successful. This window should close automatically.</p>
-          </body>
-        </html>
-      `);
-    } catch (error: any) {
-      console.error("[OAuth] Error getting tokens:", error.message);
-      if (error.response && error.response.data) {
-        console.error("[OAuth] Error details:", JSON.stringify(error.response.data, null, 2));
-      }
-      
-      const errorMsg = error.response?.data?.error_description || error.message || "Failed to authenticate with Google";
-      
-      res.send(`
-        <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ 
-                  type: 'OAUTH_AUTH_ERROR', 
-                  error: ${JSON.stringify(errorMsg)} 
-                }, '*');
-                window.close();
-              } else {
-                window.location.href = "/?google_auth=error&message=" + encodeURIComponent(${JSON.stringify(errorMsg)});
-              }
-            </script>
-            <p>Authentication failed: ${errorMsg}. This window should close automatically.</p>
-          </body>
-        </html>
-      `);
-    }
-  });
-
-  app.get("/api/auth/google/status", async (req, res) => {
-    const tokens = await getStoredTokens();
-    res.json({ authenticated: !!tokens });
-  });
-
-  app.post("/api/auth/google/logout", async (req, res) => {
-    await deleteTokens();
-    res.json({ success: true });
-  });
-
   // Proxy Download Route to bypass CORS
   app.get("/api/storage/proxy-download", async (req, res) => {
     const { url } = req.query;
@@ -507,76 +327,6 @@ async function startServer() {
     }
   });
 
-  // Search Console API Route
-  app.get("/api/seo/search-data", async (req, res) => {
-    const tokens = await getStoredTokens();
-    if (!tokens) {
-      return res.status(401).json({ error: "Not authenticated with Google" });
-    }
-
-    try {
-      oauth2Client.setCredentials(tokens);
-      const searchconsole = google.searchconsole({ version: "v1", auth: oauth2Client });
-      
-      // Get data for the last 30 days
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      const response = await searchconsole.searchanalytics.query({
-        siteUrl: process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL || "https://pattayarentacar.com/",
-        requestBody: {
-          startDate,
-          endDate,
-          dimensions: ["query"],
-          rowLimit: 20
-        }
-      });
-
-      res.json({ data: response.data.rows || [] });
-    } catch (error: any) {
-      console.error("Error fetching Search Console data:", error);
-      if (error.code === 401) {
-        await deleteTokens();
-      }
-      res.status(500).json({ error: "Failed to fetch SEO data", details: error.message });
-    }
-  });
-
-  // Analytics API Route
-  app.get("/api/seo/analytics-data", async (req, res) => {
-    const tokens = await getStoredTokens();
-    if (!tokens) {
-      return res.status(401).json({ error: "Not authenticated with Google" });
-    }
-
-    try {
-      oauth2Client.setCredentials(tokens);
-      const analyticsdata = google.analyticsdata({ version: "v1beta", auth: oauth2Client });
-      
-      // We need the Property ID from the user, but for now we'll try to list properties
-      // or assume one if we can. Actually, it's better to ask for it or let the user configure it.
-      // For this demo, we'll just return a placeholder or try to fetch if we have a property ID in env.
-      const propertyId = process.env.GOOGLE_ANALYTICS_PROPERTY_ID;
-      if (!propertyId) {
-        return res.status(400).json({ error: "Google Analytics Property ID not configured" });
-      }
-
-      const response = await analyticsdata.properties.runReport({
-        property: `properties/${propertyId}`,
-        requestBody: {
-          dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
-          dimensions: [{ name: "sessionMedium" }],
-          metrics: [{ name: "activeUsers" }, { name: "sessions" }, { name: "bounceRate" }]
-        }
-      });
-
-      res.json({ data: response.data });
-    } catch (error: any) {
-      console.error("Error fetching Analytics data:", error);
-      res.status(500).json({ error: "Failed to fetch Analytics data", details: error.message });
-    }
-  });
-
   // Legacy API handlers to guide users to refresh their browser
   app.post("/api/crm/import-csv", (req, res) => {
     res.status(400).json({ 
@@ -634,15 +384,6 @@ async function startServer() {
       });
     }
   });
-
-  app.post("/api/auth/google/disconnect", async (req, res) => {
-    res.json({ success: true });
-  });
-
-  let lastFetchTime = 0;
-  let isFetching = false;
-  let currentFetchPromise: Promise<any> | null = null;
-  const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes cache for pricing data
 
   async function fetchAllPricingData(spreadsheetId: string, retries = 5): Promise<any> {
     if (currentFetchPromise) {
@@ -810,31 +551,6 @@ async function startServer() {
         // Silently fail pre-fetch, it will retry on first request if needed
       });
   }, 30000);
-
-  // Google API Routes - Placeholder for clean start
-  app.get("/api/reviews", async (req, res) => {
-    res.status(501).json({ error: "Google Maps API not yet configured" });
-  });
-
-  app.get("/api/reviews/google-business", async (req, res) => {
-    res.status(501).json({ error: "Google Business API not yet configured" });
-  });
-
-  app.get("/api/auth/google/url", (req, res) => {
-    res.status(501).json({ error: "Google Auth not yet configured" });
-  });
-
-  app.get("/api/auth/google/callback", (req, res) => {
-    res.status(501).json({ error: "Google Auth not yet configured" });
-  });
-
-  app.get("/api/auth/google/status", (req, res) => {
-    res.json({ authenticated: false });
-  });
-
-  app.post("/api/auth/google/logout", (req, res) => {
-    res.json({ success: true });
-  });
 
   // Catch-all for unhandled API routes
   app.all("/api/*", (req, res) => {

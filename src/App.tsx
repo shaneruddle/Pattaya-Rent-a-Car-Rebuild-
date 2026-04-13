@@ -24,12 +24,9 @@ import { WebsiteFleetManager } from './components/WebsiteFleetManager';
 import { CRM } from './components/CRM';
 import { UserManagement } from './components/UserManagement';
 import { Logs } from './components/Logs';
-import { TrafficInsights } from './components/TrafficInsights';
 import { ImageManagement } from './components/ImageManagement';
 import { MarketingFAQ } from './components/MarketingFAQ';
 import { BlogManager } from './components/BlogManager';
-import { ReviewManagement } from './components/ReviewManagement';
-import { MigrationTool } from './components/MigrationTool';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { AIAssistant } from './components/AIAssistant';
 import { NewRental } from './components/NewRental';
@@ -79,7 +76,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'traffic_insights' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'review_management' | 'migration'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -703,18 +700,12 @@ function AppContent() {
             <Logs logs={logs} />
           ) : currentView === 'new_rental' ? (
             <NewRental cars={cars} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
-          ) : currentView === 'traffic_insights' ? (
-            <TrafficInsights />
           ) : currentView === 'image_management' ? (
             <ImageManagement />
           ) : currentView === 'marketing_faq' ? (
             <MarketingFAQ />
           ) : currentView === 'blog' ? (
             <BlogManager />
-          ) : currentView === 'review_management' ? (
-            <ReviewManagement />
-          ) : currentView === 'migration' ? (
-            <MigrationTool onComplete={() => fetchData(true)} />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <BookingEngine onLoginClick={() => {}} />
