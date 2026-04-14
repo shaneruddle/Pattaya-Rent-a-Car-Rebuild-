@@ -23,9 +23,9 @@ console.log('firebase.ts: Current Hostname:', typeof window !== 'undefined' ? wi
 
 // Use initializeFirestore with settings to improve connectivity in restricted environments
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
   // If firestoreDatabaseId is provided, use it, otherwise it defaults to '(default)'
 }, config.firestoreDatabaseId);
+console.log('firebase.ts: Firestore instance created:', db);
 
 export const auth = getAuth(app);
 

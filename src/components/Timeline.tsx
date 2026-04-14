@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Copy, Clipboard, Scissors, Loader2 } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2 } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -62,7 +62,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   });
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
-  const [clipboard, setClipboard] = useState<{ booking: Booking; isCut: boolean } | null>(null);
+  const [clipboard, setClipboard] = useState<{ booking: Booking } | null>(null);
 
   useEffect(() => {
     const handleGlobalClick = () => setContextMenu(null);
@@ -82,21 +82,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     }
   };
 
-  const handleCopyBooking = (booking: Booking) => {
-    setClipboard({ booking, isCut: false });
-    toast.success(`Copied booking for ${booking.customerName}`);
-    setContextMenu(null);
-  };
-
   const handleCutBooking = (booking: Booking) => {
-    setClipboard({ booking, isCut: true });
+    setClipboard({ booking });
     toast.success(`Cut booking for ${booking.customerName}`);
     setContextMenu(null);
   };
 
   const handlePasteBooking = async (carId: string, date: Date, slot: 'AM' | 'PM') => {
     if (!clipboard) return;
-    const { booking: sourceBooking, isCut } = clipboard;
+    const { booking: sourceBooking } = clipboard;
 
     const start = parseISO(sourceBooking.startDate);
     const end = parseISO(sourceBooking.endDate);
@@ -120,19 +114,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       
       const car = cars.find(c => c.id === dataToSave.carId);
       await logSystemActivity(
-        isCut ? 'Move Booking (Timeline)' : 'Duplicate Booking (Timeline)',
-        `${isCut ? 'Moved' : 'Duplicated'} booking for ${dataToSave.customerName} to ${car?.name || 'Unassigned'}`,
+        'Move Booking (Timeline)',
+        `Moved booking for ${dataToSave.customerName} to ${car?.name || 'Unassigned'}`,
         'Bookings',
         { bookingId: docRef.id, customerName: dataToSave.customerName }
       );
 
-      if (isCut) {
-        await deleteDoc(doc(db, 'bookings', sourceBooking.id));
-        setClipboard(null);
-        toast.success('Booking moved');
-      } else {
-        toast.success('Booking duplicated');
-      }
+      await deleteDoc(doc(db, 'bookings', sourceBooking.id));
+      setClipboard(null);
+      toast.success('Booking moved');
       
       if (onRefresh) {
         onRefresh();
@@ -810,16 +800,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopyBooking(hoveredBooking.booking);
-                      }}
-                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all pointer-events-auto"
-                      title="Copy Booking"
-                    >
-                      <Copy size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
                         handleCutBooking(hoveredBooking.booking);
                       }}
                       className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all pointer-events-auto"
@@ -1390,13 +1370,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             {contextMenu.booking ? (
               <div className="flex flex-col gap-0.5">
                 <button
-                  onClick={() => handleCopyBooking(contextMenu.booking!)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
-                >
-                  <Copy size={14} />
-                  Copy Booking
-                </button>
-                <button
                   onClick={() => handleCutBooking(contextMenu.booking!)}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
                 >
@@ -1440,7 +1413,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
               <span className="text-[10px] font-bold uppercase tracking-widest">
-                {clipboard.isCut ? 'Cut' : 'Copied'}: {clipboard.booking.customerName}
+                Cut: {clipboard.booking.customerName}
               </span>
             </div>
             <div className="h-4 w-[1px] bg-white/20" />

@@ -79,6 +79,21 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const testQuery = query(collection(db, 'cars'), limit(1));
+        await getDocs(testQuery);
+        setConnectionStatus('online');
+      } catch (e) {
+        console.error('Connection check failed:', e);
+        setConnectionStatus('offline');
+      }
+    };
+    checkConnection();
+  }, []);
 
   useEffect(() => {
     console.log('App: Current Domain:', window.location.hostname);
@@ -206,14 +221,13 @@ function AppContent() {
       
       const carsData = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
       const sortedCars = carsData.sort((a, b) => (a.order || 0) - (b.order || 0));
+      console.log(`AppContent: Fetched ${sortedCars.length} cars`);
       setCars(sortedCars);
 
-      // Limit bookings to last 6 months to save quota
-      const sixMonthsAgo = subMonths(new Date(), 6).toISOString();
+      // Fetch all bookings (limited to 1000) to ensure we see data
       const bookingsQuery = query(
         collection(db, 'bookings'), 
-        where('startDate', '>=', sixMonthsAgo),
-        limit(500)
+        limit(1000)
       );
       
       let bookingsSnapshot;
@@ -225,6 +239,10 @@ function AppContent() {
       }
       
       const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      console.log(`AppContent: Fetched ${bookingsData.length} bookings`);
+      if (bookingsData.length > 0) {
+        console.log('AppContent: Sample booking:', bookingsData[0]);
+      }
       setBookings(bookingsData);
 
       const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(100));
@@ -606,6 +624,7 @@ function AppContent() {
             <div className="fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
               <p className="font-bold text-brand-orange mb-1">Diagnostic Info</p>
               <p>User: {user?.email}</p>
+              <p>Connection: {connectionStatus === 'online' ? '✅ Online' : connectionStatus === 'offline' ? '❌ Offline' : '⏳ Checking...'}</p>
               <p>Verified: {user?.emailVerified ? '✅ Yes' : '❌ No'}</p>
               <p>Staff: {isStaff ? '✅ Yes' : '❌ No'}</p>
               <p>Cars: {cars.length}</p>
@@ -613,6 +632,17 @@ function AppContent() {
               <p>Enquiries: {bookings.filter(b => !b.carId || b.carId === '').length}</p>
               <p>Logs: {logs.length}</p>
               <p>Filtered: {filteredBookings.length}</p>
+              <button 
+                onClick={() => {
+                  setStatusFilter(null);
+                  setTypeFilter(null);
+                  setSearchQuery('');
+                  toast.success('Filters reset');
+                }}
+                className="mt-2 w-full bg-brand-orange/10 text-brand-orange py-1 rounded-lg hover:bg-brand-orange/20 transition-colors pointer-events-auto"
+              >
+                Reset Filters
+              </button>
               {(() => {
                 const plates = cars.map(c => c.plateNumber);
                 const duplicates = plates.filter((item, index) => plates.indexOf(item) !== index);

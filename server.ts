@@ -4,19 +4,21 @@ import fs from 'fs';
 import path from "path";
 import { fileURLToPath } from "url";
 
+let initLogs: string[] = [];
+function logInit(msg: string) {
+  console.log(msg);
+  initLogs.push(`${new Date().toISOString()}: ${msg}`);
+  fs.appendFileSync('./debug_logs.txt', `${new Date().toISOString()}: ${msg}\n`);
+}
+
 // Read config immediately
 const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
 const projectId = firebaseConfig.projectId;
 const databaseId = firebaseConfig.firestoreDatabaseId;
 
-console.log('[Init] Initial Env GOOGLE_CLOUD_PROJECT:', process.env.GOOGLE_CLOUD_PROJECT);
-console.log('[Init] Initial Env GCLOUD_PROJECT:', process.env.GCLOUD_PROJECT);
-console.log('[Init] Initial Env GOOGLE_CLOUD_QUOTA_PROJECT:', process.env.GOOGLE_CLOUD_QUOTA_PROJECT);
-
-// Force environment variables to match the config project ID to ensure Admin SDK targets the correct project
-process.env.GOOGLE_CLOUD_PROJECT = projectId;
-process.env.GCLOUD_PROJECT = projectId;
-process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
+logInit(`[Init] Initial Env GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
+logInit(`[Init] Initial Env GCLOUD_PROJECT: ${process.env.GCLOUD_PROJECT}`);
+logInit(`[Init] Initial Env GOOGLE_CLOUD_QUOTA_PROJECT: ${process.env.GOOGLE_CLOUD_QUOTA_PROJECT}`);
 
 import express from "express";
 import { createServer as createViteServer } from "vite";
@@ -67,12 +69,6 @@ try {
   console.log(`[Init] Firestore instance created successfully`);
 } catch (e) {
   console.error("[Init] Immediate Firestore initialization failed:", e);
-}
-
-let initLogs: string[] = [];
-function logInit(msg: string) {
-  console.log(msg);
-  initLogs.push(`${new Date().toISOString()}: ${msg}`);
 }
 
 async function verifyFirestore() {
@@ -150,6 +146,9 @@ async function verifyFirestore() {
       return;
     } catch (err: any) {
       lastError = err;
+      // Log all errors to debug_logs.txt for visibility
+      logInit(`[Init] Attempt ${i + 1} error: ${err.message}`);
+      
       const errCode = err.code !== undefined ? err.code : 'UNKNOWN';
       const isPermissionError = errCode === 5 || errCode === 7 || String(err.message).includes('PERMISSION_DENIED');
       
@@ -246,6 +245,30 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  app.get("/api/debug/firestore/inspect", async (req, res) => {
+    try {
+      const collections = ['cars', 'bookings', 'enquiries', 'pricing', 'faqs', 'users', 'customers'];
+      const results: any = {
+        currentDatabase: dbId || '(default)',
+        projectId,
+        collections: {}
+      };
+      
+      for (const col of collections) {
+        const snapshot = await firestore.collection(col).limit(5).get();
+        results.collections[col] = {
+          count: snapshot.size,
+          exists: snapshot.size > 0,
+          samples: snapshot.docs.map((doc: any) => ({ id: doc.id, data: doc.data() }))
+        };
+      }
+      
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, stack: error.stack });
+    }
   });
 
   app.get("/api/debug/firestore/logs", (req, res) => {
@@ -624,7 +647,29 @@ async function startServer() {
 
   // Pre-fetch pricing data on startup with a longer delay and better error handling
   const DEFAULT_SPREADSHEET_ID = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
-  setTimeout(() => {
+  setTimeout(async () => {
+    try {
+      const results: any = {
+        time: new Date().toISOString(),
+        database: dbId || '(default)',
+        collections: {}
+      };
+      const collectionsSnapshot = await firestore.listCollections();
+      const collectionIds = collectionsSnapshot.map((c: any) => c.id);
+      logInit(`[Debug] Found collections: ${collectionIds.join(', ')}`);
+      
+      for (const col of collectionIds) {
+        const snapshot = await firestore.collection(col).limit(1).get();
+        results.collections[col] = snapshot.size > 0 ? 'HAS DATA' : 'EMPTY';
+        logInit(`[Debug] Collection ${col}: ${results.collections[col]}`);
+      }
+      
+      fs.writeFileSync('./firestore_check.json', JSON.stringify(results, null, 2));
+      logInit('[Debug] Firestore check written to firestore_check.json');
+    } catch (err: any) {
+      logInit(`[Debug] Error checking firestore: ${err.message}`);
+    }
+
     fetchAllPricingData(DEFAULT_SPREADSHEET_ID)
       .then(data => {
         pricingCache = data;
@@ -633,7 +678,7 @@ async function startServer() {
       .catch(err => {
         // Silently fail pre-fetch, it will retry on first request if needed
       });
-  }, 30000);
+  }, 5000);
 
   // Catch-all for unhandled API routes
   app.all("/api/*", (req, res) => {
