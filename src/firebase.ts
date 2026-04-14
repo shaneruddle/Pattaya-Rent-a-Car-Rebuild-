@@ -18,6 +18,8 @@ console.log('firebase.ts: Config Project ID:', config.projectId);
 console.log('firebase.ts: Config Database ID:', config.firestoreDatabaseId);
 
 const app = initializeApp(config);
+console.log('firebase.ts: Firebase App initialized:', app.name);
+console.log('firebase.ts: Current Hostname:', typeof window !== 'undefined' ? window.location.hostname : 'SSR');
 
 // Use initializeFirestore with settings to improve connectivity in restricted environments
 export const db = initializeFirestore(app, {
@@ -174,10 +176,11 @@ export async function logSystemActivity(
   action: string,
   description: string,
   category: 'Bookings' | 'Fleet' | 'Website' | 'CRM' | 'Finance' | 'Pricing' | 'System',
-  metadata?: any
+  metadata?: any,
+  userOverride?: string
 ) {
   try {
-    const user = auth.currentUser?.email || 'Anonymous';
+    const user = userOverride || auth.currentUser?.email || 'Anonymous';
     await addDoc(collection(db, 'system_logs'), {
       action,
       description,

@@ -312,6 +312,42 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
         </div>
       `;
 
+      // Send emails via API
+      console.log('NewRental: Sending emails via API...');
+      try {
+        // 1. Send to Customer
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: formData.customerEmail,
+            subject: `Rental Confirmation - ${carName} - Pattaya Rent a Car`,
+            html: emailHtml,
+          }),
+        });
+
+        // 2. Send to Staff
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: 'info@pattayarentacar.com',
+            replyTo: formData.customerEmail,
+            subject: `[STAFF] New Rental Processed: ${formData.customerName}`,
+            html: `
+              <h3>New Rental Processed</h3>
+              <p><strong>Customer:</strong> ${formData.customerName}</p>
+              <p><strong>Vehicle:</strong> ${carName}</p>
+              <p><strong>Processed By:</strong> ${auth.currentUser?.email}</p>
+              <p><a href="${window.location.origin}/bookings">View in Dashboard</a></p>
+            `,
+          }),
+        });
+        console.log('NewRental: Emails sent successfully via API');
+      } catch (emailErr) {
+        console.error('NewRental: Error calling email API:', emailErr);
+      }
+
       await addDoc(collection(db, 'mail'), {
         to: formData.customerEmail,
         message: {

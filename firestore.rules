@@ -1,19 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Basic helper functions
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     function isAdmin() {
       return isAuthenticated() &&
+        'email' in request.auth.token &&
         (
-          ('email' in request.auth.token && 
-           (request.auth.token.email.lower() == "info@pattayarentacar.com" ||
-            request.auth.token.email.lower() == "gift@pattayarentacar.com" ||
-            request.auth.token.email.lower() == "rak@pattayarentacar.com" ||
-            request.auth.token.email.lower() == "pattayarentacar@gmail.com")) ||
+          (request.auth.token.email.lower() == "info@pattayarentacar.com") ||
+          (request.auth.token.email.lower() == "gift@pattayarentacar.com") ||
+          (request.auth.token.email.lower() == "rak@pattayarentacar.com") ||
+          (request.auth.token.email.lower() == "pattayarentacar@gmail.com") ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
         );
@@ -21,14 +28,31 @@ service cloud.firestore {
 
     function isStaff() {
       return isAuthenticated() &&
+        'email' in request.auth.token &&
         (
           isAdmin() ||
-          ('email' in request.auth.token && 
-           (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$") ||
-            request.auth.token.email.lower() == "prac.staff@gmail.com")) ||
+          (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$")) ||
+          (request.auth.token.email.lower() == "prac.staff@gmail.com") ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff')
         );
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Test connection document
+    match /test/connection {
+      allow read: if true;
     }
 
     // Cars: Publicly readable, staff writable
@@ -81,13 +105,15 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
     }
 
-    // Users: Self only, but admins can see all
+    // Users: Self only, but staff can see all
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
-      allow write: if isAdmin();
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && request.auth.uid == userId && 
-        (!request.resource.data.keys().contains('role') || request.resource.data.role == resource.data.role);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && (!request.resource.data.keys().contains('role') || request.resource.data.role == resource.data.role)) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
     // Vehicle Logs: Staff only
@@ -101,9 +127,10 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
     }
 
-    // System Logs: Staff only
+    // System Logs: Staff only, but allow public create for website enquiries
     match /system_logs/{logId} {
-      allow read, write: if isStaff();
+      allow create: if true; // Allow customers to log their enquiries
+      allow read, update, delete: if isStaff();
     }
 
     // System Config: Publicly readable for debugging, staff writable

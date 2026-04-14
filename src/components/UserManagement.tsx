@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
-import { Shield, User as UserIcon, Mail, Clock, Trash2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Shield, User as UserIcon, Mail, Clock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, isValid } from 'date-fns';
 import { toast } from 'sonner';
@@ -10,12 +10,11 @@ import { toast } from 'sonner';
 export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const q = query(collection(db, 'users'), orderBy('email', 'asc'));
+        const q = query(collection(db, 'users'), orderBy('lastLogin', 'desc'));
         const snapshot = await getDocs(q);
         const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
         setUsers(usersData);
@@ -28,38 +27,6 @@ export const UserManagement: React.FC = () => {
 
     fetchUsers();
   }, []);
-
-  const handleRoleChange = async (userId: string, newRole: 'admin' | 'staff') => {
-    setUpdating(userId);
-    try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
-      toast.success(`Role updated to ${newRole}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
-      toast.error('Failed to update role');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const handleDeleteUser = async (user: UserProfile) => {
-    toast(`Remove ${user.email}?`, {
-      description: "This will revoke their access immediately.",
-      action: {
-        label: "Remove",
-        onClick: async () => {
-          try {
-            await deleteDoc(doc(db, 'users', user.id));
-            toast.success('User removed');
-            setUsers(prev => prev.filter(u => u.id !== user.id));
-          } catch (error) {
-            handleFirestoreError(error, OperationType.DELETE, `users/${user.id}`);
-            toast.error('Failed to remove user');
-          }
-        }
-      }
-    });
-  };
 
   const formatLastLogin = (dateString?: string) => {
     if (!dateString) return 'Never';
@@ -136,40 +103,7 @@ export const UserManagement: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="flex bg-white/60 p-1.5 rounded-2xl border border-white/60">
-                      <button
-                        onClick={() => handleRoleChange(user.id, 'staff')}
-                        disabled={updating === user.id}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-                          user.role === 'staff' 
-                            ? "bg-white text-[#1A1A1A] shadow-sm" 
-                            : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
-                        )}
-                      >
-                        Staff
-                      </button>
-                      <button
-                        onClick={() => handleRoleChange(user.id, 'admin')}
-                        disabled={updating === user.id}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-                          user.role === 'admin' 
-                            ? "bg-brand-orange text-white shadow-sm" 
-                            : "text-[#1A1A1A]/40 hover:text-brand-orange"
-                        )}
-                      >
-                        Admin
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteUser(user)}
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-[#1A1A1A]/20 hover:text-red-500 hover:bg-red-50 transition-all"
-                      title="Remove User"
-                    >
-                      <Trash2 size={20} />
-                    </button>
+                    {/* Role change buttons and delete button removed as requested */}
                   </div>
                 </div>
               </motion.div>

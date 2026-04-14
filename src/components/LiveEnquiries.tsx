@@ -33,13 +33,15 @@ import { LocationPicker } from './LocationPicker';
 interface LiveEnquiriesProps {
   bookings: Booking[];
   cars: Car[];
+  onRefresh?: () => void;
 }
 
-export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) => {
+export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEnquiry, setSelectedEnquiry] = useState<Booking | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<Partial<Booking>>({});
 
   const enquiries = useMemo(() => {
@@ -68,7 +70,8 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
   };
 
   const saveEnquiry = async () => {
-    if (!selectedEnquiry) return;
+    if (!selectedEnquiry || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const docRef = doc(db, 'bookings', selectedEnquiry.id);
       await updateDoc(docRef, {
@@ -78,16 +81,21 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
       toast.success('Enquiry updated successfully');
       setIsEditing(false);
       setSelectedEnquiry(null);
+      if (onRefresh) onRefresh();
     } catch (error) {
+      toast.error('Failed to update enquiry');
       handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const confirmBooking = async () => {
-    if (!selectedEnquiry || !formData.carId) {
-      toast.error('Please select a car to confirm the booking');
+    if (!selectedEnquiry || !formData.carId || isSubmitting) {
+      if (!formData.carId && !isSubmitting) toast.error('Please select a car to confirm the booking');
       return;
     }
+    setIsSubmitting(true);
     try {
       const docRef = doc(db, 'bookings', selectedEnquiry.id);
       await updateDoc(docRef, {
@@ -153,8 +161,12 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
       toast.success('Enquiry converted to booking successfully');
       setIsConverting(false);
       setSelectedEnquiry(null);
+      if (onRefresh) onRefresh();
     } catch (error) {
+      toast.error('Failed to confirm booking');
       handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -167,7 +179,9 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars }) 
           try {
             await deleteDoc(doc(db, 'bookings', id));
             toast.success('Enquiry deleted');
+            if (onRefresh) onRefresh();
           } catch (error) {
+            toast.error('Failed to delete enquiry');
             handleFirestoreError(error, OperationType.DELETE, 'bookings');
           }
         }
@@ -575,9 +589,14 @@ Do you wish to proceed with the booking ?`;
                   </button>
                   <button
                     onClick={isConverting ? confirmBooking : saveEnquiry}
-                    className="flex-1 h-16 bg-brand-orange text-white font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20"
+                    disabled={isSubmitting}
+                    className="flex-1 h-16 bg-brand-orange text-white font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    {isConverting ? 'Confirm Booking' : 'Save Changes'}
+                    {isSubmitting ? (
+                      <Loader2 className="animate-spin" size={14} />
+                    ) : (
+                      isConverting ? 'Confirm Booking' : 'Save Changes'
+                    )}
                   </button>
                 </div>
               </div>

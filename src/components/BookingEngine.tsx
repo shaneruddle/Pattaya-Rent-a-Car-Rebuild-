@@ -679,6 +679,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     if (!selectedCar) return;
 
     setIsSubmitting(true);
+    console.log('BookingEngine: Starting submission...', formData);
     try {
       const bookingData = {
         carId: '',
@@ -697,17 +698,66 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       };
 
       // Save to bookings collection
+      console.log('BookingEngine: Saving to bookings collection...');
       const docRef = await addDoc(collection(db, 'bookings'), bookingData);
+      console.log('BookingEngine: Saved to bookings, ID:', docRef.id);
 
       // Log activity
+      console.log('BookingEngine: Logging system activity...');
       await logSystemActivity(
         'New Booking Enquiry',
         `New booking enquiry from ${bookingData.customerName} for ${selectedCar.name}`,
         'Bookings',
-        { bookingId: docRef.id, customerName: bookingData.customerName, carName: selectedCar.name }
+        { bookingId: docRef.id, customerName: bookingData.customerName, carName: selectedCar.name },
+        bookingData.customerName
       );
+      console.log('BookingEngine: Activity logged');
 
-      // Save to mail collection for Trigger Email extension
+      // Send email via API
+      console.log('BookingEngine: Sending email via API...');
+      try {
+        const emailResponse = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: 'info@pattayarentacar.com',
+            replyTo: formData.email,
+            subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
+            html: `
+              <h3>New Booking Enquiry</h3>
+              <p><strong>Vehicle:</strong> ${selectedCar.name}</p>
+              <p><strong>Customer:</strong> ${bookingData.customerName}</p>
+              <p><strong>Email:</strong> ${bookingData.email}</p>
+              <p><strong>Mobile:</strong> ${bookingData.mobileNumber}</p>
+              <p><strong>Dates:</strong> ${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}</p>
+              <p><strong>Times:</strong> ${pickUpTime} to ${dropOffTime}</p>
+              <p><strong>Total Amount:</strong> THB ${bookingData.amount.toLocaleString()}</p>
+              ${bookingData.deliveryAddress ? `
+                <hr />
+                <h4>Delivery Requested</h4>
+                <p><strong>Address:</strong> ${bookingData.deliveryAddress}</p>
+                ${bookingData.deliveryLocation ? `<p><strong>Location:</strong> ${bookingData.deliveryLocation.lat}, ${bookingData.deliveryLocation.lng}</p>` : ''}
+                <p><strong>Delivery Notes:</strong> ${bookingData.deliveryNotes}</p>
+                <p><a href="https://www.google.com/maps?q=${bookingData.deliveryLocation?.lat},${bookingData.deliveryLocation?.lng}">View on Google Maps</a></p>
+              ` : ''}
+              <hr />
+              <p><strong>Comments:</strong></p>
+              <p>${bookingData.notes.replace(/\n/g, '<br>')}</p>
+            `,
+          }),
+        });
+        
+        if (!emailResponse.ok) {
+          const errorData = await emailResponse.json();
+          console.error('BookingEngine: Email API failed:', errorData);
+        } else {
+          console.log('BookingEngine: Email sent successfully via API');
+        }
+      } catch (emailErr) {
+        console.error('BookingEngine: Error calling email API:', emailErr);
+      }
+
+      // Save to mail collection for logging (even if extension is removed)
       await addDoc(collection(db, 'mail'), {
         to: 'info@pattayarentacar.com',
         replyTo: formData.email,
@@ -736,13 +786,21 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           `,
         },
       });
+      console.log('BookingEngine: Email document created');
 
       setIsSuccess(true);
       setShowEnquiryModal(false);
       toast.success("Enquiry submitted successfully!");
-    } catch (error) {
-      console.error("Error submitting enquiry:", error);
-      toast.error("Failed to submit enquiry. Please try again.");
+    } catch (error: any) {
+      console.error("BookingEngine: Error submitting enquiry:", error);
+      const errorMessage = error.message || 'Unknown error';
+      toast.error(`Failed to submit enquiry: ${errorMessage}`);
+      
+      try {
+        handleFirestoreError(error, OperationType.WRITE, 'bookings');
+      } catch (e) {
+        // Already logged by handleFirestoreError
+      }
     } finally {
       setIsSubmitting(false);
     }

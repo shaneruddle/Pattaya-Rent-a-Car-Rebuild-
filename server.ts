@@ -29,6 +29,7 @@ import { getStorage } from "firebase-admin/storage";
 import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
+import nodemailer from "nodemailer";
 
 const httpsAgent = new https.Agent({ keepAlive: true });
 
@@ -536,6 +537,88 @@ async function startServer() {
       res.status(500).json({ error: error.message || 'Failed to fetch pricing data' });
     } finally {
       isFetching = false;
+    }
+  });
+
+  // Email API
+  app.post("/api/send-email", async (req, res) => {
+    const { to, subject, html, replyTo } = req.body;
+    const gmailUser = "info@pattayarentacar.com";
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+    if (!gmailPass) {
+      console.error("[Email] GMAIL_APP_PASSWORD not found in environment");
+      return res.status(500).json({ error: "Email service not configured (missing password)" });
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: gmailUser,
+          pass: gmailPass
+        }
+      });
+
+      const mailOptions = {
+        from: `"Pattaya Rent a Car" <${gmailUser}>`,
+        to: to || gmailUser, // Default to info if no recipient
+        replyTo: replyTo || gmailUser,
+        subject: subject || "New Message from Website",
+        html: html
+      };
+
+      console.log(`[Email] Sending email to ${mailOptions.to} with subject: ${mailOptions.subject}`);
+      const info = await transporter.sendMail(mailOptions);
+      console.log("[Email] Message sent: %s", info.messageId);
+      
+      res.json({ success: true, messageId: info.messageId });
+    } catch (error: any) {
+      console.error("[Email] Send Error:", error.message);
+      res.status(500).json({ error: "Failed to send email", details: error.message });
+    }
+  });
+
+  // Business Info / Reviews API
+  app.get("/api/reviews", async (req, res) => {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const placeId = "ChIJN1t_tDe7AWAR395L75_8C8A"; // Pattaya Rent a Car Place ID
+
+    if (!apiKey) {
+      console.log("[Reviews] No GOOGLE_MAPS_API_KEY found, returning mock data");
+      return res.json({
+        formatted_address: "123/45 Moo 10, Pattaya City, Bang Lamung District, Chon Buri 20150, Thailand",
+        international_phone_number: "+66 81 234 5678",
+        rating: 4.9,
+        user_ratings_total: 150,
+        reviews: [
+          { author_name: "John Doe", rating: 5, text: "Best car rental in Pattaya! Very professional and clean cars.", relative_time_description: "a week ago" },
+          { author_name: "Sarah Smith", rating: 5, text: "Free delivery to my hotel was so convenient. Highly recommended.", relative_time_description: "2 weeks ago" },
+          { author_name: "Mike Johnson", rating: 4, text: "Great service, easy booking process.", relative_time_description: "1 month ago" }
+        ],
+        opening_hours: {
+          open_now: true,
+          weekday_text: ["Monday: 8:00 AM – 6:00 PM", "Tuesday: 8:00 AM – 6:00 PM", "Wednesday: 8:00 AM – 6:00 PM", "Thursday: 8:00 AM – 6:00 PM", "Friday: 8:00 AM – 6:00 PM", "Saturday: 8:00 AM – 6:00 PM", "Sunday: 8:00 AM – 6:00 PM"]
+        },
+        geometry: {
+          location: { lat: 12.9149, lng: 100.8673 }
+        }
+      });
+    }
+
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,rating,formatted_address,international_phone_number,reviews,opening_hours,geometry,user_ratings_total&key=${apiKey}`;
+      const response = await axios.get(url);
+      
+      if (response.data.status === "OK") {
+        res.json(response.data.result);
+      } else {
+        console.error("[Reviews] Google API Error:", response.data.status, response.data.error_message);
+        res.status(500).json({ error: "Google API Error", details: response.data.error_message });
+      }
+    } catch (error: any) {
+      console.error("[Reviews] Fetch Error:", error.message);
+      res.status(500).json({ error: "Failed to fetch reviews", details: error.message });
     }
   });
 

@@ -12,9 +12,10 @@ import { toast } from 'sonner';
 interface BookingsProps {
   bookings: Booking[];
   cars: Car[];
+  onRefresh?: () => void;
 }
 
-export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
+export const Bookings: React.FC<BookingsProps> = ({ bookings, cars, onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   
@@ -105,6 +106,10 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
 
       toast.success('Booking updated successfully');
       setEditingBooking(null);
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       console.error('Error updating booking:', error);
       handleFirestoreError(error, OperationType.UPDATE, `bookings/${editingBooking.id}`);
@@ -132,6 +137,10 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars }) => {
 
       toast.success('Booking deleted successfully');
       setDeletingBooking(null);
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       console.error('Error deleting booking:', error);
       handleFirestoreError(error, OperationType.DELETE, `bookings/${deletingBooking.id}`);

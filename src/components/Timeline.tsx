@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Copy, Clipboard, Scissors, Loader2 } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -18,13 +18,15 @@ interface TimelineProps {
   currentDate: Date;
   newBookingTrigger?: number;
   onLogIncome?: (booking: Booking) => void;
+  onRefresh?: () => void;
   title?: string;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome, title = "Car Fleet" }) => {
+export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome, onRefresh, title = "Car Fleet" }) => {
   const [selectedSlot, setSelectedSlot] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalMode, setModalMode] = useState<'view' | 'edit'>('view');
   const [formData, setFormData] = useState<Partial<Booking>>({
     customerName: '',
@@ -58,6 +60,89 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     const cached = safeLocalStorage.getItem('prac_timeline_last_fetch');
     return cached ? parseInt(cached) : 0;
   });
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
+  const [clipboard, setClipboard] = useState<{ booking: Booking; isCut: boolean } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setContextMenu(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
+  const handleBookingContextMenu = (e: React.MouseEvent, booking: Booking) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, booking });
+  };
+
+  const handleSlotContextMenu = (e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
+    e.preventDefault();
+    if (clipboard) {
+      setContextMenu({ x: e.clientX, y: e.clientY, carId, date, slot });
+    }
+  };
+
+  const handleCopyBooking = (booking: Booking) => {
+    setClipboard({ booking, isCut: false });
+    toast.success(`Copied booking for ${booking.customerName}`);
+    setContextMenu(null);
+  };
+
+  const handleCutBooking = (booking: Booking) => {
+    setClipboard({ booking, isCut: true });
+    toast.success(`Cut booking for ${booking.customerName}`);
+    setContextMenu(null);
+  };
+
+  const handlePasteBooking = async (carId: string, date: Date, slot: 'AM' | 'PM') => {
+    if (!clipboard) return;
+    const { booking: sourceBooking, isCut } = clipboard;
+
+    const start = parseISO(sourceBooking.startDate);
+    const end = parseISO(sourceBooking.endDate);
+    const durationMs = end.getTime() - start.getTime();
+
+    const newStart = new Date(date);
+    newStart.setHours(slot === 'AM' ? 8 : 14, 0, 0, 0);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+
+    try {
+      const { id, ...bookingData } = sourceBooking;
+      const dataToSave = {
+        ...bookingData,
+        carId: carId === 'unassigned' ? '' : carId,
+        startDate: newStart.toISOString(),
+        endDate: newEnd.toISOString(),
+        createdAt: new Date().toISOString()
+      };
+
+      const docRef = await addDoc(collection(db, 'bookings'), dataToSave);
+      
+      const car = cars.find(c => c.id === dataToSave.carId);
+      await logSystemActivity(
+        isCut ? 'Move Booking (Timeline)' : 'Duplicate Booking (Timeline)',
+        `${isCut ? 'Moved' : 'Duplicated'} booking for ${dataToSave.customerName} to ${car?.name || 'Unassigned'}`,
+        'Bookings',
+        { bookingId: docRef.id, customerName: dataToSave.customerName }
+      );
+
+      if (isCut) {
+        await deleteDoc(doc(db, 'bookings', sourceBooking.id));
+        setClipboard(null);
+        toast.success('Booking moved');
+      } else {
+        toast.success('Booking duplicated');
+      }
+      
+      if (onRefresh) {
+        onRefresh();
+      }
+      
+      setContextMenu(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    }
+  };
 
   useEffect(() => {
     const fetchCustomers = async (force = false) => {
@@ -197,6 +282,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const dataToSave = {
         ...formData,
@@ -230,6 +317,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
         );
 
         toast.success('Booking updated');
+        if (onRefresh) onRefresh();
       } else {
         // Check if customer exists in CRM
         if (dataToSave.email) {
@@ -284,14 +372,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
         toast.success('Booking created');
       }
+      
+      if (onRefresh) {
+        onRefresh();
+      }
+      
       setIsModalOpen(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteBooking = async () => {
-    if (!editingBooking) return;
+    if (!editingBooking || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       await deleteDoc(doc(db, 'bookings', editingBooking.id));
       
@@ -306,8 +402,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       setIsModalOpen(false);
       setShowDeleteConfirm(false);
       toast.success('Booking deleted');
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
+      toast.error('Failed to delete booking');
       handleFirestoreError(error, OperationType.DELETE, `bookings/${editingBooking.id}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -316,6 +419,33 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   const [dropPreview, setDropPreview] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
 
   const [hoveredBooking, setHoveredBooking] = useState<{ booking: Booking; x: number; y: number } | null>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnterBooking = (booking: Booking, e: React.MouseEvent) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoveredBooking({ 
+      booking, 
+      x: rect.left, 
+      y: rect.bottom 
+    });
+  };
+
+  const handleMouseLeaveBooking = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredBooking(null);
+    }, 300); // 300ms delay to allow moving mouse to tooltip
+  };
+
+  const handleMouseEnterTooltip = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
 
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
     setDraggedBooking(booking);
@@ -495,6 +625,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     <div
                       className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'AM')}
+                      onContextMenu={(e) => handleSlotContextMenu(e, 'unassigned', day, 'AM')}
                       onDragOver={(e) => {
                         e.preventDefault();
                         if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'AM' });
@@ -505,6 +636,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     <div
                       className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
                       onClick={() => handleSlotClick('unassigned', day, 'PM')}
+                      onContextMenu={(e) => handleSlotContextMenu(e, 'unassigned', day, 'PM')}
                       onDragOver={(e) => {
                         e.preventDefault();
                         if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'PM' });
@@ -531,16 +663,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       draggable
                       onDragStart={(e) => handleDragStart(e as any, booking)}
                       onDragEnd={handleDragEnd}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredBooking({ 
-                          booking, 
-                          x: rect.left, 
-                          y: rect.bottom 
-                        });
-                      }}
-                      onMouseLeave={() => setHoveredBooking(null)}
+                      onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
+                      onMouseLeave={handleMouseLeaveBooking}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
+                      onContextMenu={(e) => handleBookingContextMenu(e, booking)}
                       className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
                       style={style || {}}
                     >
@@ -575,6 +701,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         <div
                           className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'AM')}
+                          onContextMenu={(e) => handleSlotContextMenu(e, car.id, day, 'AM')}
                           onDragOver={(e) => {
                             e.preventDefault();
                             if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'AM' });
@@ -585,6 +712,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         <div
                           className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
                           onClick={() => handleSlotClick(car.id, day, 'PM')}
+                          onContextMenu={(e) => handleSlotContextMenu(e, car.id, day, 'PM')}
                           onDragOver={(e) => {
                             e.preventDefault();
                             if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'PM' });
@@ -611,15 +739,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           draggable
                           onDragStart={(e) => handleDragStart(e as any, booking)}
                           onDragEnd={handleDragEnd}
-                          onMouseEnter={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setHoveredBooking({ 
-                              booking, 
-                              x: rect.left, 
-                              y: rect.bottom 
-                            });
-                          }}
-                          onMouseLeave={() => setHoveredBooking(null)}
+                          onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
+                          onMouseLeave={handleMouseLeaveBooking}
                           onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
                           className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
                           style={style || {}}
@@ -652,7 +773,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="fixed z-[200] pointer-events-none"
+            onMouseEnter={handleMouseEnterTooltip}
+            onMouseLeave={handleMouseLeaveBooking}
+            className="fixed z-[200]"
             style={{
               left: hoveredBooking.x,
               top: hoveredBooking.y + 10,
@@ -670,18 +793,54 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       : (hoveredBooking.booking.requestedCarType || 'Unassigned')}
                   </p>
                 </div>
-                <span className={cn(
-                  "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                  hoveredBooking.booking.status === 'Paid' 
-                    ? "bg-green-100 text-green-600" 
-                    : (parseISO(hoveredBooking.booking.startDate) < new Date()
-                        ? "bg-yellow-100 text-yellow-600"
-                        : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
-                            ? "bg-red-100 text-red-600" 
-                            : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600")))
-                )}>
-                  {hoveredBooking.booking.status}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                    hoveredBooking.booking.status === 'Paid' 
+                      ? "bg-green-100 text-green-600" 
+                      : (parseISO(hoveredBooking.booking.startDate) < new Date()
+                          ? "bg-yellow-100 text-yellow-600"
+                          : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
+                              ? "bg-red-100 text-red-600" 
+                              : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600")))
+                  )}>
+                    {hoveredBooking.booking.status}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyBooking(hoveredBooking.booking);
+                      }}
+                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all pointer-events-auto"
+                      title="Copy Booking"
+                    >
+                      <Copy size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCutBooking(hoveredBooking.booking);
+                      }}
+                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all pointer-events-auto"
+                      title="Cut Booking"
+                    >
+                      <Scissors size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingBooking(hoveredBooking.booking);
+                        setShowDeleteConfirm(true);
+                        setHoveredBooking(null);
+                      }}
+                      className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all pointer-events-auto"
+                      title="Delete Booking"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
               </div>
               
               <div className="space-y-2">
@@ -778,9 +937,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     </button>
                     <button
                       onClick={handleDeleteBooking}
-                      className="flex-1 bg-red-500 text-white py-4 rounded-3xl font-bold uppercase tracking-widest text-[10px] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                      disabled={isSubmitting}
+                      className="flex-1 bg-red-500 text-white py-4 rounded-3xl font-bold uppercase tracking-widest text-[10px] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      Delete Permanently
+                      {isSubmitting ? (
+                        <Loader2 className="animate-spin" size={14} />
+                      ) : (
+                        'Delete Permanently'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1207,6 +1371,89 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               )}
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {contextMenu && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed z-[300] bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-1.5 min-w-[160px]"
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {contextMenu.booking ? (
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() => handleCopyBooking(contextMenu.booking!)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
+                >
+                  <Copy size={14} />
+                  Copy Booking
+                </button>
+                <button
+                  onClick={() => handleCutBooking(contextMenu.booking!)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
+                >
+                  <Scissors size={14} />
+                  Cut Booking
+                </button>
+                <div className="h-[1px] bg-black/5 my-1" />
+                <button
+                  onClick={() => {
+                    setEditingBooking(contextMenu.booking!);
+                    setShowDeleteConfirm(true);
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all"
+                >
+                  <Trash2 size={14} />
+                  Delete Booking
+                </button>
+              </div>
+            ) : contextMenu.carId ? (
+              <button
+                onClick={() => handlePasteBooking(contextMenu.carId!, contextMenu.date!, contextMenu.slot!)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
+              >
+                <Clipboard size={14} />
+                Paste Booking
+              </button>
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {clipboard && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[400] bg-[#1A1A1A] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 border border-white/10"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">
+                {clipboard.isCut ? 'Cut' : 'Copied'}: {clipboard.booking.customerName}
+              </span>
+            </div>
+            <div className="h-4 w-[1px] bg-white/20" />
+            <button
+              onClick={() => setClipboard(null)}
+              className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <p className="text-[8px] text-white/20 uppercase tracking-widest font-bold">
+              Right-click slot to paste
+            </p>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

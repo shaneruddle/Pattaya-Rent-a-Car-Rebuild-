@@ -81,6 +81,8 @@ function AppContent() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    console.log('App: Current Domain:', window.location.hostname);
+    console.log('App: Firebase Auth State:', auth.currentUser ? 'Logged In' : 'Logged Out');
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
@@ -329,7 +331,8 @@ function AppContent() {
   }, [user, loading]);
 
   const availability = useMemo(() => {
-    if (cars.length === 0) return { free: 0, total: 0 };
+    const activeCars = cars.filter(c => c.isActive !== false);
+    if (activeCars.length === 0) return { free: 0, total: 0 };
     
     const now = new Date();
     const activeBookings = bookings.filter(booking => {
@@ -349,8 +352,8 @@ function AppContent() {
 
     const occupiedCarIds = new Set(activeBookings.map(b => b.carId));
     return {
-      free: cars.length - occupiedCarIds.size,
-      total: cars.length
+      free: activeCars.length - occupiedCarIds.size,
+      total: activeCars.length
     };
   }, [cars, bookings]);
 
@@ -651,15 +654,16 @@ function AppContent() {
                 setStatusFilter={setStatusFilter}
                 typeFilter={typeFilter}
                 setTypeFilter={setTypeFilter}
-                carTypes={Array.from(new Set(cars.map(c => c.type)))}
+                carTypes={Array.from(new Set(cars.filter(c => c.isActive !== false).map(c => c.type)))}
                 onNewBooking={() => setNewBookingTrigger(prev => prev + 1)}
               />
               <Timeline
-                cars={cars.filter(c => currentView === 'timeline_cars' ? c.category === 'Car' : c.category === 'Motorbike')}
+                cars={cars.filter(c => (currentView === 'timeline_cars' ? c.category === 'Car' : c.category === 'Motorbike') && c.isActive !== false)}
                 bookings={filteredBookings}
                 currentDate={currentDate}
                 newBookingTrigger={newBookingTrigger}
                 title={currentView === 'timeline_bikes' ? "Bike Fleet" : "Car Fleet"}
+                onRefresh={() => fetchData(true)}
                 onLogIncome={(booking) => {
                   setFinancePreFill({
                     type: 'Income',
@@ -685,11 +689,11 @@ function AppContent() {
           ) : currentView === 'fleet' ? (
             <FleetManager />
           ) : currentView === 'bookings' ? (
-            <Bookings bookings={bookings} cars={cars} />
+            <Bookings bookings={bookings} cars={cars.filter(c => c.isActive !== false)} onRefresh={() => fetchData(true)} />
           ) : currentView === 'rentals' ? (
             <Rentals cars={cars} />
           ) : currentView === 'enquiries' ? (
-            <LiveEnquiries bookings={bookings} cars={cars} />
+            <LiveEnquiries bookings={bookings} cars={cars} onRefresh={() => fetchData(true)} />
           ) : currentView === 'website_fleet' ? (
             <WebsiteFleetManager />
           ) : currentView === 'crm' ? (
@@ -699,7 +703,7 @@ function AppContent() {
           ) : currentView === 'logs' ? (
             <Logs logs={logs} />
           ) : currentView === 'new_rental' ? (
-            <NewRental cars={cars} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
+            <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
           ) : currentView === 'image_management' ? (
             <ImageManagement />
           ) : currentView === 'marketing_faq' ? (
