@@ -73,6 +73,12 @@ export const CRM: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async (force = false) => {
+      // Guard against running before auth is ready or if user logged out
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
+
       const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
       const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
@@ -133,7 +139,15 @@ export const CRM: React.FC = () => {
       }
     };
 
-    fetchData();
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        fetchData();
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {

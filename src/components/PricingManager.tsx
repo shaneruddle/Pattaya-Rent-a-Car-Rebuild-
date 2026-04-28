@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { PricingRule, PricingGrid, WebsiteCar } from '../types';
 import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database, CloudDownload, Calendar, Check, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -81,6 +81,7 @@ export const PricingManager: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!auth.currentUser) return;
       try {
         // Fetch Fleet
         const qFleet = query(collection(db, 'website_cars'), orderBy('name', 'asc'));

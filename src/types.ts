@@ -107,10 +107,24 @@ export interface Transaction {
   description?: string;
 }
 
+export interface FinanceSummary {
+  id: string; // 'all-time' or 'YYYY-MM'
+  type: 'all-time' | 'monthly';
+  month?: string; // 'YYYY-MM'
+  totalIncome: number;
+  totalExpense: number;
+  netProfit: number;
+  accountBalances: {
+    [accountId: string]: number;
+  };
+  lastUpdated: string; // ISO string
+}
+
 export interface Account {
   id: string;
   name: string;
   balance: number;
+  type?: 'Cash' | 'Bank' | 'Card' | 'Savings' | 'Other';
 }
 
 export interface PricingRule {

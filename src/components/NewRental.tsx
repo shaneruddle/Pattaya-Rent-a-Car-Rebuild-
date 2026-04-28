@@ -70,6 +70,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
   }, []);
 
   const fetchCustomers = async () => {
+    if (!auth.currentUser) return;
     try {
       const q = query(collection(db, 'customers'), limit(20));
       const snapshot = await getDocs(q);

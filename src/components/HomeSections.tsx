@@ -253,8 +253,7 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
         'Website Enquiry',
         `New general enquiry from ${formData.name}`,
         'Website',
-        { customerName: formData.name, email: formData.email },
-        formData.name
+        { customerName: formData.name, email: formData.email }
       );
       console.log('EnquiryForm: Activity logged');
 

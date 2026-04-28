@@ -2,9 +2,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2 } from 'lucide-react';
-import { db, OperationType, handleFirestoreError, logSystemActivity } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock } from 'lucide-react';
+import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
@@ -136,6 +136,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   useEffect(() => {
     const fetchCustomers = async (force = false) => {
+      if (!auth.currentUser) return;
       const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
       const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
@@ -152,8 +153,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       }
 
       try {
-        const snapshot = await getDocs(collection(db, 'customers'));
-        const customerData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        const snapshot = await safeGetDocs(collection(db, 'customers'));
+        const customerData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Customer));
         setCustomers(customerData);
         
         const now = Date.now();
@@ -575,6 +576,19 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       width: `${Math.max(totalSlots, 1) * 36}px`,
     };
   };
+
+  if (!auth.currentUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Lock className="w-12 h-12 text-black/10 mx-auto mb-4" />
+          <h2 className="text-xl font-serif italic mb-2">Fleet Timeline Restricted</h2>
+          <p className="text-xs text-black/40 mb-6">Please sign in to view the live booking timeline.</p>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-black text-white rounded-full text-[10px] font-bold uppercase tracking-widest">Sign In / Refresh</button>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-warm-bg">

@@ -708,8 +708,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         'New Booking Enquiry',
         `New booking enquiry from ${bookingData.customerName} for ${selectedCar.name}`,
         'Bookings',
-        { bookingId: docRef.id, customerName: bookingData.customerName, carName: selectedCar.name },
-        bookingData.customerName
+        { bookingId: docRef.id, customerName: bookingData.customerName, carName: selectedCar.name }
       );
       console.log('BookingEngine: Activity logged');
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { storage, logSystemActivity } from '../firebase';
+import { storage, logSystemActivity, auth } from '../firebase';
 import { ref, listAll, getDownloadURL, uploadBytesResumable, deleteObject, StorageReference, getBlob, uploadBytes } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { Upload, Trash2, Copy, Check, Loader2, Image as ImageIcon, Search, X, Filter, RefreshCw, ExternalLink, Edit2, Save } from 'lucide-react';
@@ -29,6 +29,10 @@ export const ImageManagement: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = async () => {
+    if (!auth.currentUser) {
+      setLoading(false);
+      return;
+    }
     if (!storage) {
       setLoading(false);
       return;

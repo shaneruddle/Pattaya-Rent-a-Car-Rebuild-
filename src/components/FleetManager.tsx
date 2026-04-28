@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, auth, storage, logSystemActivity } from '../firebase';
+import { 
+  collection, query, orderBy, addDoc, updateDoc, 
+  deleteDoc, writeBatch, getDocs, getDoc, doc, onSnapshot,
+  onAuthStateChanged, Timestamp, where, limit,
+  safeGetDocs, db, handleFirestoreError, OperationType, logSystemActivity, auth, storage 
+} from '../firebase';
 import { Car, VehicleLog } from '../types';
 import { format, parseISO, addMonths, differenceInDays, startOfDay, isValid } from 'date-fns';
 import Papa from 'papaparse';
@@ -31,7 +35,8 @@ import {
   X,
   AlertCircle,
   Download,
-  Copy
+  Copy,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -66,10 +71,16 @@ export const FleetManager: React.FC = () => {
 
   useEffect(() => {
     const fetchCars = async () => {
+      // Guard against running before auth is ready or if user logged out
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         const q = query(collection(db, 'cars'), orderBy('order', 'asc'));
-        const snapshot = await getDocs(q);
-        const carsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+        const snapshot = await safeGetDocs(q);
+        const carsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Car));
         setCars(carsData);
         setLoading(false);
       } catch (error) {
@@ -77,7 +88,16 @@ export const FleetManager: React.FC = () => {
         setLoading(false);
       }
     };
-    fetchCars();
+
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        fetchCars();
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -87,14 +107,20 @@ export const FleetManager: React.FC = () => {
     }
 
     const fetchLogs = async () => {
+      // Guard against running before auth is ready
+      if (!auth.currentUser) return;
+      
       try {
         const q = query(
           collection(db, 'vehicle_logs'), 
-          where('carId', '==', selectedCar.id),
-          orderBy('date', 'desc')
+          where('carId', '==', selectedCar.id)
         );
         const snapshot = await getDocs(q);
         const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VehicleLog));
+        // Sort in memory to avoid needing a composite index
+        logsData.sort((a, b) => {
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
         setLogs(logsData);
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, `vehicle_logs (carId: ${selectedCar.id})`);
@@ -793,10 +819,37 @@ Yamaha,New Aerox,Red,4กย 1611`;
   const activeCarsCount = cars.filter(c => c.category === 'Car' && c.isActive !== false).length;
   const activeBikesCount = cars.filter(c => (c.category === 'Motorbike' || c.type === 'Scooter' || c.type === 'Motorbike') && c.isActive !== false).length;
 
+  if (!auth.currentUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
+        >
+          <div className="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center text-black/20 mx-auto mb-6">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-2xl font-serif italic mb-2 text-[#1A1A1A]">Fleet Restricted</h2>
+          <p className="text-[#1A1A1A]/40 mb-8 max-w-xs mx-auto text-sm">Please sign in to your authorized account to manage the vehicle fleet.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-8 py-3 bg-[#1A1A1A] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all shadow-lg shadow-black/10"
+          >
+            Sign In / Refresh
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-warm-bg">
-        <Loader2 className="animate-spin text-brand-orange" size={48} />
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 text-black/10 animate-spin mx-auto mb-4" />
+          <p className="text-[#1A1A1A]/40 font-bold uppercase tracking-widest text-[10px]">Scanning Fleet...</p>
+        </div>
       </div>
     );
   }

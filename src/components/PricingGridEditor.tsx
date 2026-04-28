@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { PricingGrid } from '../types';
 import { Save, X, Plus, Trash2, Calendar, Clock, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -71,6 +71,10 @@ export const PricingGridEditor: React.FC<PricingGridEditorProps> = ({ carType, o
   useEffect(() => {
     if (!initialData) {
       const fetchGrid = async () => {
+        if (!auth.currentUser) {
+          setLoading(false);
+          return;
+        }
         try {
           const docRef = doc(db, 'pricing_grid', carType.toLowerCase());
           const docSnap = await getDoc(docRef);

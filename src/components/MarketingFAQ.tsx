@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -32,6 +32,9 @@ export const MarketingFAQ: React.FC = () => {
 
   useEffect(() => {
     const fetchFaqs = async () => {
+      // Guard against running before auth is ready
+      if (!auth.currentUser) return;
+      
       // Cache for 30 minutes
       const CACHE_DURATION = 30 * 60 * 1000;
       const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType, auth, safeGetDocs, getDocs } from '../firebase';
+import { collection, query, orderBy, where } from 'firebase/firestore';
 import { Rental, Car, Customer } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
-import { Calendar, User, Car as CarIcon, Search, Clock, ShieldCheck, Eye, X, Image as ImageIcon } from 'lucide-react';
+import { Calendar, User, Car as CarIcon, Search, Clock, ShieldCheck, Eye, X, Image as ImageIcon, Lock, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
@@ -29,6 +29,10 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
 
   useEffect(() => {
     const fetchData = async (force = false) => {
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
       const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
       const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
@@ -50,14 +54,14 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
       try {
         // Fetch rentals
         const q = query(collection(db, 'rentals'), orderBy('createdAt', 'desc'));
-        const rentalsSnapshot = await getDocs(q);
-        const rentalsData = rentalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rental));
+        const rentalsSnapshot = await safeGetDocs(q);
+        const rentalsData = rentalsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Rental));
         setRentals(rentalsData);
 
         // Fetch customers
         const qCust = query(collection(db, 'customers'));
-        const customersSnapshot = await getDocs(qCust);
-        const customersData = customersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        const customersSnapshot = await safeGetDocs(qCust);
+        const customersData = customersSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Customer));
         setCustomers(customersData);
         
         const now = Date.now();
@@ -101,16 +105,27 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
       }
     };
 
-    fetchData();
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        fetchData();
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const fetchFallbackPhotos = async (rentalId: string) => {
     setLoadingPhotos(true);
     setFallbackPhotos([]);
     try {
-      const q = query(collection(db, 'rental_photos'), where('rentalId', '==', rentalId), orderBy('index', 'asc'));
+      const q = query(collection(db, 'rental_photos'), where('rentalId', '==', rentalId));
       const snapshot = await getDocs(q);
-      const photos = snapshot.docs.map(doc => doc.data().photo as string);
+      const photoDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      // Sort in memory by index field
+      photoDocs.sort((a, b) => (a.index || 0) - (b.index || 0));
+      const photos = photoDocs.map(doc => doc.photo as string);
       setFallbackPhotos(photos);
     } catch (error) {
       console.error('Error fetching fallback photos:', error);
@@ -131,6 +146,28 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
       car?.plateNumber.toLowerCase().includes(searchLower)
     );
   });
+
+  if (!auth.currentUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Lock className="w-12 h-12 text-black/10 mx-auto mb-4" />
+          <h2 className="text-xl font-serif italic mb-2">Rentals Restricted</h2>
+          <p className="text-xs text-black/40 mb-6">Please sign in to manage vehicle rentals.</p>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-black text-white rounded-full text-[10px] font-bold uppercase tracking-widest">Sign In / Refresh</button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg text-center">
+        <Loader2 className="w-10 h-10 text-black/10 animate-spin mx-auto mb-4" />
+        <p className="text-[#1A1A1A]/40 font-bold uppercase tracking-widest text-[10px]">Scanning Rentals...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-warm-bg overflow-hidden">

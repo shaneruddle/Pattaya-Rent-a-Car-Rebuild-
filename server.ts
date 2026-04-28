@@ -3,23 +3,6 @@ import "dotenv/config";
 import fs from 'fs';
 import path from "path";
 import { fileURLToPath } from "url";
-
-let initLogs: string[] = [];
-function logInit(msg: string) {
-  console.log(msg);
-  initLogs.push(`${new Date().toISOString()}: ${msg}`);
-  fs.appendFileSync('./debug_logs.txt', `${new Date().toISOString()}: ${msg}\n`);
-}
-
-// Read config immediately
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
-const projectId = firebaseConfig.projectId;
-const databaseId = firebaseConfig.firestoreDatabaseId;
-
-logInit(`[Init] Initial Env GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
-logInit(`[Init] Initial Env GCLOUD_PROJECT: ${process.env.GCLOUD_PROJECT}`);
-logInit(`[Init] Initial Env GOOGLE_CLOUD_QUOTA_PROJECT: ${process.env.GOOGLE_CLOUD_QUOTA_PROJECT}`);
-
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
@@ -33,154 +16,137 @@ import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
 
+let initLogs: string[] = [];
+function logInit(msg: string) {
+  console.log(msg);
+  initLogs.push(`${new Date().toISOString()}: ${msg}`);
+  fs.appendFileSync('./debug_logs.txt', `${new Date().toISOString()}: ${msg}\n`);
+}
+
+// Read config immediately
+const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+const configProjectId = firebaseConfig.projectId;
+const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
+
+let effectiveProjectId = configProjectId;
+let metadataProjectId: string | null = null;
+
+// Log metadata server info immediately
+try {
+  const metadataUrl = "http://metadata.google.internal/computeMetadata/v1/project/project-id";
+  const fetchResponse = await fetch(metadataUrl, { headers: { "Metadata-Flavor": "Google" }, timeout: 2000 } as any);
+  if (fetchResponse.ok) {
+    metadataProjectId = await fetchResponse.text();
+    logInit(`[Init] Metadata Server Project ID: ${metadataProjectId}`);
+  }
+} catch (e) {
+  // Ignore metadata fetch errors
+}
+
+// Initial initialization with config ID
+logInit(`[Init] Primary Project ID: ${effectiveProjectId}`);
+
+process.env.GOOGLE_CLOUD_PROJECT = effectiveProjectId;
+process.env.GCLOUD_PROJECT = effectiveProjectId;
+
 const httpsAgent = new https.Agent({ keepAlive: true });
 
-const dbId = databaseId && databaseId !== '(default)' ? databaseId : undefined;
+// Use explicit (default) database as requested to avoid sync issues
+const dbId = '(default)';
 
 // Initialize Firestore
 let firestore: any = null;
 let isFirestoreReady = false;
 
-// Initialize Admin SDK and Firestore immediately to prevent 503 errors
-try {
-  if (admin.apps.length === 0) {
-    console.log(`[Init] Initializing Admin SDK for project: ${projectId}`);
+function initializeAdmin(pid: string) {
+  try {
+    if (admin.apps.length > 0) {
+      admin.app().delete();
+    }
+    
+    logInit(`[Init] Initializing Admin SDK for: ${pid}`);
     admin.initializeApp({
-      projectId: projectId,
-      credential: admin.credential.applicationDefault(),
+      projectId: pid,
       storageBucket: firebaseConfig.storageBucket
     });
+    
+    firestore = getFirestore();
+    firestore.settings({ ignoreUndefinedProperties: true });
+    return true;
+  } catch (e: any) {
+    logInit(`[Init] Initialization failed for ${pid}: ${e.message}`);
+    return false;
   }
-  
-  // Use the specific database ID if provided
-  if (dbId) {
-    console.log(`[Init] Using named database: ${dbId}`);
-    firestore = getFirestore(admin.app(), dbId);
-  } else {
-    console.log(`[Init] Using default database`);
-    firestore = getFirestore(admin.app());
-  }
-  
-  // Configure Firestore settings for better reliability
-  firestore.settings({
-    ignoreUndefinedProperties: true,
-  });
-  
-  console.log(`[Init] Firestore instance created successfully`);
-} catch (e) {
-  console.error("[Init] Immediate Firestore initialization failed:", e);
 }
 
-async function verifyFirestore() {
-  const configProjectId = projectId;
-  const configDatabaseId = dbId;
-  const startTime = Date.now();
-  
-  const maxRetries = 20; // Reduced retries
-  let lastError: any = null;
+// Start with config project
+initializeAdmin(effectiveProjectId);
 
-  // Initial delay to let the environment settle - reduced to 5s to avoid blocking saveTokens
+async function verifyFirestore() {
+  const startTime = Date.now();
+  const maxRetries = 10; 
+  
+  // Initial delay to let the environment settle
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       if (i > 0) {
-        // Longer delay between retries
-        const delay = Math.min(30000 * i, 60000);
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        
-        // Very infrequent logs to avoid alarming the user
-        if (i % 10 === 0) {
-          logInit(`[Status] Syncing permissions with Google Cloud... (Elapsed: ${elapsed}s)`);
-        }
-        
+        const delay = Math.min(15000 * i, 45000); // Slightly faster initial retries
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
-      // If we've failed a few times with a named database, try the default one as a fallback
-      let currentFirestore = firestore;
-      let currentDbId = configDatabaseId;
+      logInit(`[Init] Connection Attempt ${i + 1}/${maxRetries} (${effectiveProjectId})...`);
       
-      // Try fallback much earlier (after 5 attempts)
-      if (i >= 5 && configDatabaseId && configDatabaseId !== '(default)') {
-        if (i === 5) logInit(`[Init] Named database syncing is taking longer than expected. Checking fallback...`);
-        currentFirestore = getFirestore(admin.app());
-        currentDbId = '(default)';
-      }
-
-      // Only log every 10th attempt or the first one
-      if (i === 0 || i % 10 === 0) {
-        logInit(`[Init] Connection Attempt ${i + 1}/${maxRetries}...`);
-      }
+      // Test connection
+      const testDoc = firestore.collection('system_config').doc('test_connection');
+      await testDoc.get(); // Test Read
       
-      // Test connection with a simple read with a timeout
-      const testDoc = currentFirestore.collection('system_config').doc('test_connection');
+      // Test Write
+      await testDoc.set({ 
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'ready',
+        lastAttempt: i + 1,
+        verifiedAt: new Date().toISOString()
+      }, { merge: true });
       
-      // Use a promise race to implement a timeout for the get() call
-      const doc = await Promise.race([
-        testDoc.get(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore read timeout')), 10000))
-      ]) as any;
-      
-      // If read works, try a write to verify full permissions
-      try {
-        await testDoc.set({ 
-          timestamp: FieldValue.serverTimestamp(),
-          status: 'ready',
-          lastAttempt: i + 1,
-          elapsed: Math.round((Date.now() - startTime) / 1000),
-          verifiedAt: new Date().toISOString(),
-          databaseUsed: currentDbId || '(default)'
-        }, { merge: true });
-      } catch (writeErr: any) {
-        // If write fails but read works, we are almost there
-        if (i % 10 === 0) {
-          logInit(`[Init] Read successful, still syncing write permissions...`);
-        }
-        throw writeErr;
-      }
-      
-      logInit(`[Init] SUCCESS: Firestore is now connected and ready!`);
-      firestore = currentFirestore; // Update global instance if fallback worked
+      logInit(`[Init] SUCCESS: Connected to ${effectiveProjectId}`);
       isFirestoreReady = true;
       return;
     } catch (err: any) {
-      lastError = err;
-      // Log all errors to debug_logs.txt for visibility
-      logInit(`[Init] Attempt ${i + 1} error: ${err.message}`);
+      const isPermissionError = err.message?.includes('PERMISSION_DENIED') || err.code === 7;
       
-      const errCode = err.code !== undefined ? err.code : 'UNKNOWN';
-      const isPermissionError = errCode === 5 || errCode === 7 || String(err.message).includes('PERMISSION_DENIED');
-      
-      // Log non-permission errors immediately as they are more likely to be configuration issues
-      if (!isPermissionError) {
-        logInit(`[Init] Connection attempt ${i + 1} failed with non-permission error: [${errCode}] ${err.message}`);
-      } else if (i === maxRetries - 1) {
-        logInit(`[Init] Final connection attempt failed: [${errCode}] ${err.message}`);
+      logInit(`[Init] Attempt ${i + 1} denied: ${err.message}`);
+
+      // If we have a permission error and we have a metadata ID that's different, try switching project IDs once
+      if (isPermissionError && metadataProjectId && effectiveProjectId !== metadataProjectId) {
+        logInit(`[Init] Switching to Metadata Project ID: ${metadataProjectId}`);
+        effectiveProjectId = metadataProjectId;
+        process.env.GOOGLE_CLOUD_PROJECT = effectiveProjectId;
+        process.env.GCLOUD_PROJECT = effectiveProjectId;
+        if (initializeAdmin(effectiveProjectId)) {
+          i = 0; // Reset attempts for the new project
+          metadataProjectId = null; // Don't try switching again
+          continue;
+        }
       }
-      
-      if (isPermissionError || String(err.message).includes('timeout')) {
-        continue;
+
+      if (i === maxRetries - 1) {
+        logInit(`[Init] Stopping connection attempts after ${maxRetries} failures.`);
       }
-      
-      if (i < maxRetries - 1) continue;
     }
   }
 
-  logInit(`FINAL NOTICE: All ${maxRetries} connection attempts timed out.`);
-  logInit(`The app will continue in 'unverified' mode. If you see PERMISSION_DENIED, please refresh in 2 minutes.`);
-  isFirestoreReady = true; // Mark as ready anyway to stop the loop
+  isFirestoreReady = true; // Proceed anyway
 }
 
-// Verify Firestore in the background
 verifyFirestore().catch(err => {
-  console.error("Critical Firestore verification failure:", err);
+  logInit(`Critical Firestore verification failure: ${err.message}`);
 });
-
 
 // Helper for Firestore error reporting as per guidelines
 function handleFirestoreError(error: any, operation: string, path: string) {
-  const currentProjectId = projectId;
+  const currentProjectId = effectiveProjectId;
   // @ts-ignore - databaseId is internal but useful for debugging
   const currentDatabaseId = firestore?.databaseId || '(default)';
   
@@ -252,7 +218,7 @@ async function startServer() {
       const collections = ['cars', 'bookings', 'enquiries', 'pricing', 'faqs', 'users', 'customers'];
       const results: any = {
         currentDatabase: dbId || '(default)',
-        projectId,
+        projectId: effectiveProjectId,
         collections: {}
       };
       
@@ -274,7 +240,7 @@ async function startServer() {
   app.get("/api/debug/firestore/logs", (req, res) => {
     res.json({ 
       logs: initLogs,
-      projectId,
+      projectId: effectiveProjectId,
       databaseId,
       isFirestoreReady,
       firestoreDefined: !!firestore
@@ -369,7 +335,7 @@ async function startServer() {
   // Debug route to check Firestore connection
   app.get("/api/debug/firestore", async (req, res) => {
     try {
-      const currentProjectId = projectId;
+      const currentProjectId = effectiveProjectId;
       // @ts-ignore
       const currentDatabaseId = (firestore as any).databaseId || '(default)';
       
@@ -397,7 +363,7 @@ async function startServer() {
         message: error.message,
         code: error.code,
         details: {
-          activeProjectId: projectId,
+          activeProjectId: effectiveProjectId,
           // @ts-ignore
           activeDatabaseId: (firestore as any).databaseId || '(default)',
           configProjectId: firebaseConfig.projectId,
@@ -420,24 +386,17 @@ async function startServer() {
       console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
       
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
-
-        const response = await fetch(url, {
+        const response = await axios.get(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           },
-          signal: controller.signal
+          responseType: 'arraybuffer',
+          timeout: 300000, // 5 minutes
+          maxRedirects: 5
         });
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const buffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type') || '';
+        const buffer = response.data;
+        const contentType = response.headers['content-type'] || '';
         console.log(`Successfully downloaded spreadsheet (${buffer.byteLength} bytes), Content-Type: ${contentType}`);
         
         if (!contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel') && !contentType.includes('application/zip')) {

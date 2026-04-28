@@ -10,8 +10,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
-import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, limit, where } from 'firebase/firestore';
-import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType } from './firebase';
+import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, limit, where, onSnapshot } from 'firebase/firestore';
+import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType, safeGetDocs } from './firebase';
 import { Car, Booking } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -81,19 +81,8 @@ function AppContent() {
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const testQuery = query(collection(db, 'cars'), limit(1));
-        await getDocs(testQuery);
-        setConnectionStatus('online');
-      } catch (e) {
-        console.error('Connection check failed:', e);
-        setConnectionStatus('offline');
-      }
-    };
-    checkConnection();
-  }, []);
+  // Connection check removed from early mount to avoid Permission Denied on first turn
+  // Authenticated users will implicitly check connection via fetchData
 
   useEffect(() => {
     console.log('App: Current Domain:', window.location.hostname);
@@ -180,27 +169,32 @@ function AppContent() {
   }, []);
 
   const fetchData = React.useCallback(async (force = false) => {
+    // Only fetch if authenticated to avoid PERMISSION_DENIED
+    if (!auth.currentUser) return;
+
     // Cache for 10 minutes to save quota
     const CACHE_DURATION = 10 * 60 * 1000;
-    const isCacheValid = !force && (Date.now() - lastDataFetch < CACHE_DURATION);
+    
+    // Using a ref or a functional state update wouldn't work easily here
+    // with the current structure. Let's just use the current values at call time.
+    // We can use a guard inside to check against the global state.
+    
+    // Using localStorage directly for the check prevents the dependency loop with lastDataFetch state
+    const lastFetch = Number(safeLocalStorage.getItem('prac_last_fetch') || 0);
+    const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
-    if (cars.length > 0 && isCacheValid) {
-      console.log('AppContent: Using in-memory cached data');
-      return;
-    }
-
-    // Try to load from localStorage if in-memory is empty but cache is still valid
-    if (cars.length === 0 && isCacheValid) {
+    if (isCacheValid) {
       const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
-      const cachedBookings = safeLocalStorage.getItem('prac_cached_bookings');
-      const cachedLogs = safeLocalStorage.getItem('prac_cached_logs');
-
-      if (cachedCars && cachedBookings && cachedLogs) {
+      if (cachedCars) {
+        console.log('AppContent: Using cached data to save reads');
+        // We still set state to ensure UI is in sync, but we don't fetch from network
         try {
-          console.log('AppContent: Using localStorage cached data');
-          setCars(JSON.parse(cachedCars));
-          setBookings(JSON.parse(cachedBookings));
-          setLogs(JSON.parse(cachedLogs));
+          const parsedCars = JSON.parse(cachedCars);
+          const parsedBookings = JSON.parse(safeLocalStorage.getItem('prac_cached_bookings') || '[]');
+          const parsedLogs = JSON.parse(safeLocalStorage.getItem('prac_cached_logs') || '[]');
+          setCars(parsedCars);
+          setBookings(parsedBookings);
+          setLogs(parsedLogs);
           return;
         } catch (e) {
           console.error('Error parsing cached data:', e);
@@ -211,15 +205,9 @@ function AppContent() {
     try {
       console.log('AppContent: Fetching fresh data from Firestore...');
       const carsQuery = query(collection(db, 'cars'), orderBy('order', 'asc'));
-      let carsSnapshot;
-      try {
-        carsSnapshot = await getDocs(carsQuery);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'cars');
-        return;
-      }
+      const carsSnapshot = await safeGetDocs(carsQuery);
       
-      const carsData = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+      const carsData = carsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Car));
       const sortedCars = carsData.sort((a, b) => (a.order || 0) - (b.order || 0));
       console.log(`AppContent: Fetched ${sortedCars.length} cars`);
       setCars(sortedCars);
@@ -230,32 +218,11 @@ function AppContent() {
         limit(1000)
       );
       
-      let bookingsSnapshot;
-      try {
-        bookingsSnapshot = await getDocs(bookingsQuery);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'bookings');
-        return;
-      }
-      
-      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      console.log(`AppContent: Fetched ${bookingsData.length} bookings`);
-      if (bookingsData.length > 0) {
-        console.log('AppContent: Sample booking:', bookingsData[0]);
-      }
+      const bookingsSnapshot = await safeGetDocs(bookingsQuery);
+      const bookingsData = bookingsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(bookingsData);
 
-      const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(100));
-      let logsSnapshot;
-      try {
-        logsSnapshot = await getDocs(logsQuery);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'system_logs');
-        return;
-      }
-      
-      const logsData = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
-      setLogs(logsData);
+      setConnectionStatus('online');
 
       // Update cache
       const now = Date.now();
@@ -264,33 +231,12 @@ function AppContent() {
       safeLocalStorage.setItem('prac_last_fetch', now.toString(), true);
       safeLocalStorage.setItem('prac_cached_cars', JSON.stringify(sortedCars), true);
       safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
-      safeLocalStorage.setItem('prac_cached_logs', JSON.stringify(logsData), true);
     } catch (error: any) {
       console.error('Error fetching initial data:', error);
       const errorMessage = error.message || String(error);
       setLastError(`Data Fetch Error: ${errorMessage}`);
-      
-      // Fallback to stale localStorage if fetch fails
-      const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
-      const cachedBookings = safeLocalStorage.getItem('prac_cached_bookings');
-      const cachedLogs = safeLocalStorage.getItem('prac_cached_logs');
-      
-      if (cachedCars && cachedBookings && cachedLogs) {
-        try {
-          setCars(JSON.parse(cachedCars));
-          setBookings(JSON.parse(cachedBookings));
-          setLogs(JSON.parse(cachedLogs));
-          toast.error("Failed to fetch fresh data. Using cached data.");
-        } catch (e) {
-          console.error('Error parsing stale cache:', e);
-        }
-      }
-
-      if (errorMessage.includes('Quota exceeded') || errorMessage.includes('resource-exhausted')) {
-        toast.error("Firestore quota exceeded. Please switch to your own Blaze plan project.");
-      }
     }
-  }, [lastDataFetch, cars.length]);
+  }, []); // Empty dependency array breaks the loop!
 
   useEffect(() => {
     if (!user || !isStaff) {
@@ -342,6 +288,20 @@ function AppContent() {
 
     console.log('Fetching data for user:', user.email);
     fetchData();
+
+    // Listen to System Logs (Real-time update)
+    const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(100));
+    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+      const logsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as SystemLog));
+      setLogs(logsData);
+      safeLocalStorage.setItem('prac_cached_logs', JSON.stringify(logsData), true);
+    }, (error) => {
+      console.error("Logs listener error:", error);
+    });
+
+    return () => {
+      unsubscribeLogs();
+    };
   }, [user, isStaff, fetchData]);
 
   useEffect(() => {
@@ -471,6 +431,7 @@ function AppContent() {
     return (
       <ErrorBoundary>
         <BookingEngine onLoginClick={() => setShowLogin(true)} />
+        <AIAssistant />
       </ErrorBoundary>
     );
   }
@@ -622,41 +583,6 @@ function AppContent() {
         <main className="flex-1 flex flex-col min-w-0">
           {user && (
             <div className="fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
-              <p className="font-bold text-brand-orange mb-1">Diagnostic Info</p>
-              <p>User: {user?.email}</p>
-              <p>Connection: {connectionStatus === 'online' ? '✅ Online' : connectionStatus === 'offline' ? '❌ Offline' : '⏳ Checking...'}</p>
-              <p>Verified: {user?.emailVerified ? '✅ Yes' : '❌ No'}</p>
-              <p>Staff: {isStaff ? '✅ Yes' : '❌ No'}</p>
-              <p>Cars: {cars.length}</p>
-              <p>Bookings: {bookings.filter(b => b.carId && b.carId !== '').length}</p>
-              <p>Enquiries: {bookings.filter(b => !b.carId || b.carId === '').length}</p>
-              <p>Logs: {logs.length}</p>
-              <p>Filtered: {filteredBookings.length}</p>
-              <button 
-                onClick={() => {
-                  setStatusFilter(null);
-                  setTypeFilter(null);
-                  setSearchQuery('');
-                  toast.success('Filters reset');
-                }}
-                className="mt-2 w-full bg-brand-orange/10 text-brand-orange py-1 rounded-lg hover:bg-brand-orange/20 transition-colors pointer-events-auto"
-              >
-                Reset Filters
-              </button>
-              {(() => {
-                const plates = cars.map(c => c.plateNumber);
-                const duplicates = plates.filter((item, index) => plates.indexOf(item) !== index);
-                return duplicates.length > 0 && (
-                  <p className="text-orange-500 font-bold mt-1">
-                    ⚠️ {duplicates.length} duplicate plates found
-                  </p>
-                );
-              })()}
-              {bookings.length > filteredBookings.length && (
-                <p className="text-red-500 font-bold mt-1">
-                  ⚠️ {bookings.length - filteredBookings.length} bookings filtered out
-                </p>
-              )}
               {lastError && (
                 <div className="bg-red-50 border border-red-200 p-4 rounded-2xl mb-6 flex items-center justify-between">
                   <p className="text-red-500 font-bold text-xs">
@@ -664,7 +590,7 @@ function AppContent() {
                   </p>
                   <button 
                     onClick={() => fetchData(true)}
-                    className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all"
+                    className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all pointer-events-auto"
                   >
                     Retry Fetch
                   </button>
@@ -746,7 +672,6 @@ function AppContent() {
             </div>
           )}
         </main>
-        <AIAssistant />
         <Toaster position="bottom-right" toastOptions={{
           style: {
             background: 'rgba(255, 255, 255, 0.8)',

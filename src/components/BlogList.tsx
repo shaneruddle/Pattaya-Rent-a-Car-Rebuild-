@@ -23,12 +23,19 @@ export const BlogList: React.FC<BlogListProps> = ({ onPostClick, isBikeMode }) =
       try {
         const q = query(
           collection(db, 'blog_posts'),
-          where('status', '==', 'Published'),
-          orderBy('publishedAt', 'desc')
+          where('status', '==', 'Published')
         );
 
         const snapshot = await getDocs(q);
         const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
+        
+        // Sort in memory to avoid needing a composite index
+        postsData.sort((a, b) => {
+          const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+          const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+          return dateB - dateA;
+        });
+        
         setPosts(postsData);
         setLoading(false);
       } catch (error) {

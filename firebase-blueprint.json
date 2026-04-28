@@ -341,6 +341,25 @@
         "autoReplyTemplate": { "type": "string" },
         "minRatingForAutoReply": { "type": "integer" }
       }
+    },
+    "FinanceSummary": {
+      "title": "FinanceSummary",
+      "description": "Aggregated financial totals (monthly or all-time).",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["monthly", "all-time"] },
+        "month": { "type": "string", "description": "YYYY-MM format for monthly summaries." },
+        "totalIncome": { "type": "number" },
+        "totalExpense": { "type": "number" },
+        "netProfit": { "type": "number" },
+        "accountBalances": {
+          "type": "object",
+          "description": "Map of accountId to balance at the time of summary.",
+          "additionalProperties": { "type": "number" }
+        },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "totalIncome", "totalExpense", "netProfit", "lastUpdated"]
     }
   },
   "firestore": {
@@ -423,6 +442,10 @@
     "/review_settings/{settingId}": {
       "schema": "ReviewSettings",
       "description": "Settings for review management."
+    },
+    "/finance_summaries/{summaryId}": {
+      "schema": "FinanceSummary",
+      "description": "Aggregated financial summaries (monthly and all-time)."
     }
   }
 }

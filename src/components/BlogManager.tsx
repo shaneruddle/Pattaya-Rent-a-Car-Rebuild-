@@ -54,6 +54,7 @@ export const BlogManager: React.FC = () => {
 
   useEffect(() => {
     const fetchPosts = async () => {
+      if (!auth.currentUser) return;
       try {
         const q = query(collection(db, 'blog_posts'), orderBy('createdAt', 'desc'));
         const snapshot = await getDocs(q);

@@ -182,7 +182,7 @@ export const AIAssistant: React.FC = () => {
       {/* Floating Button */}
       <button
         onClick={handleOpen}
-        className="fixed bottom-6 left-6 z-[9999] w-14 h-14 bg-[#f27d26] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group"
+        className="fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-[#f27d26] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group"
         aria-label={t('aiAssistant.cta')}
       >
         <MessageSquare size={24} className="group-hover:rotate-12 transition-transform" />
@@ -196,7 +196,7 @@ export const AIAssistant: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-24 left-6 z-[9999] w-[380px] h-[500px] bg-[#151619] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            className="fixed bottom-24 right-6 z-[9999] w-[380px] h-[500px] bg-[#151619] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">

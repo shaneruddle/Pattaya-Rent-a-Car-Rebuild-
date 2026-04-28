@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { UserProfile } from '../types';
 import { Shield, User as UserIcon, Mail, Clock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,6 +13,7 @@ export const UserManagement: React.FC = () => {
 
   useEffect(() => {
     const fetchUsers = async () => {
+      if (!auth.currentUser) return;
       try {
         const q = query(collection(db, 'users'), orderBy('lastLogin', 'desc'));
         const snapshot = await getDocs(q);

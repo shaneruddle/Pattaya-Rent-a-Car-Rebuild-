@@ -5,7 +5,7 @@ import { safeLocalStorage } from '../lib/storage';
 import { fetchWithRetry } from '../lib/api';
 
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { PricingGrid } from '../types';
 
 interface PricingContextType {
@@ -31,6 +31,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const fetchDbPricing = useCallback(async () => {
+    if (!auth.currentUser) return;
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -66,6 +67,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [dbPricing, lastFetch]);
 
   const fetchSettings = useCallback(async () => {
+    if (!auth.currentUser) return;
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -99,20 +101,12 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [settings, lastFetch]);
 
-  useEffect(() => {
-    fetchDbPricing();
-    fetchSettings();
-  }, [fetchDbPricing, fetchSettings]);
-
   const fetchPricing = useCallback(async (force = false) => {
     // Avoid fetching sheet too often if not needed
     if (!force && sheetPricing && Date.now() - lastFetch < 5 * 60 * 1000) {
       return;
     }
 
-    // Only fetch sheet if explicitly requested or if we are in sheet mode
-    // Actually, we fetch it anyway for the PricingManager to show sync status
-    
     setError(null);
 
     const performFetch = async (retries = 3, delay = 2000): Promise<void> => {
@@ -139,8 +133,17 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [sheetPricing, lastFetch]);
 
   useEffect(() => {
-    fetchPricing();
-  }, []);
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        fetchDbPricing();
+        fetchSettings();
+        fetchPricing();
+      } else {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchDbPricing, fetchSettings, fetchPricing]);
 
   return (
     <PricingContext.Provider value={{ 
