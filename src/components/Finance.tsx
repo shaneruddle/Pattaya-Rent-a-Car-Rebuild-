@@ -8,6 +8,7 @@ import {
 import { Transaction, Account, Car, Booking } from '../types';
 import { format, startOfDay, endOfDay, isSameDay, parseISO, isWithinInterval, parse } from 'date-fns';
 import * as Papa from 'papaparse';
+import Select, { components, SingleValueProps, OptionProps } from 'react-select';
 import { 
   Plus, 
   ArrowUpRight, 
@@ -141,6 +142,21 @@ const parseCSVDate = (dateStr: string): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+const getBrandSlug = (name: string) => {
+  const n = name.toLowerCase();
+  if (n.includes('toyota')) return 'toyota';
+  if (n.includes('honda')) return 'honda';
+  if (n.includes('ford')) return 'ford';
+  if (n.includes('nissan')) return 'nissan';
+  if (n.includes('mg')) return 'mg';
+  return null;
+};
+
+const cleanCarName = (car: Car) => {
+  const name = car.make && car.model ? `${car.make} ${car.model}` : car.name;
+  return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
+};
+
 export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onClearPreFill }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -153,6 +169,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
+  const [filterCarId, setFilterCarId] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
   const [filterMonth, setFilterMonth] = useState('All');
   const [successAction, setSuccessAction] = useState<string | null>(null);
@@ -176,12 +193,96 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     description: ''
   });
 
+  const carOptions = useMemo(() => [
+    { value: '', label: 'None' },
+    ...cars.map(car => ({
+      value: car.id,
+      label: `${car.name} (${car.plateNumber})`,
+      car: car
+    }))
+  ], [cars]);
+
+  const CustomOption = (props: OptionProps<any>) => {
+    const car = props.data.car as Car;
+    if (!car) return <components.Option {...props}>{props.children}</components.Option>;
+
+    const brandSlug = getBrandSlug(car.name);
+    const displayName = cleanCarName(car);
+    const year = car.yearOfManufacture?.toString().slice(-4);
+    const engine = car.engineSize?.toString().replace(/cc/gi, '');
+
+    return (
+      <components.Option {...props}>
+        <div className="flex items-center gap-2 w-full">
+          {brandSlug ? (
+            <img 
+              src={`https://cdn.simpleicons.org/${brandSlug}`}
+              alt={brandSlug}
+              className="w-4 h-4 shrink-0"
+            />
+          ) : (
+            <div className="w-4 h-4" />
+          )}
+          <div className="flex-1 flex items-center justify-between min-w-0">
+            <span className="text-[11px] font-bold text-gray-900 truncate">
+              {displayName} {year} {engine && `· ${engine}`}
+            </span>
+            <span className="text-[10px] text-gray-500 font-mono ml-auto shrink-0">
+              {car.plateNumber}
+            </span>
+          </div>
+        </div>
+      </components.Option>
+    );
+  };
+
+  const CustomSingleValue = (props: SingleValueProps<any>) => {
+    const car = props.data.car as Car;
+    if (!car) return <components.SingleValue {...props}>{props.children}</components.SingleValue>;
+
+    const brandSlug = getBrandSlug(car.name);
+    const displayName = cleanCarName(car);
+    const year = car.yearOfManufacture?.toString().slice(-4);
+    const engine = car.engineSize?.toString().replace(/cc/gi, '');
+
+    return (
+      <components.SingleValue {...props}>
+        <div className="flex items-center gap-2">
+          {brandSlug && (
+            <img 
+              src={`https://cdn.simpleicons.org/${brandSlug}`}
+              alt={brandSlug}
+              className="w-4 h-4 shrink-0"
+            />
+          )}
+          <span className="text-sm">
+            {displayName} {year} {engine && `· ${engine}`} <span className="text-xs text-gray-400">({car.plateNumber})</span>
+          </span>
+        </div>
+      </components.SingleValue>
+    );
+  };
+
+  const vehicleFilterOptions = useMemo(() => [
+    { value: 'All', label: 'All Vehicles' },
+    ...cars.map(car => ({
+      value: car.id,
+      label: `${car.name} (${car.plateNumber})`,
+      car: car
+    }))
+  ], [cars]);
+
   const filteredTransactions = useMemo(() => {
     let result = transactions;
 
     // Filter by Category
     if (filterCategory !== 'All') {
       result = result.filter(tx => tx.category === filterCategory);
+    }
+
+    // Filter by Vehicle
+    if (filterCarId !== 'All') {
+      result = result.filter(tx => tx.carId === filterCarId);
     }
 
     // Filter by Year
@@ -212,7 +313,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
 
     // Sort by date desc - ensure latest is first
     return [...result].sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, searchTerm, filterCategory, filterYear, filterMonth, accounts, cars]);
+  }, [transactions, searchTerm, filterCategory, filterCarId, filterYear, filterMonth, accounts, cars]);
 
   const monthlyStats = useMemo(() => {
     const categoryTotals: { [key: string]: { income: number; expense: number } } = {};
@@ -275,55 +376,74 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
 
   // Real-time synchronization
   useEffect(() => {
+    let unsubscribeAccounts: (() => void) | null = null;
+    let unsubscribeTransactions: (() => void) | null = null;
+
     const unsubscribeAuth = onAuthStateChanged(auth, user => {
       if (!user) {
         setLoading(false);
-        return;
-      }
-    });
-
-    // Listen to Accounts
-    const unsubscribeAccounts = onSnapshot(collection(db, 'accounts'), (snapshot) => {
-      const accountsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-      
-      const requiredAccounts = ["Cash Car", "Kbank Auto", "Kbank Shane", "KTB Auto"];
-      
-      if (accountsData.length === 0) {
-        // Only trigger initialization if we're certain there are no accounts
-        fetchData();
+        if (unsubscribeAccounts) {
+          unsubscribeAccounts();
+          unsubscribeAccounts = null;
+        }
+        if (unsubscribeTransactions) {
+          unsubscribeTransactions();
+          unsubscribeTransactions = null;
+        }
         return;
       }
 
-      const sorted = [...accountsData].sort((a, b) => {
-        const idxA = requiredAccounts.indexOf(a.name);
-        const idxB = requiredAccounts.indexOf(b.name);
-        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-        if (idxA !== -1) return -1;
-        if (idxB !== -1) return 1;
-        return a.name.localeCompare(b.name);
-      });
+      // Listen to Accounts
+      if (!unsubscribeAccounts) {
+        unsubscribeAccounts = onSnapshot(collection(db, 'accounts'), (snapshot) => {
+          const accountsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
+          
+          const requiredAccounts = ["Cash Car", "Kbank Auto", "Kbank Shane", "KTB Auto"];
+          
+          if (accountsData.length === 0) {
+            fetchData();
+            return;
+          }
 
-      setAccounts(sorted);
-      safeLocalStorage.setItem('prac_cached_accounts', JSON.stringify(sorted), true);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'accounts');
-    });
+          const sorted = [...accountsData].sort((a, b) => {
+            const idxA = requiredAccounts.indexOf(a.name);
+            const idxB = requiredAccounts.indexOf(b.name);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.name.localeCompare(b.name);
+          });
 
-    // Listen to Transactions
-    const txQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(500));
-    const unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
-      const transactionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setTransactions(transactionsData);
-      safeLocalStorage.setItem('prac_cached_transactions', JSON.stringify(transactionsData), true);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'transactions');
+          setAccounts(sorted);
+          safeLocalStorage.setItem('prac_cached_accounts', JSON.stringify(sorted), true);
+          setLoading(false);
+        }, (error) => {
+          // Only show error if we are actually signed in
+          if (auth.currentUser) {
+            handleFirestoreError(error, OperationType.GET, 'accounts');
+          }
+        });
+      }
+
+      // Listen to Transactions
+      if (!unsubscribeTransactions) {
+        const txQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(500));
+        unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
+          const transactionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+          setTransactions(transactionsData);
+          safeLocalStorage.setItem('prac_cached_transactions', JSON.stringify(transactionsData), true);
+        }, (error) => {
+          if (auth.currentUser) {
+            handleFirestoreError(error, OperationType.GET, 'transactions');
+          }
+        });
+      }
     });
 
     return () => {
       unsubscribeAuth();
-      unsubscribeAccounts();
-      unsubscribeTransactions();
+      if (unsubscribeAccounts) unsubscribeAccounts();
+      if (unsubscribeTransactions) unsubscribeTransactions();
     };
   }, []);
 
@@ -1284,6 +1404,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
   const resetFilters = () => {
     setSearchTerm('');
     setFilterCategory('All');
+    setFilterCarId('All');
     setFilterYear('All');
     setFilterMonth('All');
   };
@@ -1474,6 +1595,47 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
               ฿{totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
+
+          {/* Active Filter Summary */}
+          {(filterCategory !== 'All' || filterCarId !== 'All' || filterYear !== 'All' || filterMonth !== 'All' || searchTerm) && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-[#141414] text-white p-8 rounded-[32px] shadow-2xl relative overflow-hidden group border border-white/5"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="flex justify-between items-start mb-4 relative">
+                <div className="p-3 bg-white/10 rounded-2xl border border-white/20">
+                  <TrendingUp size={20} className={cn(monthlyStats.profit >= 0 ? "text-green-400" : "text-red-400")} />
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/40 mb-1">Active Filters</span>
+                  <div className="flex gap-1">
+                    {filterCarId !== 'All' && <div className="w-1.5 h-1.5 rounded-full bg-brand-orange" />}
+                    {filterCategory !== 'All' && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                    {(filterYear !== 'All' || filterMonth !== 'All') && <div className="w-1.5 h-1.5 rounded-full bg-green-400" />}
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1 relative">Selected Net Profit</p>
+              <p className={cn(
+                "text-3xl font-bold tracking-tight relative mb-4",
+                monthlyStats.profit >= 0 ? "text-green-400" : "text-red-400"
+              )}>
+                {monthlyStats.profit < 0 ? '-' : ''}฿{Math.abs(monthlyStats.profit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest relative pt-4 border-t border-white/10">
+                <div className="flex flex-col">
+                  <span className="text-white/40 mb-0.5 text-[8px]">Total In</span>
+                  <span className="text-green-400">฿{monthlyStats.totalIncome.toLocaleString()}</span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-white/40 mb-0.5 text-[8px]">Total Out</span>
+                  <span className="text-red-400">฿{monthlyStats.totalExpense.toLocaleString()}</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </div>
 
         {/* Transactions Table */}
@@ -1485,7 +1647,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
               <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">History of all movements</p>
             </div>
             <div className="flex flex-wrap gap-4 items-center">
-              {(searchTerm || filterCategory !== 'All' || filterYear !== 'All' || filterMonth !== 'All') && (
+              {(searchTerm || filterCategory !== 'All' || filterCarId !== 'All' || filterYear !== 'All' || filterMonth !== 'All') && (
                 <button 
                   onClick={resetFilters}
                   className="px-4 py-2 bg-[#141414] text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-orange transition-all flex items-center gap-2"
@@ -1494,6 +1656,63 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                   Reset
                 </button>
               )}
+
+              {/* Vehicle Filter */}
+              <div className="relative z-20 min-w-[200px]">
+                <Select
+                  options={vehicleFilterOptions}
+                  value={filterCarId === 'All' ? { value: 'All', label: 'All Vehicles' } : vehicleFilterOptions.find(opt => opt.value === filterCarId)}
+                  onChange={(newValue: any) => setFilterCarId(newValue.value)}
+                  isSearchable
+                  placeholder="Filter vehicle..."
+                  components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      backgroundColor: 'rgba(255, 255, 255, 0.4)',
+                      border: '1px solid rgba(255, 255, 255, 0.6)',
+                      borderRadius: '1rem',
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.1em',
+                      minHeight: '42px',
+                      paddingLeft: '8px',
+                      boxShadow: 'none',
+                      '&:hover': {
+                        borderColor: '#FF6B00'
+                      }
+                    }),
+                    menu: (base) => ({
+                      ...base,
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      backdropFilter: 'blur(10px)',
+                      borderRadius: '1rem',
+                      overflow: 'hidden',
+                      zIndex: 100,
+                      border: '1px solid rgba(255, 255, 255, 0.4)',
+                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+                    }),
+                    option: (base, state) => ({
+                      ...base,
+                      backgroundColor: state.isFocused ? 'rgba(255, 107, 0, 0.1)' : 'transparent',
+                      color: 'inherit',
+                      cursor: 'pointer',
+                      '&:active': {
+                        backgroundColor: 'rgba(255, 107, 0, 0.2)'
+                      }
+                    }),
+                    input: (base) => ({
+                      ...base,
+                      color: '#1A1A1A'
+                    }),
+                    singleValue: (base) => ({
+                      ...base,
+                      color: '#1A1A1A'
+                    })
+                  }}
+                />
+              </div>
 
               {/* Category Filter */}
               <div className="relative">
@@ -1603,11 +1822,27 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                       <td className="p-6 text-xs font-bold uppercase tracking-widest text-[#141414]/60">
                         <div className="flex flex-col gap-1.5">
                           {tx.category}
-                          {tx.carId && (
-                            <span className="px-2 py-1 bg-brand-orange/10 text-brand-orange rounded-lg text-[8px] flex items-center gap-1.5 w-fit">
-                              <CarIcon size={10} /> {cars.find(c => c.id === tx.carId)?.name}
-                            </span>
-                          )}
+                          {tx.carId && (() => {
+                            const car = cars.find(c => c.id === tx.carId);
+                            if (!car) return null;
+                            const brandSlug = getBrandSlug(car.name);
+                            return (
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-brand-orange/5 text-[#141414] rounded-lg border border-brand-orange/10 w-fit">
+                                {brandSlug ? (
+                                  <img 
+                                    src={`https://cdn.simpleicons.org/${brandSlug}`}
+                                    alt={brandSlug}
+                                    className="w-3 h-3 shrink-0"
+                                  />
+                                ) : (
+                                  <CarIcon size={10} className="text-brand-orange" />
+                                )}
+                                <span className="text-[9px] font-bold">
+                                  {car.name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim()} <span className="text-[#141414]/40 font-mono">({car.plateNumber})</span>
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="p-6 text-xs font-bold text-[#141414]/80">
@@ -1751,7 +1986,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                         return range;
                       })();
 
-                      const categories = [...new Set(transactions.filter(t => filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear).map(t => t.category))].sort();
+                      const categories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
                       
                       const matrix: { [cat: string]: { [mKey: string]: number } } = {};
                       const colIncomeTotals: { [mKey: string]: number } = {};
@@ -1764,7 +1999,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                       categories.forEach(cat => {
                         matrix[cat] = {};
                         colRange.forEach(col => {
-                          const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key);
+                          const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
                           const val = txs.reduce((sum, t) => sum + (t.type === 'Income' ? t.amount : -t.amount), 0);
                           const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
                           const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
@@ -2023,16 +2258,54 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
                           Vehicle (Optional)
                         </label>
-                        <select 
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl appearance-none"
-                          value={formData.carId}
-                          onChange={e => setFormData({ ...formData, carId: e.target.value })}
-                        >
-                          <option value="">None</option>
-                          {cars.map(car => (
-                            <option key={car.id} value={car.id}>{car.name} ({car.plateNumber})</option>
-                          ))}
-                        </select>
+                        <Select
+                          options={carOptions}
+                          value={carOptions.find(opt => opt.value === formData.carId)}
+                          onChange={(newValue: any) => setFormData({ ...formData, carId: newValue.value })}
+                          isSearchable
+                          placeholder="Search vehicle..."
+                          components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              backgroundColor: 'rgba(255, 255, 255, 0.4)',
+                              border: 'none',
+                              borderBottom: '2px solid rgba(255, 255, 255, 0.6)',
+                              borderRadius: '1rem 1rem 0 0',
+                              padding: '2px',
+                              boxShadow: 'none',
+                              '&:hover': {
+                                borderBottomColor: '#FF6B00'
+                              }
+                            }),
+                            menu: (base) => ({
+                              ...base,
+                              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                              backdropFilter: 'blur(10px)',
+                              borderRadius: '1rem',
+                              overflow: 'hidden',
+                              border: '1px solid rgba(255, 255, 255, 0.4)',
+                              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+                            }),
+                            option: (base, state) => ({
+                              ...base,
+                              backgroundColor: state.isFocused ? 'rgba(255, 107, 0, 0.1)' : 'transparent',
+                              color: 'inherit',
+                              cursor: 'pointer',
+                              '&:active': {
+                                backgroundColor: 'rgba(255, 107, 0, 0.2)'
+                              }
+                            }),
+                            input: (base) => ({
+                              ...base,
+                              color: '#1A1A1A'
+                            }),
+                            singleValue: (base) => ({
+                              ...base,
+                              color: '#1A1A1A'
+                            })
+                          }}
+                        />
                       </div>
                     )}
 

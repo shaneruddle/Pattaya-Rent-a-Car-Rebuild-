@@ -110,11 +110,9 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 1,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Vios.avif?alt=media&token=0fe7fe5f-bba1-4013-bec6-b5983d06e63d",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429636957x408275490594002050/Add%20a%20heading%20%2819%29.png",
+    shadowImage: "",
     realImages: [
-      "https://s3.amazonaws.com/appforest_uf/f1631434454352x779857309714604000/241851272_1518330265211173_4855462908693724018_n.jpg",
-      "https://s3.amazonaws.com/appforest_uf/f1631434463927x389805921404051700/241820403_441063510572239_1311576346896286851_n.jpg",
-      "https://s3.amazonaws.com/appforest_uf/f1631434474438x321820193191012100/241690768_894520521481010_489005928371016138_n.jpg"
+      "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Vios.avif?alt=media&token=0fe7fe5f-bba1-4013-bec6-b5983d06e63d"
     ],
     priceGridVehicle: "Vios"
   },
@@ -132,8 +130,8 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 3,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Ativ_new.avif?alt=media&token=69656f82-c64e-474b-8103-d58536633d57",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631428102891x644308887254393300/Add%20a%20heading%20%283%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1631430312412x437964941762301250/IMG_5118.jpg"],
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "Ativ Sport"
   },
   {
@@ -149,9 +147,9 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 4,
     isActive: false,
-    mainImage: "https://s3.amazonaws.com/appforest_uf/f1631428398372x165456782501673940/Add%20a%20heading%20%288%29.png",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429621139x121838468644138270/Add%20a%20heading%20%2817%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1634614238021x225161780332661760/Honda%20City%201.jpg"],
+    mainImage: "",
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "City"
   },
   {
@@ -167,9 +165,9 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 7,
     isActive: false,
-    mainImage: "https://s3.amazonaws.com/appforest_uf/f1631428413581x761022281432517400/Add%20a%20heading%20%287%29.png",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429342581x315854099660657340/Add%20a%20heading%20%2812%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1631694070845x581076708934644500/241928853_898087927468213_9049641165045454429_n.jpg"],
+    mainImage: "",
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "Navara"
   },
   {
@@ -186,8 +184,8 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 8,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Fortuner_Old.png?alt=media&token=0b72046f-a429-440b-8646-2f54d60df87f",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429603237x820602308257076600/Add%20a%20heading%20%2815%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1631428877101x434343699080541200/Toyota%20Fortuner%20Side.jpg"],
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "Old Fortuner"
   },
   {
@@ -204,8 +202,8 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 10,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Fortuner_New.avif?alt=media&token=66f98b14-11b3-4776-9278-ae387accc951",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429587769x395934988193545000/Add%20a%20heading%20%2814%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1631613158730x764287117465337600/241780943_333861325152966_1574171268269789501_n.jpg"],
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "New Fortuner"
   },
   {
@@ -222,7 +220,7 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 2,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Yaris.avif?alt=media&token=37eb78d6-cf9e-4886-9c5d-a45e00426722",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1631430359360x943576641423091700/IMG_4858%20%281%29.jpg"],
+    realImages: [],
     priceGridVehicle: "Ativ"
   },
   {
@@ -239,8 +237,8 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 6,
     isActive: false,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Vios.avif?alt=media&token=0fe7fe5f-bba1-4013-bec6-b5983d06e63d",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1634614191205x584324381965348500/Toyota%20Vios%20CVT%202021%20Shadow.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1634613556735x506060878925848060/CVT%201.jpg"],
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "Vios CVT"
   },
   {
@@ -257,8 +255,8 @@ export const SEED_WEBSITE_CARS = [
     displayOrder: 7,
     isActive: true,
     mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Revo.avif?alt=media&token=7e7510af-c30e-4c30-9bf8-aef7109dc5f5",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1634287969818x240778606688250020/Add%20a%20heading%20%2821%29.png",
-    realImages: ["https://s3.amazonaws.com/appforest_uf/f1635148373673x266349579796742800/Revo7.jpg"],
+    shadowImage: "",
+    realImages: [],
     priceGridVehicle: "Revo"
   },
   {

@@ -1391,7 +1391,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     <div className="flex flex-col md:flex-row justify-between gap-10">
                       <div className="space-y-8">
                         <div>
-                          <h3 className="text-3xl font-bold text-black tracking-tight mb-2">{car.name} <span className="text-black/20 font-normal text-xl">{t('car.orSimilar')}</span></h3>
+                          <h3 className="text-3xl font-bold text-black tracking-tight mb-2">{car.name} <span className="text-black/40 font-normal text-xl">{t('car.orSimilar')}</span></h3>
                           <div className={cn(
                             "inline-flex px-3 py-1 rounded-full",
                             isBikeMode ? "bg-brand-blue/10" : "bg-brand-orange/10"
@@ -1427,7 +1427,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           <StorageImage 
                             path={car.mainImage || `https://picsum.photos/seed/${car.name}/400/250`} 
                             alt={car.name} 
-                            className="w-72 h-auto object-contain relative z-10 drop-shadow-2xl transform group-hover:scale-105 transition-transform duration-500"
+                            className="w-[240px] h-auto object-contain relative z-10 drop-shadow-2xl transform group-hover:scale-105 transition-transform duration-500"
                             fallback={`https://picsum.photos/seed/${car.name}/400/250`}
                           />
                         </div>

@@ -60,8 +60,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
         const monthStart = startOfMonth(currentDate);
         if (isSameMonth(today, currentDate)) {
           const startDayIdx = differenceInDays(today, monthStart);
-          // Each day is (2 slots * 36px) = 72px. Plus the left sidebar offset.
-          const scrollPosition = (startDayIdx * 72) - 150; 
+          const scrollPosition = (startDayIdx * 72) - 130; // Adjusted for 200px sidebar
           timelineContainerRef.current.scrollTo({
             left: Math.max(0, scrollPosition),
             behavior: 'smooth'
@@ -637,7 +636,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
-            <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-40 p-4 flex items-center justify-between backdrop-blur-md">
+            <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-40 p-2 flex items-center justify-between backdrop-blur-md">
               <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
             </div>
             <div className="flex">
@@ -667,7 +666,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 const hour = today.getHours();
                 const minute = today.getMinutes();
                 const progressInDay = (hour * 60 + minute) / 1440;
-                const left = (startDayIdx * 72) + (progressInDay * 72);
+                const left = 200 + (startDayIdx * 72) + (progressInDay * 72); // Added 200 offset
                 
                 return (
                   <div 
@@ -682,11 +681,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             })()}
 
             {/* Unassigned Row */}
-            <div className="flex group h-6 bg-brand-orange/5">
-              <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
+            <div className="flex group h-8 bg-brand-orange/5">
+              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
                 <div className="w-1 h-full absolute left-0 bg-brand-orange" />
                 <AlertCircle size={10} className="shrink-0 text-brand-orange" />
-                <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned Bookings</span>
+                <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned</span>
               </div>
               <div className="flex relative">
                 {daysInMonth.map(day => (
@@ -715,11 +714,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     />
                   </React.Fragment>
                 ))}
-
+ 
                 {/* Unassigned Bookings */}
                 {dropPreview && dropPreview.carId === 'unassigned' && draggedBooking && (
                   <div
-                    className="absolute h-5 top-0.5 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                    className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
                     style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
                   />
                 )}
@@ -736,7 +735,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       onMouseLeave={handleMouseLeaveBooking}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
                       onContextMenu={(e) => handleBookingContextMenu(e, booking)}
-                      className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                      className="absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
                       style={style || {}}
                     >
                       <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">
@@ -750,19 +749,56 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
             {cars.map(car => {
               const typeStyles = getCarTypeStyles(car.type || car.category || '');
-              const Icon = typeStyles.icon;
+              
+              // Brand Icon Logic
+              const getBrandSlug = (name: string) => {
+                const n = name.toLowerCase();
+                if (n.includes('toyota')) return 'toyota';
+                if (n.includes('honda')) return 'honda';
+                if (n.includes('ford')) return 'ford';
+                if (n.includes('nissan')) return 'nissan';
+                if (n.includes('mg')) return 'mg';
+                return null;
+              };
+
+              const cleanCarName = (name: string) => {
+                return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
+              };
+
+              const brandSlug = getBrandSlug(car.name);
+              const displayName = cleanCarName(car.make && car.model ? `${car.make} ${car.model}` : car.name);
               
               return (
-                <div key={car.id} className="flex group h-6">
-                  <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors">
+                <div key={car.id} className="flex group h-8">
+                  <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
                     <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
-                    <Icon size={10} className={cn("shrink-0", typeStyles.color)} />
-                    <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">
-                      {car.make && car.model ? `${car.make} ${car.model}` : car.name}
-                    </span>
-                    <span className="text-[8px] bg-white border border-[#1A1A1A]/20 px-1 rounded shadow-sm text-[#1A1A1A] font-mono leading-tight font-bold">
-                      {car.plateNumber}
-                    </span>
+                    {brandSlug ? (
+                      <img 
+                        src={`https://cdn.simpleicons.org/${brandSlug}`}
+                        alt={brandSlug}
+                        className="w-4 h-4 shrink-0"
+                      />
+                    ) : (
+                      <typeStyles.icon size={12} className={cn("shrink-0", typeStyles.color)} />
+                    )}
+                    <div className="flex-1 flex items-center justify-between min-w-0">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">
+                          {displayName}
+                        </span>
+                        <span className="text-[9px] text-[#1A1A1A]/40 font-medium shrink-0">
+                          {car.yearOfManufacture && car.yearOfManufacture.toString().slice(-4)}
+                        </span>
+                        {car.engineSize && (
+                          <span className="text-[8px] text-[#1A1A1A]/40 font-medium shrink-0">
+                            {car.engineSize.toString().replace(/cc/gi, '')}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[9px] text-slate-500 font-mono leading-tight ml-auto whitespace-nowrap">
+                        {car.plateNumber}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex relative">
                     {daysInMonth.map(day => (
@@ -791,11 +827,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         />
                       </React.Fragment>
                     ))}
-
+ 
                     {/* Bookings for this car */}
                     {dropPreview && dropPreview.carId === car.id && draggedBooking && (
                       <div
-                        className="absolute h-5 top-0.5 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+                        className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
                         style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
                       />
                     )}
@@ -811,7 +847,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                           onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
                           onMouseLeave={handleMouseLeaveBooking}
                           onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-                          className="absolute h-5 top-0.5 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                          onContextMenu={(e) => handleBookingContextMenu(e, booking)}
+                          className="absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
                           style={style || {}}
                         >
                           <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">

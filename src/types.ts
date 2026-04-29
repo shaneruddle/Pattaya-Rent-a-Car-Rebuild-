@@ -20,6 +20,7 @@ export interface Car {
   seats?: number;
   transmission?: string;
   engine?: string;
+  engineSize?: string;
   fuel?: string;
   modelYear?: string;
   isActive?: boolean;
