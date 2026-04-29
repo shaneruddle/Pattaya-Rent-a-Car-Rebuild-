@@ -53,19 +53,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Auto-scroll to today on mount
+    // Auto-scroll to current month start (skipping the 5-day buffer) on mount or month change
     const timer = setTimeout(() => {
       if (timelineContainerRef.current) {
-        const today = new Date();
-        const monthStart = startOfMonth(currentDate);
-        if (isSameMonth(today, currentDate)) {
-          const startDayIdx = differenceInDays(today, monthStart);
-          const scrollPosition = (startDayIdx * 72) - 130; // Adjusted for 200px sidebar
-          timelineContainerRef.current.scrollTo({
-            left: Math.max(0, scrollPosition),
-            behavior: 'smooth'
-          });
-        }
+        // Each day is 72px. We want to skip 5 days.
+        const scrollPosition = (5 * 72); 
+        timelineContainerRef.current.scrollTo({
+          left: scrollPosition,
+          behavior: 'smooth'
+        });
       }
     }, 100);
     return () => clearTimeout(timer);
@@ -237,11 +233,26 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     return customers.some(c => c.email === editingBooking.email);
   }, [customers, editingBooking?.email]);
 
-  const daysInMonth = useMemo(() => {
-    const start = startOfMonth(currentDate);
-    const end = endOfMonth(currentDate);
+  const visibleDays = useMemo(() => {
+    const start = addDays(startOfMonth(currentDate), -5);
+    const end = addDays(endOfMonth(currentDate), 15);
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
+
+  const monthsInView = useMemo(() => {
+    const months: { month: Date; days: Date[] }[] = [];
+    visibleDays.forEach(day => {
+      const lastMonth = months[months.length - 1];
+      if (!lastMonth || !isSameMonth(lastMonth.month, day)) {
+        months.push({ month: startOfMonth(day), days: [day] });
+      } else {
+        lastMonth.days.push(day);
+      }
+    });
+    return months;
+  }, [visibleDays]);
+
+  const daysInMonth = visibleDays; // Maintain compatibility with existing variable name or replace all
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -555,16 +566,16 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     
     if (!isValid(start) || !isValid(end)) return null;
 
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
+    const timelineStart = visibleDays[0];
+    const timelineEnd = visibleDays[visibleDays.length - 1];
 
-    // Filter bookings that overlap with current month
-    if (end < monthStart || start > monthEnd) return null;
+    // Filter bookings that overlap with visible range
+    if (end < timelineStart || start > timelineEnd) return null;
 
-    const visibleStart = start < monthStart ? monthStart : start;
-    const visibleEnd = end > monthEnd ? monthEnd : end;
+    const visibleStart = start < timelineStart ? timelineStart : start;
+    const visibleEnd = end > timelineEnd ? timelineEnd : end;
 
-    const startDayIdx = differenceInDays(visibleStart, monthStart);
+    const startDayIdx = differenceInDays(visibleStart, timelineStart);
     const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
     const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
 
@@ -599,15 +610,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     previewStart.setHours(preview.slot === 'AM' ? 8 : 14, 0, 0, 0);
     const previewEnd = new Date(previewStart.getTime() + durationMs);
 
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
+    const timelineStart = visibleDays[0];
+    const timelineEnd = visibleDays[visibleDays.length - 1];
 
-    if (previewEnd < monthStart || previewStart > monthEnd) return null;
+    if (previewEnd < timelineStart || previewStart > timelineEnd) return null;
 
-    const visibleStart = previewStart < monthStart ? monthStart : previewStart;
-    const visibleEnd = previewEnd > monthEnd ? monthEnd : previewEnd;
+    const visibleStart = previewStart < timelineStart ? timelineStart : previewStart;
+    const visibleEnd = previewEnd > timelineEnd ? timelineEnd : previewEnd;
 
-    const startDayIdx = differenceInDays(visibleStart, monthStart);
+    const startDayIdx = differenceInDays(visibleStart, timelineStart);
     const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
     const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
 
@@ -636,18 +647,31 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
-            <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-40 p-2 flex items-center justify-between backdrop-blur-md">
+            <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
               <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
             </div>
             <div className="flex">
-              {daysInMonth.map(day => (
-                <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r border-b border-black/10 bg-white/20">
-                  <div className="text-center py-1 text-[9px] font-bold uppercase tracking-wider bg-brand-orange/5 text-brand-orange">
-                    {format(day, 'EEE d')}
+              {monthsInView.map(({ month, days }) => (
+                <div key={month.toISOString()} className="flex flex-col border-r border-black/10 last:border-r-0">
+                  <div className="sticky top-0 z-40 py-1.5 px-4 text-[10px] font-bold uppercase tracking-[0.3em] bg-white/90 backdrop-blur-sm text-[#1A1A1A]/80 border-b border-black/5 flex items-center gap-2">
+                    <Calendar size={10} className="text-brand-orange" />
+                    {format(month, 'MMMM yyyy')}
                   </div>
-                  <div className="flex text-[8px] font-bold text-center border-t border-white/20 text-[#1A1A1A]/60">
-                    <div className="w-1/2 py-1 border-r border-white/20">AM</div>
-                    <div className="w-1/2 py-1">PM</div>
+                  <div className="flex">
+                    {days.map(day => (
+                      <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r last:border-r-0 border-black/5 bg-white/20">
+                        <div className={cn(
+                          "text-center py-1 text-[9px] font-bold uppercase tracking-wider",
+                          isSameDay(day, new Date()) ? "bg-brand-orange text-white" : "bg-brand-orange/5 text-brand-orange"
+                        )}>
+                          {format(day, 'EEE d')}
+                        </div>
+                        <div className="flex text-[8px] font-bold text-center border-t border-white/20 text-[#1A1A1A]/60">
+                          <div className="w-1/2 py-1 border-r border-white/20">AM</div>
+                          <div className="w-1/2 py-1">PM</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -659,10 +683,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             {/* Today Indicator Line */}
             {(() => {
               const today = new Date();
-              const monthStart = startOfMonth(currentDate);
-              const monthEnd = endOfMonth(currentDate);
-              if (today >= monthStart && today <= monthEnd) {
-                const startDayIdx = differenceInDays(today, monthStart);
+              const timelineStart = visibleDays[0];
+              const timelineEnd = visibleDays[visibleDays.length - 1];
+              if (today >= timelineStart && today <= timelineEnd) {
+                const startDayIdx = differenceInDays(today, timelineStart);
                 const hour = today.getHours();
                 const minute = today.getMinutes();
                 const progressInDay = (hour * 60 + minute) / 1440;

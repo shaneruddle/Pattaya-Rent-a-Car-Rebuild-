@@ -157,6 +157,11 @@ const cleanCarName = (car: Car) => {
   return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
 };
 
+const normalizeDescription = (text: string) => {
+  if (!text) return '';
+  return text.toLowerCase().replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+};
+
 export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onClearPreFill }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -227,7 +232,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
             <span className="text-[11px] font-bold text-gray-900 truncate">
               {displayName} {year} {engine && `· ${engine}`}
             </span>
-            <span className="text-[10px] text-gray-500 font-mono ml-auto shrink-0">
+            <span className="text-xs text-gray-500 font-mono ml-auto shrink-0">
               {car.plateNumber}
             </span>
           </div>
@@ -1802,7 +1807,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                   </tr>
                 ) : (
                   filteredTransactions.map(tx => (
-                    <tr key={tx.id} className="hover:bg-white/40 transition-colors group">
+                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group border-b border-white/10 last:border-0">
                       <td className="p-6 text-xs font-bold text-[#141414]/80">
                         {format(parseISO(tx.date), 'MMM d, yyyy HH:mm')}
                       </td>
@@ -1855,8 +1860,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                           )}
                         </div>
                       </td>
-                      <td className="p-6 text-xs text-[#141414]/60 italic font-serif leading-relaxed max-w-xs">
-                        {tx.description}
+                      <td className="p-6 text-[12px] text-slate-800 font-sans font-medium tracking-tight leading-relaxed max-w-xs">
+                        {normalizeDescription(tx.description)}
                       </td>
                       <td className={cn(
                         "p-6 text-right font-bold text-base",
