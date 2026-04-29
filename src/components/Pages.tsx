@@ -32,6 +32,24 @@ export const AboutUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
           </div>
         </motion.div>
 
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8 }}
+          className="mb-32 relative group"
+        >
+          <div className="absolute -inset-4 bg-brand-orange/5 blur-3xl rounded-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+          <div className="relative h-[600px] rounded-[40px] overflow-hidden shadow-2xl shadow-black/10">
+            <img 
+              src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Team_cover_image.jpg?alt=media&token=0d338f08-cd9a-4ff4-a7b0-b609314e489d" 
+              alt="Our Team at Pattaya Rent a Car" 
+              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+          </div>
+        </motion.div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-32">
           {[
             {

@@ -35,7 +35,6 @@ import {
   X,
   AlertCircle,
   Download,
-  Copy,
   Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -57,6 +56,8 @@ export const FleetManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
+  const [isOtherMake, setIsOtherMake] = useState(false);
+  const [isOtherMakeAdd, setIsOtherMakeAdd] = useState(false);
 
   const safeFormatDate = (dateStr: string | undefined, formatStr: string) => {
     if (!dateStr) return 'N/A';
@@ -70,35 +71,47 @@ export const FleetManager: React.FC = () => {
   };
 
   useEffect(() => {
-    const fetchCars = async () => {
-      // Guard against running before auth is ready or if user logged out
+    let unsubscribe: () => void = () => {};
+
+    const setupListener = () => {
       if (!auth.currentUser) {
         setLoading(false);
         return;
       }
-      
-      try {
-        const q = query(collection(db, 'cars'), orderBy('order', 'asc'));
-        const snapshot = await safeGetDocs(q);
+
+      const q = query(collection(db, 'cars'), orderBy('order', 'asc'));
+      unsubscribe = onSnapshot(q, (snapshot) => {
         const carsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Car));
         setCars(carsData);
+        
+        // Update selected car if it exists to keep details panel fresh
+        if (selectedCar) {
+          const updatedSelectedCar = carsData.find(c => c.id === selectedCar.id);
+          if (updatedSelectedCar) {
+            setSelectedCar(updatedSelectedCar);
+          }
+        }
+        
         setLoading(false);
-      } catch (error) {
+      }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'cars');
         setLoading(false);
-      }
+      });
     };
 
-    const unsubscribe = auth.onAuthStateChanged(user => {
+    const authUnsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
-        fetchCars();
+        setupListener();
       } else {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      authUnsubscribe();
+      unsubscribe();
+    };
+  }, [selectedCar?.id]);
 
   useEffect(() => {
     if (!selectedCar) {
@@ -136,13 +149,16 @@ export const FleetManager: React.FC = () => {
 
     const formData = new FormData(e.currentTarget);
     const make = (formData.get('make') as string) || '';
+    const otherMake = (formData.get('otherMake') as string) || '';
+    const finalMake = make === 'Other' ? otherMake : make;
     const model = (formData.get('model') as string) || '';
+    
     const updatedData: Partial<Car> = {
-      name: `${make} ${model}`.trim() || selectedCar.name,
+      name: `${finalMake} ${model}`.trim() || selectedCar.name,
       plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
       type: (formData.get('type') as string) || 'Unknown',
       category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
-      make,
+      make: finalMake,
       model,
       yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
       insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
@@ -343,13 +359,15 @@ export const FleetManager: React.FC = () => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const make = (formData.get('make') as string) || '';
+    const otherMake = (formData.get('otherMake') as string) || '';
+    const finalMake = make === 'Other' ? otherMake : make;
     const model = (formData.get('model') as string) || '';
     const newVehicle: Omit<Car, 'id'> = {
-      name: `${make} ${model}`.trim() || 'Unnamed Vehicle',
+      name: `${finalMake} ${model}`.trim() || 'Unnamed Vehicle',
       plateNumber: (formData.get('plateNumber') as string) || 'No Plate',
       type: (formData.get('type') as string) || 'Unknown',
       category: (formData.get('category') as 'Car' | 'Motorbike' | 'Other') || 'Other',
-      make,
+      make: finalMake,
       model,
       yearOfManufacture: parseInt(formData.get('yearOfManufacture') as string) || new Date().getFullYear(),
       insuranceExpiry: (formData.get('insuranceExpiry') as string) || '',
@@ -384,87 +402,6 @@ export const FleetManager: React.FC = () => {
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleDeduplicate = async () => {
-    if (cars.length === 0) return;
-
-    toast('Deduplicate Fleet?', {
-      description: "This will identify and remove duplicate vehicles based on plate numbers. The vehicle with the most information will be kept.",
-      action: {
-        label: "Deduplicate",
-        onClick: async () => {
-          toast.promise(async () => {
-            const normalizedCars = cars.map(car => {
-              // Normalize plate: remove spaces and extract numeric part
-              const plateClean = car.plateNumber.replace(/\s+/g, '');
-              const numericPart = plateClean.match(/\d+$/)?.[0] || plateClean;
-              
-              // Calculate info score: count non-empty fields
-              let score = 0;
-              const fieldsToCheck: (keyof Car)[] = [
-                'imageUrl', 'engine', 'fuel', 'transmission', 'audio', 
-                'insuranceExpiry', 'taxExpiry', 'yearOfManufacture', 
-                'currentKms', 'lastOilChangeKms', 'owner'
-              ];
-              
-              fieldsToCheck.forEach(field => {
-                if (car[field] !== undefined && car[field] !== null && car[field] !== '' && car[field] !== 0) {
-                  score++;
-                }
-              });
-
-              return {
-                ...car,
-                groupKey: `${car.make.toLowerCase().trim()}_${car.model.toLowerCase().trim()}_${numericPart}`,
-                score
-              };
-            });
-
-            const groups = new Map<string, typeof normalizedCars>();
-            normalizedCars.forEach(car => {
-              const existing = groups.get(car.groupKey) || [];
-              groups.set(car.groupKey, [...existing, car]);
-            });
-
-            const batch = writeBatch(db);
-            let removedCount = 0;
-
-            groups.forEach((groupCars) => {
-              if (groupCars.length > 1) {
-                // Sort by score descending, then by ID to be deterministic
-                groupCars.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-                
-                // Keep the first one (highest score), delete the rest
-                const toKeep = groupCars[0];
-                const toDelete = groupCars.slice(1);
-                
-                toDelete.forEach(car => {
-                  batch.delete(doc(db, 'cars', car.id));
-                  removedCount++;
-                });
-              }
-            });
-
-            if (removedCount > 0) {
-              await batch.commit();
-              await logSystemActivity(
-                'Deduplicate Fleet',
-                `Deduplicated fleet: removed ${removedCount} duplicate records`,
-                'Fleet',
-                { removedCount }
-              );
-            }
-
-            return removedCount;
-          }, {
-            loading: 'Analyzing fleet for duplicates...',
-            success: (count) => count > 0 ? `Successfully removed ${count} duplicates!` : 'No duplicates found.',
-            error: 'Failed to deduplicate fleet'
-          });
-        }
-      }
-    });
-  };
 
   const handleExportCSV = () => {
     if (cars.length === 0) {
@@ -897,13 +834,6 @@ Yamaha,New Aerox,Red,4กย 1611`;
             <Download size={14} /> Export CSV
           </button>
           <button 
-            onClick={handleDeduplicate}
-            className="bg-white/60 text-[#1A1A1A] px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-brand-orange hover:text-white transition-all shadow-lg shadow-black/5 border border-black/10"
-            title="Remove duplicate vehicles based on plate numbers"
-          >
-            <Copy size={14} /> Deduplicate
-          </button>
-          <button 
             onClick={() => setIsAddingVehicle(true)}
             className="bg-brand-orange text-white px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
           >
@@ -1183,7 +1113,32 @@ Yamaha,New Aerox,Red,4กย 1611`;
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Make</label>
-                            <input name="make" defaultValue={selectedCar.make} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
+                            <select 
+                              name="make" 
+                              defaultValue={selectedCar.make} 
+                              onChange={(e) => setIsOtherMake(e.target.value === 'Other')}
+                              className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors"
+                            >
+                              <option value="Toyota">Toyota</option>
+                              <option value="Honda">Honda</option>
+                              <option value="Ford">Ford</option>
+                              <option value="Nissan">Nissan</option>
+                              <option value="MG">MG</option>
+                              <option value="Mitsubishi">Mitsubishi</option>
+                              <option value="Mazda">Mazda</option>
+                              <option value="Isuzu">Isuzu</option>
+                              <option value="BMW">BMW</option>
+                              <option value="Mercedes">Mercedes</option>
+                              <option value="Other">Other</option>
+                            </select>
+                            {(isOtherMake || (selectedCar.make && !['Toyota', 'Honda', 'Ford', 'Nissan', 'MG', 'Mitsubishi', 'Mazda', 'Isuzu', 'BMW', 'Mercedes'].includes(selectedCar.make))) && (
+                              <input 
+                                name="otherMake" 
+                                placeholder="Specify Make" 
+                                defaultValue={['Toyota', 'Honda', 'Ford', 'Nissan', 'MG', 'Mitsubishi', 'Mazda', 'Isuzu', 'BMW', 'Mercedes'].includes(selectedCar.make) ? '' : selectedCar.make}
+                                className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors mt-2" 
+                              />
+                            )}
                           </div>
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Model</label>
@@ -1523,7 +1478,24 @@ Yamaha,New Aerox,Red,4กย 1611`;
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Make</label>
-                    <input name="make" placeholder="e.g. Toyota" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
+                    <select 
+                      name="make" 
+                      onChange={(e) => setIsOtherMakeAdd(e.target.value === 'Other')}
+                      className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors"
+                    >
+                      <option value="Toyota">Toyota</option>
+                      <option value="Honda">Honda</option>
+                      <option value="Ford">Ford</option>
+                      <option value="Nissan">Nissan</option>
+                      <option value="MG">MG</option>
+                      <option value="Mitsubishi">Mitsubishi</option>
+                      <option value="Mazda">Mazda</option>
+                      <option value="Isuzu">Isuzu</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    {isOtherMakeAdd && (
+                      <input name="otherMake" placeholder="Specify Make" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors mt-2" />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Model</label>

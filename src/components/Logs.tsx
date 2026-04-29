@@ -1,17 +1,42 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { SystemLog } from '../types';
 import { format, parseISO, isToday, isValid } from 'date-fns';
-import { Search, Filter, Activity, Clock, User, Tag, ChevronRight } from 'lucide-react';
+import { Search, Filter, Activity, Clock, User, Tag, ChevronRight, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
 interface LogsProps {
   logs: SystemLog[];
 }
 
-export const Logs: React.FC<LogsProps> = ({ logs }) => {
+export const Logs: React.FC<LogsProps> = ({ logs: initialLogs }) => {
+  const [logs, setLogs] = useState<SystemLog[]>(initialLogs);
+  const [loading, setLoading] = useState(initialLogs.length === 0);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  const fetchLogs = async () => {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    try {
+      const q = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
+      setLogs(data);
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialLogs.length === 0) {
+      fetchLogs();
+    }
+  }, []);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -50,6 +75,14 @@ export const Logs: React.FC<LogsProps> = ({ logs }) => {
             <h1 className="font-serif italic text-4xl text-[#1A1A1A]">System Logs</h1>
             <p className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] mt-1 font-medium">Activity Tracking & Audit Trail</p>
           </div>
+          <button
+            onClick={fetchLogs}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-white/60 hover:bg-white border border-white/40 rounded-xl text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60 hover:text-brand-orange transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={cn(loading && "animate-spin")} />
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-4">

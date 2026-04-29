@@ -28,20 +28,13 @@ import {
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBwNBOrxwnyg-X-PGUlAYL2tnv9qvckp2I",
-  authDomain: "pattaya-rent-a-car-rebuild.firebaseapp.com",
-  projectId: "pattaya-rent-a-car-rebuild",
-  storageBucket: "pattaya-rent-a-car-rebuild.firebasestorage.app",
-  messagingSenderId: "700448424476",
-  appId: "1:700448424476:web:5ddf038c6bd46b7b4615d9"
-};
+import firebaseConfig from '../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true
-}, '(default)');
+}, firebaseConfig.firestoreDatabaseId || '(default)');
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
@@ -75,7 +68,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path,
-    projectId: "pattaya-rent-a-car-rebuild"
+    projectId: firebaseConfig.projectId
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));

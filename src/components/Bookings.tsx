@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Booking, Car } from '../types';
-import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getYear, isValid, differenceInDays } from 'date-fns';
+import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getYear, isValid, differenceInDays, addDays } from 'date-fns';
 import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, CheckCircle2, Mail, Phone, FileText, DollarSign, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { LocationPicker } from './LocationPicker';
+import { DatePickerCustom } from './ui/DatePickerCustom';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -24,6 +25,13 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars, onRefresh })
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [deletingBooking, setDeletingBooking] = useState<Booking | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pickUpTime, setPickUpTime] = useState('09:30');
+  const [dropOffTime, setDropOffTime] = useState('09:30');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: new Date(),
+    to: addDays(new Date(), 1)
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const filteredBookings = useMemo(() => {
     return bookings.filter(booking => {
@@ -318,7 +326,14 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars, onRefresh })
                               <Eye size={14} />
                             </button>
                             <button
-                              onClick={() => setEditingBooking(booking)}
+                              onClick={() => {
+                                setEditingBooking(booking);
+                                const start = parseISO(booking.startDate);
+                                const end = parseISO(booking.endDate);
+                                setPickUpTime(format(start, 'HH:mm'));
+                                setDropOffTime(format(end, 'HH:mm'));
+                                setDateRange({ from: start, to: end });
+                              }}
                               className="p-2 hover:bg-white rounded-xl text-[#1A1A1A]/40 hover:text-brand-orange transition-all"
                               title="Edit Booking"
                             >
@@ -637,26 +652,82 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings, cars, onRefresh })
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Start Date & Time</label>
-                        <input
-                          type="datetime-local"
-                          required
-                          value={editingBooking.startDate.slice(0, 16)}
-                          onChange={(e) => setEditingBooking({ ...editingBooking, startDate: new Date(e.target.value).toISOString() })}
-                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">End Date & Time</label>
-                        <input
-                          type="datetime-local"
-                          required
-                          value={editingBooking.endDate.slice(0, 16)}
-                          onChange={(e) => setEditingBooking({ ...editingBooking, endDate: new Date(e.target.value).toISOString() })}
-                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-                        />
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Date & Time Range</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowDatePicker(true)}
+                          className="w-full bg-white border border-[#1A1A1A]/10 p-4 rounded-2xl text-left hover:bg-[#1A1A1A]/5 transition-all outline-none"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Pick-up</p>
+                              <p className="text-sm font-bold text-[#1A1A1A]">
+                                {format(dateRange.from, 'PPP')} at {pickUpTime}
+                              </p>
+                            </div>
+                            <div className="h-8 w-px bg-black/10 mx-4" />
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Drop-off</p>
+                              <p className="text-sm font-bold text-[#1A1A1A]">
+                                {format(dateRange.to, 'PPP')} at {dropOffTime}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+
+                        <AnimatePresence>
+                          {showDatePicker && (
+                            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="w-full max-w-[700px]"
+                              >
+                                <DatePickerCustom
+                                  selectedRange={dateRange}
+                                  onRangeChange={(range) => {
+                                    setDateRange(range);
+                                    const start = new Date(range.from);
+                                    const [sh, sm] = pickUpTime.split(':').map(Number);
+                                    start.setHours(sh, sm, 0, 0);
+
+                                    const end = new Date(range.to);
+                                    const [eh, em] = dropOffTime.split(':').map(Number);
+                                    end.setHours(eh, em, 0, 0);
+
+                                    setEditingBooking({ 
+                                      ...editingBooking, 
+                                      startDate: start.toISOString(),
+                                      endDate: end.toISOString()
+                                    });
+                                  }}
+                                  pickUpTime={pickUpTime}
+                                  onPickUpTimeChange={(time) => {
+                                    setPickUpTime(time);
+                                    const start = new Date(dateRange.from);
+                                    const [sh, sm] = time.split(':').map(Number);
+                                    start.setHours(sh, sm, 0, 0);
+                                    setEditingBooking({ ...editingBooking, startDate: start.toISOString() });
+                                  }}
+                                  dropOffTime={dropOffTime}
+                                  onDropOffTimeChange={(time) => {
+                                    setDropOffTime(time);
+                                    const end = new Date(dateRange.to);
+                                    const [eh, em] = time.split(':').map(Number);
+                                    end.setHours(eh, em, 0, 0);
+                                    setEditingBooking({ ...editingBooking, endDate: end.toISOString() });
+                                  }}
+                                  onClose={() => setShowDatePicker(false)}
+                                  onApply={() => setShowDatePicker(false)}
+                                  isBikeMode={false}
+                                />
+                              </motion.div>
+                            </div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </div>
 

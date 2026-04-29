@@ -311,7 +311,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     });
 
     // Listen to Transactions
-    const txQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(10000));
+    const txQuery = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(500));
     const unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
       const transactionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
       setTransactions(transactionsData);
@@ -1342,22 +1342,6 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
               Overview
             </button>
             <button 
-              onClick={handleExportCSV}
-              className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2"
-              title="Export to CSV"
-            >
-              <Download size={16} /> Export
-            </button>
-            <label className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2 cursor-pointer">
-              <Upload size={16} /> Import
-              <input 
-                type="file" 
-                accept=".csv" 
-                className="hidden" 
-                onChange={handleImportCSV}
-              />
-            </label>
-            <button 
               onClick={() => openModal('Income')}
               className="h-12 px-8 bg-green-500 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-green-500/20 flex items-center gap-2"
             >
@@ -1381,6 +1365,43 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
             >
               <ShieldCheck size={16} /> Deposits
             </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={handleExportCSV}
+                className="h-12 w-12 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl flex items-center justify-center hover:bg-white hover:text-brand-orange transition-all shadow-lg"
+                title="Export all transactions to CSV"
+              >
+                <Download size={18} />
+              </button>
+              <div className="relative group">
+                <button 
+                  className="h-12 w-12 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl flex items-center justify-center hover:bg-white hover:text-brand-orange transition-all shadow-lg"
+                  title="Import transactions from CSV (Basic)"
+                >
+                  <Upload size={18} />
+                </button>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleImportCSV}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </div>
+              <div className="relative group">
+                <button 
+                  className="h-12 w-12 bg-white/60 text-brand-orange border border-brand-orange/20 rounded-2xl flex items-center justify-center hover:bg-brand-orange hover:text-white transition-all shadow-lg"
+                  title="Advanced Heavy Import (Full mapping + Balances)"
+                >
+                  <Search size={18} />
+                </button>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleAdvancedImportCSV}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </div>
+            </div>
           </div>
         </header>
 
@@ -1457,24 +1478,6 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
 
         {/* Transactions Table */}
         <div className="space-y-6">
-          {/* Quick Stats for filtered results */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-green-50/50 border border-green-100 p-4 rounded-2xl flex justify-between items-center">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-green-600/60 mb-1">Filtered Income</p>
-                <p className="text-xl font-bold text-green-600">฿{filteredTransactions.reduce((sum, tx) => tx.type === 'Income' ? sum + tx.amount : sum, 0).toLocaleString()}</p>
-              </div>
-              <TrendingUp className="text-green-600/20" size={24} />
-            </div>
-            <div className="bg-red-50/50 border border-red-100 p-4 rounded-2xl flex justify-between items-center">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-red-600/60 mb-1">Filtered Expenses</p>
-                <p className="text-xl font-bold text-red-600">฿{filteredTransactions.reduce((sum, tx) => tx.type === 'Expense' ? sum + tx.amount : sum, 0).toLocaleString()}</p>
-              </div>
-              <TrendingDown className="text-red-600/20" size={24} />
-            </div>
-          </div>
-
           <div className="bg-white/40 backdrop-blur-md border border-white/60 rounded-[40px] shadow-xl overflow-hidden">
           <div className="p-8 border-b border-white/20 flex justify-between items-center bg-white/40 backdrop-blur-xl">
             <div>
@@ -1780,33 +1783,33 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                         <>
                           <thead className="sticky top-0 z-30">
                             <tr>
-                              <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px]">Category</th>
+                              <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Category</th>
                               {colRange.map((col, i) => (
                                 <th key={i} className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">
                                   {col.label}
                                 </th>
                               ))}
-                              <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">Total</th>
+                              <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">Total</th>
                             </tr>
                           </thead>
                           <tbody>
                             {categories.map((cat, idx) => (
                               <tr key={idx} className="group hover:bg-gray-50/50">
-                                <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414]">
+                                <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                                   {cat}
                                 </td>
                                 {colRange.map(col => {
                                   const val = matrix[cat][col.key];
                                   return (
                                     <td key={col.key} className={cn(
-                                      "p-4 text-center font-mono text-xs border-b border-black/5",
+                                      "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
                                       val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-black/20"
                                     )}>
                                       {val !== 0 ? `฿${Math.abs(val).toLocaleString()}` : '-'}
                                     </td>
                                   );
                                 })}
-                                <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50/50">
+                                <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
                                   {(() => {
                                     const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
                                     return (
@@ -1818,8 +1821,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                                 </td>
                               </tr>
                             ))}
-                            <tr className="bg-gray-50 font-bold sticky bottom-0 z-20">
-                              <td className="sticky left-0 z-10 bg-gray-50 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest">NET PROFIT</td>
+                            <tr className="bg-gray-100 font-bold sticky bottom-[64px] z-30">
+                              <td className="sticky left-0 z-40 bg-gray-100 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.05)]">NET PROFIT</td>
                               {colRange.map(col => (
                                 <td key={col.key} className={cn(
                                   "p-4 text-center font-mono text-xs border-t-2 border-black/10",
@@ -1829,31 +1832,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                                 </td>
                               ))}
                               <td className={cn(
-                                "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-100",
+                                "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-200 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]",
                                 grandTotal > 0 ? "text-green-600" : grandTotal < 0 ? "text-red-600" : ""
                               )}>
                                 ฿{Math.abs(grandTotal).toLocaleString()}
                               </td>
                             </tr>
-                            <tr className="bg-white font-bold">
-                              <td className="sticky left-0 z-10 bg-white p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600">INCOME</td>
+                            <tr className="bg-green-50 font-bold sticky bottom-[32px] z-30">
+                              <td className="sticky left-0 z-40 bg-green-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">INCOME</td>
                               {colRange.map(col => (
                                 <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-green-600">
                                   ฿{colIncomeTotals[col.key] ? colIncomeTotals[col.key].toLocaleString() : 0}
                                 </td>
                               ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-gray-50 text-green-600">
+                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-green-100/50 text-green-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
                                 ฿{totalIncome.toLocaleString()}
                               </td>
                             </tr>
-                            <tr className="bg-white font-bold">
-                              <td className="sticky left-0 z-10 bg-white p-4 border-t border-black/5 text-xs uppercase tracking-widest text-red-600">EXPENSES</td>
+                            <tr className="bg-red-50 font-bold sticky bottom-0 z-30">
+                              <td className="sticky left-0 z-40 bg-red-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-red-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">EXPENSES</td>
                               {colRange.map(col => (
                                 <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-red-600">
                                   ฿{colExpenseTotals[col.key] ? colExpenseTotals[col.key].toLocaleString() : 0}
                                 </td>
                               ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-gray-50 text-red-600">
+                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-red-100/50 text-red-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
                                 ฿{totalExpense.toLocaleString()}
                               </td>
                             </tr>

@@ -1,54 +1,83 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // ===============================================================
+    // 0. Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // ===============================================================
     // Helper Functions
     // ===============================================================
     
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
+    function isEmailVerified() {
+      // Allow info@ and other specific ones even if unverified for initial setup 
+      // but generally we want verified emails for safety.
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.email.lower() == "info@pattayarentacar.com"
+      );
+    }
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function getEmail() {
+      return request.auth.token.email.lower();
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        'email' in request.auth.token &&
-        (
-          (request.auth.token.email.lower() == "info@pattayarentacar.com") ||
-          (request.auth.token.email.lower() == "gift@pattayarentacar.com") ||
-          (request.auth.token.email.lower() == "rak@pattayarentacar.com") ||
-          (request.auth.token.email.lower() == "pattayarentacar@gmail.com") ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-        );
+      return isSignedIn() && (
+        getEmail() == "info@pattayarentacar.com" ||
+        getEmail() == "gift@pattayarentacar.com" ||
+        getEmail() == "rak@pattayarentacar.com" ||
+        getEmail() == "pattayarentacar@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function isStaff() {
-      return isAuthenticated() &&
-        'email' in request.auth.token &&
-        (
-          isAdmin() ||
-          (request.auth.token.email.lower().matches(".*@pattayarentacar\\.com$")) ||
-          (request.auth.token.email.lower() == "prac.staff@gmail.com") ||
-          (request.auth.token.email.lower().matches(".*@googlemail\\.com$")) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff')
-        );
+      return isSignedIn() && (
+        isAdmin() ||
+        getEmail().endsWith("@pattayarentacar.com") ||
+        getEmail() == "prac.staff@gmail.com" ||
+        getEmail() == "pattayarentacar@gmail.com" ||
+        getEmail().endsWith("@googlemail.com") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['staff', 'admin'])
+      );
     }
 
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
+    function incoming() {
+      return request.resource.data;
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
     }
 
     // ===============================================================
-    // Rules
+    // 1. Root Override for info@pattayarentacar.com
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if isSignedIn() && getEmail() == "info@pattayarentacar.com";
+    }
+
+    // ===============================================================
+    // 2. Collection Rules
     // ===============================================================
 
     // Test connection document
@@ -58,70 +87,66 @@ service cloud.firestore {
 
     // Cars: Publicly readable, staff writable
     match /cars/{carId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
     // Website Cars: Publicly readable, staff writable
     match /website_cars/{carId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
     // Bookings: Publicly creatable, staff readable/writable
     match /bookings/{bookingId} {
       allow create: if true;
-      allow read, update, delete: if isStaff();
+      allow get, list, update, delete: if isStaff();
     }
 
-    // Transactions & Accounts: Staff only
+    // Transactions: Staff only
     match /transactions/{transactionId} {
-      allow read, write: if isStaff();
-    }
-    match /accounts/{accountId} {
-      allow read, write: if isStaff();
-    }
-    match /finance_summaries/{summaryId} {
-      allow read, write: if isStaff();
+      allow get, list, write: if isStaff();
     }
 
-    // Explicitly allow all operations for the root admin email on all collections for system maintenance
-    match /{document=**} {
-      allow read, write: if isAuthenticated() && 
-        'email' in request.auth.token && 
-        request.auth.token.email.lower() == "info@pattayarentacar.com";
+    // Accounts: Staff only
+    match /accounts/{accountId} {
+      allow get, list, write: if isStaff();
+    }
+
+    // Finance Summaries: Staff only
+    match /finance_summaries/{summaryId} {
+      allow get, list, write: if isStaff();
     }
 
     // Settings: Staff only, but allow public read for pricing settings
     match /settings/{settingId} {
-      allow read: if settingId == 'pricing' || isStaff();
-      allow write: if isStaff();
+      allow get: if settingId == 'pricing' || isStaff();
+      allow list, write: if isStaff();
     }
 
-    // Pricing: Publicly readable, staff writable
+    // Pricing & Pricing Grid: Publicly readable, staff writable
     match /pricing/{pricingId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
-
-    // Pricing Grid: Publicly readable, staff writable
     match /pricing_grid/{gridId} {
-      allow get, list, read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
     // Enquiries: Publicly creatable, staff readable/writable
     match /enquiries/{enquiryId} {
       allow create: if true;
-      allow read, update, delete: if isStaff();
+      allow get, list, update, delete: if isStaff();
     }
 
     // Users: Self only, but staff can see all
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && (!request.resource.data.keys().contains('role') || request.resource.data.role == resource.data.role)) ||
+      allow get: if isSignedIn() && (request.auth.uid == userId || isStaff());
+      allow list: if isStaff();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && (incoming().role == existing().role || !incoming().keys().contains('role'))) ||
         isAdmin()
       );
       allow delete: if isAdmin();
@@ -129,70 +154,67 @@ service cloud.firestore {
 
     // Vehicle Logs: Staff only
     match /vehicle_logs/{logId} {
-      allow read, write: if isStaff();
+      allow get, list, write: if isStaff();
     }
 
     // Customers: Staff only, but allow public create for new bookings
     match /customers/{customerId} {
       allow create: if true;
-      allow read, update, delete: if isStaff();
+      allow get, list, update, delete: if isStaff();
     }
 
-    // System Logs: Staff only, but allow public create for website enquiries
+    // System Logs: Staff only, but allow public create
     match /system_logs/{logId} {
-      allow create: if true; // Allow customers to log their enquiries
-      allow read, update, delete: if isStaff();
+      allow create: if true;
+      allow get, list, update, delete: if isStaff();
     }
 
-    // System Config: Publicly readable for debugging, staff writable
+    // System Config: Staff only (contains secrets)
     match /system_config/{configId} {
-      allow read: if true;
-      allow write: if isStaff();
+      allow get, list, write: if isStaff();
     }
 
     // AI Knowledge Base: Publicly readable, staff writable
     match /ai_knowledge_base/{docId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
     // FAQs: Publicly readable, staff writable
     match /faqs/{faqId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
-    // Rentals: Staff only
+    // Rentals & Photos: Staff only
     match /rentals/{rentalId} {
-      allow read, write: if isStaff();
+      allow get, list, write: if isStaff();
     }
-
-    // Rental Photos: Staff only
     match /rental_photos/{photoId} {
-      allow read, write: if isStaff();
+      allow get, list, write: if isStaff();
     }
 
     // Mail: Publicly creatable for triggering emails, staff readable/writable
     match /mail/{mailId} {
       allow create: if true;
-      allow read, update, delete: if isStaff();
+      allow get, list, update, delete: if isStaff();
     }
 
     // Blog Posts: Publicly readable, staff writable
     match /blog_posts/{postId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isStaff();
     }
 
     // Reviews: Publicly readable and creatable, staff writable
     match /reviews/{reviewId} {
-      allow read, create: if true;
+      allow get, list, create: if true;
       allow update, delete: if isStaff();
     }
 
     // Review Settings: Staff only
     match /review_settings/{settingId} {
-      allow read, write: if isStaff();
+      allow get, list, write: if isStaff();
     }
   }
 }

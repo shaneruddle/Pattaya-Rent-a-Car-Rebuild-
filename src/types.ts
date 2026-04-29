@@ -148,6 +148,8 @@ export interface PricingGrid {
 export interface WebsiteCar {
   id: string;
   name: string;
+  make?: string;
+  model?: string;
   yearRange: string;
   pricePerDay: number;
   priceMonthly: number;

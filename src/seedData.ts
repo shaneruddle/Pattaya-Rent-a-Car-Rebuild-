@@ -96,6 +96,8 @@ export const SEED_CARS = [
 export const SEED_WEBSITE_CARS = [
   {
     name: "Toyota Vios",
+    make: "Toyota",
+    model: "Vios",
     yearRange: "model 2018 - 2021",
     pricePerDay: 1350,
     priceMonthly: 6950,
@@ -107,7 +109,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 1,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772253555759x244137933847013980/2z-z430024775165.webp",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Vios.avif?alt=media&token=0fe7fe5f-bba1-4013-bec6-b5983d06e63d",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429636957x408275490594002050/Add%20a%20heading%20%2819%29.png",
     realImages: [
       "https://s3.amazonaws.com/appforest_uf/f1631434454352x779857309714604000/241851272_1518330265211173_4855462908693724018_n.jpg",
@@ -129,7 +131,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 3,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772253671797x734786588936304800/Platinum%20White%20Pearl.png",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Ativ_new.avif?alt=media&token=69656f82-c64e-474b-8103-d58536633d57",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631428102891x644308887254393300/Add%20a%20heading%20%283%29.png",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1631430312412x437964941762301250/IMG_5118.jpg"],
     priceGridVehicle: "Ativ Sport"
@@ -183,7 +185,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 8,
     isActive: true,
-    mainImage: "https://s3.amazonaws.com/appforest_uf/f1661405028296x999197484640429200/Add%20a%20heading%20%281%29.svg",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Fortuner_Old.png?alt=media&token=0b72046f-a429-440b-8646-2f54d60df87f",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429603237x820602308257076600/Add%20a%20heading%20%2815%29.png",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1631428877101x434343699080541200/Toyota%20Fortuner%20Side.jpg"],
     priceGridVehicle: "Old Fortuner"
@@ -201,7 +203,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 10,
     isActive: true,
-    mainImage: "https://s3.amazonaws.com/appforest_uf/f1631428441871x594984577305449900/Add%20a%20heading%20%285%29.png",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Fortuner_New.avif?alt=media&token=66f98b14-11b3-4776-9278-ae387accc951",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429587769x395934988193545000/Add%20a%20heading%20%2814%29.png",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1631613158730x764287117465337600/241780943_333861325152966_1574171268269789501_n.jpg"],
     priceGridVehicle: "New Fortuner"
@@ -219,8 +221,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 2,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772254988780x824510150567162100/white-pearl-01-0961.png",
-    shadowImage: "https://s3.amazonaws.com/appforest_uf/f1631429572275x929151809402254600/Add%20a%20heading%20%2818%29.png",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Yaris.avif?alt=media&token=37eb78d6-cf9e-4886-9c5d-a45e00426722",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1631430359360x943576641423091700/IMG_4858%20%281%29.jpg"],
     priceGridVehicle: "Ativ"
   },
@@ -237,7 +238,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 6,
     isActive: false,
-    mainImage: "https://s3.amazonaws.com/appforest_uf/f1661404373340x133145246728870510/Toyota%20Vios%20cvt.svg",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Vios.avif?alt=media&token=0fe7fe5f-bba1-4013-bec6-b5983d06e63d",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1634614191205x584324381965348500/Toyota%20Vios%20CVT%202021%20Shadow.png",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1634613556735x506060878925848060/CVT%201.jpg"],
     priceGridVehicle: "Vios CVT"
@@ -255,7 +256,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 7,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772254929500x539232430681106960/99ea88b7f2d2e3af29364a4c9823b0df.png",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Revo.avif?alt=media&token=7e7510af-c30e-4c30-9bf8-aef7109dc5f5",
     shadowImage: "https://s3.amazonaws.com/appforest_uf/f1634287969818x240778606688250020/Add%20a%20heading%20%2821%29.png",
     realImages: ["https://s3.amazonaws.com/appforest_uf/f1635148373673x266349579796742800/Revo7.jpg"],
     priceGridVehicle: "Revo"
@@ -273,7 +274,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 6,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772253698592x263636671058831580/specifics-banner.png",
+    mainImage: "",
     shadowImage: "",
     realImages: [],
     priceGridVehicle: "Extender"
@@ -291,7 +292,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "CD/USB/AUX",
     displayOrder: 11,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1772254015405x434297244551676400/Everest%20Left.webp",
+    mainImage: "",
     shadowImage: "",
     realImages: [],
     priceGridVehicle: "Everest"
@@ -309,7 +310,7 @@ export const SEED_WEBSITE_CARS = [
     audio: "USB/Bluetooth",
     displayOrder: 4,
     isActive: true,
-    mainImage: "https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/f1773543675221x130613518464864460/veloz.png",
+    mainImage: "https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Toyota_Veloz.avif?alt=media&token=93adca99-cdcd-49e1-9b0e-977cd678c0a4",
     shadowImage: "",
     realImages: [],
     priceGridVehicle: "Veloz"

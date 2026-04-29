@@ -23,8 +23,11 @@ import { db, auth, storage, handleFirestoreError, OperationType, logSystemActivi
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Booking, Customer, Rental } from '../types';
-import { format } from 'date-fns';
+import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import { cn } from '../lib/utils';
+import { LocationPicker } from './LocationPicker';
+import { DatePickerCustom } from './ui/DatePickerCustom';
+import { ImportantInfoModal } from './ImportantInfoModal';
 import { toast } from 'sonner';
 
 interface NewRentalProps {
@@ -45,6 +48,14 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [pickUpTime, setPickUpTime] = useState('09:30');
+  const [dropOffTime, setDropOffTime] = useState('09:30');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: new Date(),
+    to: addDays(new Date(), 1)
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showImportantInfo, setShowImportantInfo] = useState(false);
   
   // Form State
   const [vehicleType, setVehicleType] = useState<'Car' | 'Motorbike' | null>(null);
@@ -84,6 +95,13 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
   const handleBookingSelect = (booking: Booking) => {
     setSelectedBooking(booking);
     setVehicleType(booking.requestedCarType === 'Motorbike' ? 'Motorbike' : 'Car');
+    
+    const start = parseISO(booking.startDate);
+    const end = parseISO(booking.endDate);
+    setPickUpTime(format(start, 'HH:mm'));
+    setDropOffTime(format(end, 'HH:mm'));
+    setDateRange({ from: start, to: end });
+
     setFormData({
       ...formData,
       carId: booking.carId || '',
@@ -578,25 +596,92 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Date Out</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none text-xs"
-                        value={formData.dateOut}
-                        onChange={(e) => setFormData({ ...formData, dateOut: e.target.value })}
-                      />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Rental Period</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowDatePicker(true)}
+                      className="w-full bg-gray-50 border border-gray-200 p-4 rounded-2xl text-left hover:bg-gray-100 transition-all outline-none"
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Pick-up</p>
+                          <p className="text-xs font-bold text-gray-900">
+                            {format(dateRange.from, 'PPP')} at {pickUpTime}
+                          </p>
+                        </div>
+                        <div className="h-8 w-px bg-black/10 mx-4" />
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Drop-off</p>
+                          <p className="text-xs font-bold text-gray-900">
+                            {format(dateRange.to, 'PPP')} at {dropOffTime}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="flex items-center justify-end mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowImportantInfo(true)}
+                        className="flex items-center gap-2 text-brand-orange hover:text-[#1A1A1A] transition-colors"
+                      >
+                        <AlertCircle size={14} />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Important Info</span>
+                      </button>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Date In</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none text-xs"
-                        value={formData.dateIn}
-                        onChange={(e) => setFormData({ ...formData, dateIn: e.target.value })}
-                      />
-                    </div>
+
+                    <AnimatePresence>
+                      {showDatePicker && (
+                        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="w-full max-w-[700px]"
+                          >
+                            <DatePickerCustom
+                              selectedRange={dateRange}
+                              onRangeChange={(range) => {
+                                setDateRange(range);
+                                const start = new Date(range.from);
+                                const [sh, sm] = pickUpTime.split(':').map(Number);
+                                start.setHours(sh, sm, 0, 0);
+
+                                const end = new Date(range.to);
+                                const [eh, em] = dropOffTime.split(':').map(Number);
+                                end.setHours(eh, em, 0, 0);
+
+                                setFormData({ 
+                                  ...formData, 
+                                  dateOut: start.toISOString(),
+                                  dateIn: end.toISOString()
+                                });
+                              }}
+                              pickUpTime={pickUpTime}
+                              onPickUpTimeChange={(time) => {
+                                setPickUpTime(time);
+                                const start = new Date(dateRange.from);
+                                const [sh, sm] = time.split(':').map(Number);
+                                start.setHours(sh, sm, 0, 0);
+                                setFormData({ ...formData, dateOut: start.toISOString() });
+                              }}
+                              dropOffTime={dropOffTime}
+                              onDropOffTimeChange={(time) => {
+                                setDropOffTime(time);
+                                const end = new Date(dateRange.to);
+                                const [eh, em] = time.split(':').map(Number);
+                                end.setHours(eh, em, 0, 0);
+                                setFormData({ ...formData, dateIn: end.toISOString() });
+                              }}
+                              onClose={() => setShowDatePicker(false)}
+                              onApply={() => setShowDatePicker(false)}
+                              isBikeMode={vehicleType === 'Motorbike'}
+                            />
+                          </motion.div>
+                        </div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -799,6 +884,12 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
           )}
         </AnimatePresence>
       </main>
+
+      <ImportantInfoModal 
+        isOpen={showImportantInfo} 
+        onClose={() => setShowImportantInfo(false)} 
+        isBikeMode={vehicleType === 'Motorbike'}
+      />
 
       {/* Camera Modal */}
       <AnimatePresence>

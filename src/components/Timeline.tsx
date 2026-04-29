@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock } from 'lucide-react';
@@ -11,6 +11,8 @@ import { safeLocalStorage } from '../lib/storage';
 import { DayPicker, DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import { LocationPicker } from './LocationPicker';
+import { ImportantInfoModal } from './ImportantInfoModal';
+import { DatePickerCustom } from './ui/DatePickerCustom';
 
 interface TimelineProps {
   cars: Car[];
@@ -41,10 +43,34 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   });
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [pickUpTime, setPickUpTime] = useState('09:30');
+  const [dropOffTime, setDropOffTime] = useState('09:30');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showImportantInfo, setShowImportantInfo] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Auto-scroll to today on mount
+    const timer = setTimeout(() => {
+      if (timelineContainerRef.current) {
+        const today = new Date();
+        const monthStart = startOfMonth(currentDate);
+        if (isSameMonth(today, currentDate)) {
+          const startDayIdx = differenceInDays(today, monthStart);
+          // Each day is (2 slots * 36px) = 72px. Plus the left sidebar offset.
+          const scrollPosition = (startDayIdx * 72) - 150; 
+          timelineContainerRef.current.scrollTo({
+            left: Math.max(0, scrollPosition),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [currentDate]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -226,9 +252,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     setModalMode('edit');
     setShowDeleteConfirm(false);
     const start = new Date(date);
-    start.setHours(slot === 'AM' ? 8 : 14, 0, 0, 0);
+    start.setHours(slot === 'AM' ? 9 : 14, slot === 'AM' ? 30 : 0, 0, 0);
     const end = new Date(date);
-    end.setHours(slot === 'AM' ? 14 : 20, 0, 0, 0);
+    end.setHours(slot === 'AM' ? 14 : 16, 0, 0, 0);
+    
+    setPickUpTime(format(start, 'HH:mm'));
+    setDropOffTime(format(end, 'HH:mm'));
     
     setFormData({
       carId: carId === 'unassigned' ? '' : carId,
@@ -264,9 +293,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     });
     setModalMode('view');
     setShowDeleteConfirm(false);
+    const start = parseISO(booking.startDate);
+    const end = parseISO(booking.endDate);
+    setPickUpTime(format(start, 'HH:mm'));
+    setDropOffTime(format(end, 'HH:mm'));
     setDateRange({ 
-      from: parseISO(booking.startDate), 
-      to: parseISO(booking.endDate) 
+      from: start, 
+      to: end 
     });
     setIsModalOpen(true);
   };
@@ -276,10 +309,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      const start = dateRange?.from ? new Date(dateRange.from) : new Date(formData.startDate || new Date());
+      const [startH, startM] = pickUpTime.split(':').map(Number);
+      start.setHours(startH, startM, 0, 0);
+
+      const end = dateRange?.to ? new Date(dateRange.to) : new Date(dateRange?.from || formData.endDate || new Date());
+      const [endH, endM] = dropOffTime.split(':').map(Number);
+      end.setHours(endH, endM, 0, 0);
+
       const dataToSave = {
         ...formData,
-        startDate: dateRange?.from?.toISOString() || formData.startDate,
-        endDate: dateRange?.to?.toISOString() || dateRange?.from?.toISOString() || formData.endDate,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
       };
 
       if (editingBooking) {
@@ -592,7 +633,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-warm-bg">
-      <div className="flex-1 overflow-auto custom-scrollbar relative">
+      <div ref={timelineContainerRef} className="flex-1 overflow-auto custom-scrollbar relative">
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
@@ -616,6 +657,30 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
           {/* Timeline Body */}
           <div className="relative">
+            {/* Today Indicator Line */}
+            {(() => {
+              const today = new Date();
+              const monthStart = startOfMonth(currentDate);
+              const monthEnd = endOfMonth(currentDate);
+              if (today >= monthStart && today <= monthEnd) {
+                const startDayIdx = differenceInDays(today, monthStart);
+                const hour = today.getHours();
+                const minute = today.getMinutes();
+                const progressInDay = (hour * 60 + minute) / 1440;
+                const left = (startDayIdx * 72) + (progressInDay * 72);
+                
+                return (
+                  <div 
+                    className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 pointer-events-none"
+                    style={{ left: `${left}px` }}
+                  >
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-red-500" />
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Unassigned Row */}
             <div className="flex group h-6 bg-brand-orange/5">
               <div className="w-80 flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
@@ -1249,36 +1314,73 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                        <Calendar size={12} /> Select Dates
+                        <Calendar size={12} /> Select Dates & Times
                       </label>
-                      <div className="border border-white/60 p-2 rounded-3xl bg-white/40 backdrop-blur-md shadow-inner">
-                        <DayPicker
-                          mode="range"
-                          selected={dateRange}
-                          onSelect={setDateRange}
-                          className="m-0"
-                          styles={{
-                            caption: { color: '#1A1A1A', fontFamily: 'Georgia, serif', fontStyle: 'italic' },
-                            head_cell: { color: '#1A1A1A', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' },
-                            day: { fontSize: '12px' },
-                            day_selected: { backgroundColor: '#FF6321', color: 'white' },
-                            day_today: { fontWeight: 'bold', color: '#FF6321', textDecoration: 'underline' }
-                          }}
-                        />
-                      </div>
-                      {dateRange?.from && (
-                        <div className="mt-2 p-3 bg-brand-orange/10 rounded-2xl text-[10px] font-bold uppercase tracking-widest flex justify-between text-brand-orange backdrop-blur-sm border border-brand-orange/20">
-                          <span>{format(dateRange.from, 'PP')}</span>
-                          {dateRange.to && (
-                            <>
-                              <span>→</span>
-                              <span>{format(dateRange.to, 'PP')}</span>
-                            </>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowDatePicker(true)}
+                          className="w-full bg-white/40 border-b-2 border-white/60 p-4 rounded-t-2xl text-left hover:bg-white/60 transition-all shadow-sm"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Pick-up</p>
+                              <p className="text-sm font-bold text-gray-900">
+                                {dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date'} at {pickUpTime}
+                              </p>
+                            </div>
+                            <div className="h-8 w-px bg-black/10 mx-4" />
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Drop-off</p>
+                              <p className="text-sm font-bold text-gray-900">
+                                {dateRange?.to ? format(dateRange.to, 'PPP') : (dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date')} at {dropOffTime}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+
+                        <AnimatePresence>
+                          {showDatePicker && (
+                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="w-full max-w-[700px]"
+                              >
+                                <DatePickerCustom
+                                  selectedRange={{ 
+                                    from: dateRange?.from || new Date(), 
+                                    to: dateRange?.to || addDays(dateRange?.from || new Date(), 1) 
+                                  }}
+                                  onRangeChange={(range) => {
+                                    setDateRange({ from: range.from, to: range.to });
+                                  }}
+                                  pickUpTime={pickUpTime}
+                                  onPickUpTimeChange={setPickUpTime}
+                                  dropOffTime={dropOffTime}
+                                  onDropOffTimeChange={setDropOffTime}
+                                  onClose={() => setShowDatePicker(false)}
+                                  onApply={() => setShowDatePicker(false)}
+                                  isBikeMode={title?.toLowerCase().includes('bike')}
+                                />
+                              </motion.div>
+                            </div>
                           )}
-                        </div>
-                      )}
+                        </AnimatePresence>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowImportantInfo(true)}
+                          className="flex items-center gap-2 text-brand-orange hover:text-[#1A1A1A] transition-colors"
+                        >
+                          <AlertCircle size={12} />
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-brand-orange">Important Info</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1443,6 +1545,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ImportantInfoModal 
+        isOpen={showImportantInfo} 
+        onClose={() => setShowImportantInfo(false)} 
+        isBikeMode={editingBooking?.requestedCarType === 'Motorbike' || cars.find(c => c.id === formData.carId)?.category === 'Motorbike' || title?.toLowerCase().includes('bike')}
+      />
     </div>
   );
 };

@@ -57,7 +57,7 @@ export default function App() {
             <meta property="og:title" content="Pattaya Rent a Car | Trusted Car Rental in Pattaya" />
             <meta property="og:description" content="Pattaya's most trusted car rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
             <meta property="og:url" content="https://pattayarentacar.com/" />
-            <meta property="og:image" content="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=1200,h=630,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png" />
+            <meta property="og:image" content="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" />
           </Helmet>
           <AppContent />
         </PricingProvider>
@@ -212,26 +212,26 @@ function AppContent() {
       console.log(`AppContent: Fetched ${sortedCars.length} cars`);
       setCars(sortedCars);
 
-      // Fetch all bookings (limited to 1000) to ensure we see data
+      // Fetch all bookings (limited to 500) to ensure we see data
       const bookingsQuery = query(
         collection(db, 'bookings'), 
-        limit(1000)
+        limit(500)
       );
       
       const bookingsSnapshot = await safeGetDocs(bookingsQuery);
       const bookingsData = bookingsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(bookingsData);
-
+  
       setConnectionStatus('online');
-
-      // Update cache
-      const now = Date.now();
-      setLastDataFetch(now);
-      setLastError(null);
-      safeLocalStorage.setItem('prac_last_fetch', now.toString(), true);
-      safeLocalStorage.setItem('prac_cached_cars', JSON.stringify(sortedCars), true);
-      safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
-    } catch (error: any) {
+  
+        // Update cache
+        const now = Date.now();
+        setLastDataFetch(now);
+        setLastError(null);
+        safeLocalStorage.setItem('prac_last_fetch', now.toString(), true);
+        safeLocalStorage.setItem('prac_cached_cars', JSON.stringify(sortedCars), true);
+        safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
+      } catch (error: any) {
       console.error('Error fetching initial data:', error);
       const errorMessage = error.message || String(error);
       setLastError(`Data Fetch Error: ${errorMessage}`);
@@ -288,20 +288,6 @@ function AppContent() {
 
     console.log('Fetching data for user:', user.email);
     fetchData();
-
-    // Listen to System Logs (Real-time update)
-    const logsQuery = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(100));
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const logsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as SystemLog));
-      setLogs(logsData);
-      safeLocalStorage.setItem('prac_cached_logs', JSON.stringify(logsData), true);
-    }, (error) => {
-      console.error("Logs listener error:", error);
-    });
-
-    return () => {
-      unsubscribeLogs();
-    };
   }, [user, isStaff, fetchData]);
 
   useEffect(() => {
@@ -446,7 +432,7 @@ function AppContent() {
         >
           <div className="flex justify-between items-center mb-10">
             <img
-              src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
+              src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
               alt="PRAC Logo"
               className="w-32"
               referrerPolicy="no-referrer"

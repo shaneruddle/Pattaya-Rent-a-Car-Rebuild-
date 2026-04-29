@@ -402,7 +402,7 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
               />
             ) : (
               <img 
-                src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
+                src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                 alt="PRAC Logo"
                 className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity brightness-0 invert")}
                 onClick={() => onPageChange?.('landing')}

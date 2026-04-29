@@ -46,6 +46,7 @@ import { Helmet } from 'react-helmet-async';
 import { AIAssistant } from './AIAssistant';
 import { Language } from '../translations';
 import { LocationPicker } from './LocationPicker';
+import { ImportantInfoModal } from './ImportantInfoModal';
 
 const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
   const hour = i.toString().padStart(2, '0');
@@ -231,7 +232,7 @@ const Calendar: React.FC<CalendarProps> = ({
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
       className={cn(
         "rounded-[40px] overflow-hidden z-[100] shadow-2xl border-4 transition-all",
-        "fixed inset-x-4 top-[5%] bottom-[5%] md:absolute md:top-full md:left-1/2 md:-translate-x-1/2 md:mt-4 md:w-[700px] md:max-w-[95vw] md:bottom-auto md:inset-x-auto",
+        "fixed inset-x-4 top-[5%] bottom-[5%] md:absolute md:top-full md:right-0 md:left-auto md:translate-x-0 md:mt-4 md:w-[700px] md:max-w-[95vw] md:bottom-auto",
         "overflow-y-auto custom-scrollbar"
       )}
       style={{ 
@@ -421,6 +422,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedCar, setSelectedCar] = useState<WebsiteCar | null>(null);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
+  const [showImportantInfoModal, setShowImportantInfoModal] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -912,7 +914,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               />
             ) : (
               <img 
-                src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png"
+                src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                 alt="Pattaya Rent A Car"
                 className="h-10 cursor-pointer"
                 onClick={() => {
@@ -1448,7 +1450,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           </button>
                           <div className="flex items-center justify-end gap-6 text-[10px] font-bold uppercase tracking-widest text-black/20">
                             <span className={cn("cursor-pointer transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('car.subjectToAvailability')}</span>
-                            <span className={cn("flex items-center gap-2 cursor-pointer transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>
+                            <span 
+                              onClick={() => setShowImportantInfoModal(true)}
+                              className={cn(
+                                "flex items-center gap-2 cursor-pointer transition-all px-3 py-1.5 rounded-lg bg-black/5 hover:bg-black/10",
+                                isBikeMode ? "text-brand-blue" : "text-brand-orange"
+                              )}
+                            >
                               <Info size={14} /> {t('car.importantInfo')}
                             </span>
                           </div>
@@ -1509,6 +1517,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         </main>
       )}
 
+      <ImportantInfoModal 
+        isOpen={showImportantInfoModal} 
+        onClose={() => setShowImportantInfoModal(false)} 
+        isBikeMode={isBikeMode}
+      />
+
       {/* Enquiry Modal */}
       <AnimatePresence>
         {showEnquiryModal && selectedCar && (
@@ -1537,7 +1551,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <div className="flex flex-col md:flex-row gap-12 mb-12">
                   <div className="flex-1">
                     <img 
-                      src="https://7f8bfb441a72f33e442dece0180dba1f.cdn.bubble.io/cdn-cgi/image/w=192,h=70,f=auto,dpr=2,fit=contain/f1630376828262x344914557261106300/PRAC-Logo-1.png" 
+                      src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                       alt="Logo" 
                       className="h-10 mb-10"
                       referrerPolicy="no-referrer"
@@ -1744,9 +1758,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       {t('bookingModal.disclaimer')}
                     </div>
 
-                    <div className="flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-[10px] mb-10 cursor-pointer hover:opacity-70 transition-opacity">
-                      <Info size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> 
-                      <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('car.importantInfo')}</span>
+                    <div 
+                      onClick={() => setShowImportantInfoModal(true)}
+                      className={cn(
+                        "flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-[10px] mb-10 cursor-pointer hover:opacity-70 transition-all px-6 py-3 bg-black/5 rounded-2xl mx-auto w-fit",
+                        isBikeMode ? "text-brand-blue" : "text-brand-orange"
+                      )}
+                    >
+                      <Info size={16} /> 
+                      <span>{t('car.importantInfo')}</span>
                     </div>
 
                     <button 

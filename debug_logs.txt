@@ -1,0 +1,14 @@
+2026-04-28T12:40:33.044Z: [Init] Metadata Server Project ID: ais-asia-east1-fc0827eb33c3412
+2026-04-28T12:40:33.044Z: [Init] Primary Project ID: pattaya-rent-a-car-rebuild
+2026-04-28T12:40:33.044Z: [Init] Initializing Admin SDK for: pattaya-rent-a-car-rebuild
+2026-04-28T12:40:38.050Z: [Init] Connection Attempt 1/10 (pattaya-rent-a-car-rebuild)...
+2026-04-28T12:40:38.552Z: [Init] Attempt 1 denied: 7 PERMISSION_DENIED: Missing or insufficient permissions.
+2026-04-28T12:40:38.552Z: [Init] Switching to Metadata Project ID: ais-asia-east1-fc0827eb33c3412
+2026-04-28T12:40:38.553Z: [Init] Initializing Admin SDK for: ais-asia-east1-fc0827eb33c3412
+2026-04-28T12:40:38.566Z: [Debug] Error checking firestore: 7 PERMISSION_DENIED: Missing or insufficient permissions.
+2026-04-28T12:40:53.557Z: [Init] Connection Attempt 2/10 (ais-asia-east1-fc0827eb33c3412)...
+2026-04-28T12:40:53.793Z: [Init] Attempt 2 denied: 7 PERMISSION_DENIED: Cloud Firestore API has not been used in project ais-asia-east1-fc0827eb33c3412 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=ais-asia-east1-fc0827eb33c3412 then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry.
+2026-04-28T12:41:27.426Z: [Init] Connection Attempt 3/10 (ais-asia-east1-fc0827eb33c3412)...
+2026-04-28T12:41:27.482Z: [Init] Attempt 3 denied: 7 PERMISSION_DENIED: Cloud Firestore API has not been used in project ais-asia-east1-fc0827eb33c3412 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=ais-asia-east1-fc0827eb33c3412 then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry.
+2026-04-28T12:42:12.483Z: [Init] Connection Attempt 4/10 (ais-asia-east1-fc0827eb33c3412)...
+2026-04-28T12:42:12.530Z: [Init] Attempt 4 denied: 7 PERMISSION_DENIED: Cloud Firestore API has not been used in project ais-asia-east1-fc0827eb33c3412 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=ais-asia-east1-fc0827eb33c3412 then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry.

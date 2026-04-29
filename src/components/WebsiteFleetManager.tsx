@@ -313,6 +313,8 @@ export const WebsiteFleetManager: React.FC = () => {
   const handleAddNew = async () => {
     const newCar: Omit<WebsiteCar, 'id'> = {
       name: 'New Vehicle',
+      make: '',
+      model: '',
       yearRange: '2024',
       pricePerDay: 0,
       priceMonthly: 0,
@@ -578,7 +580,36 @@ export const WebsiteFleetManager: React.FC = () => {
                         <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#1A1A1A]/10 pb-2">Basic Info</h3>
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Vehicle Name</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Make</label>
+                            <select 
+                              value={selectedCar.make || ''} 
+                              onChange={(e) => setSelectedCar({...selectedCar, make: e.target.value, name: `${e.target.value} ${selectedCar.model || ''}`.trim()})}
+                              className="w-full px-4 py-3 bg-white/40 border border-white/60 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                            >
+                              <option value="">Select Make</option>
+                              <option value="Toyota">Toyota</option>
+                              <option value="Honda">Honda</option>
+                              <option value="Ford">Ford</option>
+                              <option value="Nissan">Nissan</option>
+                              <option value="MG">MG</option>
+                              <option value="Mitsubishi">Mitsubishi</option>
+                              <option value="Mazda">Mazda</option>
+                              <option value="Isuzu">Isuzu</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Model</label>
+                            <input 
+                              type="text"
+                              value={selectedCar.model || ''}
+                              onChange={(e) => setSelectedCar({...selectedCar, model: e.target.value, name: `${selectedCar.make || ''} ${e.target.value}`.trim()})}
+                              className="w-full px-4 py-3 bg-white/40 border border-white/60 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                              placeholder="e.g. Vios"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1.5 ml-1">Display Name (Website)</label>
                             <input 
                               type="text"
                               value={selectedCar.name}
