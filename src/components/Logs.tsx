@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { SystemLog } from '../types';
 import { format, parseISO, isToday, isValid } from 'date-fns';
-import { Search, Filter, Activity, Clock, User, Tag, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, Filter, Activity, Clock, User, Tag, ChevronRight, RefreshCw, ChevronLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -11,11 +11,14 @@ interface LogsProps {
   logs: SystemLog[];
 }
 
-export const Logs: React.FC<LogsProps> = ({ logs: initialLogs }) => {
+export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
   const [logs, setLogs] = useState<SystemLog[]>(initialLogs);
   const [loading, setLoading] = useState(initialLogs.length === 0);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = async () => {
     if (!auth.currentUser) return;
@@ -67,6 +70,25 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs }) => {
     });
   }, [filteredLogs]);
 
+  const totalPages = Math.ceil(sortedLogs.length / ITEMS_PER_PAGE);
+  const paginatedLogs = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return sortedLogs.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedLogs, currentPage]);
+
+  const goToPage = (page: number) => {
+    const targetPage = Math.min(Math.max(1, page), totalPages);
+    setCurrentPage(targetPage);
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter]);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-warm-bg overflow-hidden">
       <div className="p-8 border-b border-white/20 bg-white/40 backdrop-blur-xl flex flex-col gap-6">
@@ -113,9 +135,9 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs }) => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+      <div ref={logContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-8">
         <div className="max-w-6xl mx-auto space-y-2">
-          {sortedLogs.map((log, index) => {
+          {paginatedLogs.map((log, index) => {
             const date = parseISO(log.timestamp);
             const isDayToday = isValid(date) && isToday(date);
 
@@ -176,6 +198,30 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs }) => {
               </motion.div>
             );
           })}
+
+          {sortedLogs.length > 0 && (
+            <div className="pt-8 flex items-center justify-between border-t border-white/20 mt-8">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+                Page {currentPage} of {totalPages || 1}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="w-10 h-10 rounded-xl bg-white/60 border border-white/40 flex items-center justify-center text-[#1A1A1A]/60 hover:text-brand-orange hover:bg-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="w-10 h-10 rounded-xl bg-white/60 border border-white/40 flex items-center justify-center text-[#1A1A1A]/60 hover:text-brand-orange hover:bg-white transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {sortedLogs.length === 0 && (
             <div className="h-[50vh] flex flex-col items-center justify-center text-center">

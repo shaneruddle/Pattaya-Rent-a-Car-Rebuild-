@@ -162,7 +162,103 @@ const normalizeDescription = (text: string) => {
   return text.toLowerCase().replace(/(^\w|\s\w)/g, m => m.toUpperCase());
 };
 
-export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onClearPreFill }) => {
+const TransactionRow: React.FC<{
+  tx: Transaction;
+  accounts: Account[];
+  cars: Car[];
+  onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
+}> = React.memo(({ tx, accounts, cars, onEdit, onDelete }) => {
+  const brandSlug = tx.carId ? getBrandSlug(cars.find(c => c.id === tx.carId)?.name || '') : null;
+  const car = tx.carId ? cars.find(c => c.id === tx.carId) : null;
+  const fromAccount = accounts.find(a => a.id === tx.accountId);
+  const toAccount = tx.toAccountId ? accounts.find(a => a.id === tx.toAccountId) : null;
+
+  return (
+    <tr className="hover:bg-slate-50/80 transition-colors group border-b border-white/10 last:border-0">
+      <td className="p-6 text-xs font-bold text-[#141414]/80">
+        {format(parseISO(tx.date), 'MMM d, yyyy HH:mm')}
+      </td>
+      <td className="p-6">
+        <span className={cn(
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest border",
+          tx.type === 'Income' ? "bg-green-50 text-green-600 border-green-100" : 
+          tx.type === 'Expense' ? "bg-red-50 text-red-600 border-red-100" :
+          "bg-white/60 text-[#141414] border-white/80"
+        )}>
+          {tx.type === 'Income' && <ArrowUpRight size={10} />}
+          {tx.type === 'Expense' && <ArrowDownRight size={10} />}
+          {tx.type === 'Transfer' && <ArrowRightLeft size={10} />}
+          {tx.type}
+        </span>
+      </td>
+      <td className="p-6 text-xs font-bold uppercase tracking-widest text-[#141414]/60">
+        <div className="flex flex-col gap-1.5">
+          {tx.category}
+          {car && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-brand-orange/5 text-[#141414] rounded-lg border border-brand-orange/10 w-fit">
+              {brandSlug ? (
+                <img 
+                  src={`https://cdn.simpleicons.org/${brandSlug}`}
+                  alt={brandSlug}
+                  className="w-3 h-3 shrink-0"
+                  width={12}
+                  height={12}
+                  loading="lazy"
+                />
+              ) : (
+                <CarIcon size={10} className="text-brand-orange" />
+              )}
+              <span className="text-[9px] font-bold">
+                {car.name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim()} <span className="text-[#141414]/40 font-mono">({car.plateNumber})</span>
+              </span>
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="p-6 text-xs font-bold text-[#141414]/80">
+        <div className="flex flex-col gap-1">
+          {fromAccount?.name}
+          {tx.type === 'Transfer' && toAccount && (
+            <div className="flex items-center gap-2 text-[#141414]/40">
+              <ArrowRightLeft size={10} /> {toAccount.name}
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="p-6 text-[12px] text-slate-800 font-sans font-medium tracking-tight leading-relaxed max-w-xs">
+        {normalizeDescription(tx.description)}
+      </td>
+      <td className={cn(
+        "p-6 text-right font-bold text-base",
+        tx.type === 'Income' ? "text-green-600" : 
+        tx.type === 'Expense' ? "text-red-600" :
+        "text-[#141414]"
+      )}>
+        {tx.type === 'Expense' ? '-' : tx.type === 'Income' ? '+' : ''}
+        ฿{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+      </td>
+      <td className="p-6 text-right">
+        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={() => onEdit(tx)}
+            className="p-2 hover:bg-brand-orange hover:text-white rounded-lg transition-all text-[#141414]/40"
+          >
+            <Edit2 size={14} />
+          </button>
+          <button 
+            onClick={() => onDelete(tx)}
+            className="p-2 hover:bg-red-500 hover:text-white rounded-lg transition-all text-[#141414]/40"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preFill, onClearPreFill }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +269,17 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
+  const [displayLimit, setDisplayLimit] = useState(50);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(localSearchTerm);
+      setDisplayLimit(50); // Reset limit on search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [localSearchTerm]);
+
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterCarId, setFilterCarId] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
@@ -224,6 +331,9 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
               src={`https://cdn.simpleicons.org/${brandSlug}`}
               alt={brandSlug}
               className="w-4 h-4 shrink-0"
+              width={16}
+              height={16}
+              loading="lazy"
             />
           ) : (
             <div className="w-4 h-4" />
@@ -258,6 +368,9 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
               src={`https://cdn.simpleicons.org/${brandSlug}`}
               alt={brandSlug}
               className="w-4 h-4 shrink-0"
+              width={16}
+              height={16}
+              loading="lazy"
             />
           )}
           <span className="text-sm">
@@ -656,7 +769,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
     }
   };
 
-  const handleEditTransaction = (tx: Transaction) => {
+  const handleEditTransaction = React.useCallback((tx: Transaction) => {
     setEditingTransactionId(tx.id);
     setModalType(tx.type === 'Transfer' ? 'Transfer' : 'TransactionEdit');
     setFormData({
@@ -670,12 +783,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
       bookingId: tx.bookingId || ''
     });
     setShowModal(true);
-  };
+  }, [transactions, editingTransactionId]);
 
-  const handleDeleteTransaction = (tx: Transaction) => {
+  const handleDeleteTransaction = React.useCallback((tx: Transaction) => {
     setTransactionToDelete(tx);
     setShowDeleteConfirm(true);
-  };
+  }, []);
 
   const confirmDelete = async () => {
     if (!transactionToDelete) return;
@@ -1407,11 +1520,13 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
   };
 
   const resetFilters = () => {
+    setLocalSearchTerm('');
     setSearchTerm('');
     setFilterCategory('All');
     setFilterCarId('All');
     setFilterYear('All');
     setFilterMonth('All');
+    setDisplayLimit(50);
   };
 
   if (!auth.currentUser) {
@@ -1775,8 +1890,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                 <input 
                   type="text" 
                   placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  value={localSearchTerm}
+                  onChange={e => setLocalSearchTerm(e.target.value)}
                   className="pl-11 pr-6 py-2.5 bg-white/40 border border-white/60 rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange focus:bg-white/60 outline-none transition-all w-64"
                 />
               </div>
@@ -1806,94 +1921,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars, bookings, preFill, onCle
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map(tx => (
-                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group border-b border-white/10 last:border-0">
-                      <td className="p-6 text-xs font-bold text-[#141414]/80">
-                        {format(parseISO(tx.date), 'MMM d, yyyy HH:mm')}
-                      </td>
-                      <td className="p-6">
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest border",
-                          tx.type === 'Income' ? "bg-green-50 text-green-600 border-green-100" : 
-                          tx.type === 'Expense' ? "bg-red-50 text-red-600 border-red-100" :
-                          "bg-white/60 text-[#141414] border-white/80"
-                        )}>
-                          {tx.type === 'Income' && <ArrowUpRight size={10} />}
-                          {tx.type === 'Expense' && <ArrowDownRight size={10} />}
-                          {tx.type === 'Transfer' && <ArrowRightLeft size={10} />}
-                          {tx.type}
-                        </span>
-                      </td>
-                      <td className="p-6 text-xs font-bold uppercase tracking-widest text-[#141414]/60">
-                        <div className="flex flex-col gap-1.5">
-                          {tx.category}
-                          {tx.carId && (() => {
-                            const car = cars.find(c => c.id === tx.carId);
-                            if (!car) return null;
-                            const brandSlug = getBrandSlug(car.name);
-                            return (
-                              <div className="flex items-center gap-1.5 px-2 py-1 bg-brand-orange/5 text-[#141414] rounded-lg border border-brand-orange/10 w-fit">
-                                {brandSlug ? (
-                                  <img 
-                                    src={`https://cdn.simpleicons.org/${brandSlug}`}
-                                    alt={brandSlug}
-                                    className="w-3 h-3 shrink-0"
-                                  />
-                                ) : (
-                                  <CarIcon size={10} className="text-brand-orange" />
-                                )}
-                                <span className="text-[9px] font-bold">
-                                  {car.name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim()} <span className="text-[#141414]/40 font-mono">({car.plateNumber})</span>
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </td>
-                      <td className="p-6 text-xs font-bold text-[#141414]/80">
-                        <div className="flex flex-col gap-1">
-                          {accounts.find(a => a.id === tx.accountId)?.name}
-                          {tx.type === 'Transfer' && (
-                            <div className="flex items-center gap-2 text-[#141414]/40">
-                              <ArrowRightLeft size={10} /> {accounts.find(a => a.id === tx.toAccountId)?.name}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-6 text-[12px] text-slate-800 font-sans font-medium tracking-tight leading-relaxed max-w-xs">
-                        {normalizeDescription(tx.description)}
-                      </td>
-                      <td className={cn(
-                        "p-6 text-right font-bold text-base",
-                        tx.type === 'Income' ? "text-green-600" : 
-                        tx.type === 'Expense' ? "text-red-600" :
-                        "text-[#141414]"
-                      )}>
-                        {tx.type === 'Expense' ? '-' : tx.type === 'Income' ? '+' : ''}
-                        ฿{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="p-6 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => handleEditTransaction(tx)}
-                            className="p-2 hover:bg-brand-orange hover:text-white rounded-lg transition-all text-[#141414]/40"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteTransaction(tx)}
-                            className="p-2 hover:bg-red-500 hover:text-white rounded-lg transition-all text-[#141414]/40"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                  filteredTransactions.slice(0, displayLimit).map(tx => (
+                    <TransactionRow 
+                      key={tx.id} 
+                      tx={tx} 
+                      accounts={accounts} 
+                      cars={cars} 
+                      onEdit={handleEditTransaction}
+                      onDelete={handleDeleteTransaction}
+                    />
                   ))
                 )}
               </tbody>
             </table>
           </div>
+          {filteredTransactions.length > displayLimit && (
+            <div className="p-8 flex justify-center bg-white/20 border-t border-white/10">
+              <button 
+                onClick={() => setDisplayLimit(prev => prev + 50)}
+                className="px-8 py-3 bg-white hover:bg-brand-orange hover:text-white text-[#141414] rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all shadow-lg flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Load More Transactions
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

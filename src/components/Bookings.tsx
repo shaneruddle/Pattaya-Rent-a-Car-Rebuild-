@@ -16,7 +16,7 @@ interface BookingsProps {
   onRefresh?: () => void;
 }
 
-export const Bookings: React.FC<BookingsProps> = ({ bookings, cars, onRefresh }) => {
+export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   

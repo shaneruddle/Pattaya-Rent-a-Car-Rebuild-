@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, GripVertical, Wrench } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -14,25 +14,6 @@ import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
 import { DatePickerCustom } from './ui/DatePickerCustom';
 
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-
 interface TimelineProps {
   cars: Car[];
   bookings: Booking[];
@@ -43,62 +24,18 @@ interface TimelineProps {
   title?: string;
 }
 
-interface TimelineCellProps {
-  carId: string;
-  day: Date;
-  slot: 'AM' | 'PM';
-  handleSlotClick: (carId: string, day: Date, slot: 'AM' | 'PM') => void;
-  handleSlotContextMenu: (e: React.MouseEvent, carId: string, day: Date, slot: 'AM' | 'PM') => void;
-  draggedBooking: Booking | null;
-  setDropPreview: (preview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null) => void;
-  handleDrop: (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => void;
-}
-
-const TimelineCell: React.FC<TimelineCellProps> = React.memo(({
-  carId,
-  day,
-  slot,
-  handleSlotClick,
-  handleSlotContextMenu,
-  draggedBooking,
-  setDropPreview,
-  handleDrop
-}) => {
-  return (
-    <div
-      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
-      onClick={() => handleSlotClick(carId, day, slot)}
-      onContextMenu={(e) => handleSlotContextMenu(e, carId, day, slot)}
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (draggedBooking) setDropPreview({ carId: carId, date: day, slot: slot });
-      }}
-      onDragLeave={() => setDropPreview(null)}
-      onDrop={(e) => handleDrop(e, carId, day, slot)}
-    />
-  );
-});
-
-interface SortableCarRowProps {
+interface CarRowProps {
   car: Car;
   daysInMonth: Date[];
   bookings: Booking[];
-  handleSlotClick: (carId: string, day: Date, slot: 'AM' | 'PM') => void;
-  handleSlotContextMenu: (e: React.MouseEvent, carId: string, day: Date, slot: 'AM' | 'PM') => void;
-  draggedBooking: Booking | null;
-  dropPreview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null;
-  setDropPreview: (preview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null) => void;
-  handleDrop: (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => void;
+  handleRowClick: (e: React.MouseEvent, carId: string) => void;
+  handleRowContextMenu: (e: React.MouseEvent, carId: string) => void;
   getBookingStyle: (booking: Booking) => any;
-  getDropPreviewStyle: (preview: any, booking: Booking) => any;
-  handleDragStart: (e: React.DragEvent, booking: Booking) => void;
-  handleDragEnd: () => void;
   handleMouseEnterBooking: (booking: Booking, e: React.MouseEvent) => void;
   handleMouseLeaveBooking: () => void;
   handleBookingClick: (booking: Booking) => void;
   handleBookingContextMenu: (e: React.MouseEvent, booking: Booking) => void;
   getCarTypeStyles: (type: string) => any;
-  isRearrangeMode: boolean;
 }
 
 const getBrandSlug = (name: string) => {
@@ -115,47 +52,19 @@ const cleanCarName = (name: string) => {
   return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
 };
 
-const SortableCarRow: React.FC<SortableCarRowProps> = React.memo(({
+const CarRow: React.FC<CarRowProps> = React.memo(({
   car,
   daysInMonth,
   bookings,
-  handleSlotClick,
-  handleSlotContextMenu,
-  draggedBooking,
-  dropPreview,
-  setDropPreview,
-  handleDrop,
+  handleRowClick,
+  handleRowContextMenu,
   getBookingStyle,
-  getDropPreviewStyle,
-  handleDragStart,
-  handleDragEnd,
   handleMouseEnterBooking,
   handleMouseLeaveBooking,
   handleBookingClick,
   handleBookingContextMenu,
-  getCarTypeStyles,
-  isRearrangeMode
+  getCarTypeStyles
 }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ 
-    id: car.id,
-    disabled: !isRearrangeMode
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 100 : 'auto',
-    position: 'relative' as const,
-  };
-
   const typeStyles = getCarTypeStyles(car.type || car.category || '');
   
   const brandSlug = getBrandSlug(car.name);
@@ -171,20 +80,10 @@ const SortableCarRow: React.FC<SortableCarRowProps> = React.memo(({
   }, [bookings, car.id]);
 
   return (
-    <div ref={setNodeRef} style={style} className="flex group h-8">
+    <div className="flex group h-8 virtual-row">
       <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-1 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
         <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
         
-        {isRearrangeMode && (
-          <button 
-            {...attributes} 
-            {...listeners} 
-            className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-black/10 hover:text-brand-orange transition-colors shrink-0"
-          >
-            <GripVertical size={12} />
-          </button>
-        )}
-
         {brandSlug ? (
           <img 
             src={`https://cdn.simpleicons.org/${brandSlug}`}
@@ -216,54 +115,24 @@ const SortableCarRow: React.FC<SortableCarRowProps> = React.memo(({
           </span>
         </div>
       </div>
-      <div className="flex relative">
-        {daysInMonth.map(day => (
-          <React.Fragment key={day.toISOString()}>
-            <TimelineCell
-              carId={car.id}
-              day={day}
-              slot="AM"
-              handleSlotClick={handleSlotClick}
-              handleSlotContextMenu={handleSlotContextMenu}
-              draggedBooking={draggedBooking}
-              setDropPreview={setDropPreview}
-              handleDrop={handleDrop}
-            />
-            <TimelineCell
-              carId={car.id}
-              day={day}
-              slot="PM"
-              handleSlotClick={handleSlotClick}
-              handleSlotContextMenu={handleSlotContextMenu}
-              draggedBooking={draggedBooking}
-              setDropPreview={setDropPreview}
-              handleDrop={handleDrop}
-            />
-          </React.Fragment>
-        ))}
-
-        {/* Bookings for this car */}
-        {dropPreview && dropPreview.carId === car.id && draggedBooking && (
-          <div
-            className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
-            style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
-          />
-        )}
+      <div 
+        className="flex relative timeline-grid-bg cursor-pointer border-b border-black/5 grow"
+        style={{ width: `${daysInMonth.length * 72}px` }}
+        onClick={(e) => handleRowClick(e, car.id)}
+        onContextMenu={(e) => handleRowContextMenu(e, car.id)}
+      >
         {bookings.filter(b => b.carId === car.id).map(booking => {
           const style = getBookingStyle(booking);
           if (!style) return null;
           return (
               <div
               key={booking.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e as any, booking)}
-              onDragEnd={handleDragEnd}
               onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
               onMouseLeave={handleMouseLeaveBooking}
               onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
               onContextMenu={(e) => handleBookingContextMenu(e, booking)}
               className={cn(
-                "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm",
+                "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm booking-bar",
                 booking.isMaintenance && "maintenance-pattern"
               )}
               style={style || {}}
@@ -282,7 +151,7 @@ const SortableCarRow: React.FC<SortableCarRowProps> = React.memo(({
   );
 });
 
-export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome, onRefresh, title = "Car Fleet" }) => {
+export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], currentDate, newBookingTrigger, onLogIncome, onRefresh, title = "Car Fleet" }) => {
   const [selectedSlot, setSelectedSlot] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -365,45 +234,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   const [sortedCars, setSortedCars] = useState<Car[]>([]);
 
-  const [isRearrangeMode, setIsRearrangeMode] = useState(false);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(600);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop);
+    setIsScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => setIsScrolling(false), 150);
   };
-
-  useEffect(() => {
-    const updateHeight = () => {
-      if (timelineContainerRef.current) {
-        setContainerHeight(timelineContainerRef.current.clientHeight);
-      }
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, []);
-
-  const ROW_HEIGHT = 32;
-  const BUFFER = 5;
-
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER);
-  const endIndex = Math.min(sortedCars.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + BUFFER);
-
-  const visibleCars = useMemo(() => sortedCars.slice(startIndex, endIndex), [sortedCars, startIndex, endIndex]);
-  const paddingTop = startIndex * ROW_HEIGHT;
-  const paddingBottom = (sortedCars.length - endIndex) * ROW_HEIGHT;
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   const isTimeValid = (time: string) => {
     const [h, m] = time.split(':').map(Number);
@@ -419,33 +257,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     });
     setSortedCars(sorted);
   }, [cars]);
-
-  const handleCarDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const oldIndex = sortedCars.findIndex((car) => car.id === active.id);
-      const newIndex = sortedCars.findIndex((car) => car.id === over.id);
-      
-      const newOrder = arrayMove(sortedCars, oldIndex, newIndex);
-      setSortedCars(newOrder);
-
-      try {
-        const batch = writeBatch(db);
-        newOrder.forEach((car, index) => {
-          const carRef = doc(db, 'cars', car.id);
-          batch.update(carRef, { sortOrder: index });
-        });
-        await batch.commit();
-        toast.success('Vehicle order saved');
-        console.log('New Vehicle Order:', newOrder.map(c => ({ id: c.id, name: c.name, sortOrder: c.sortOrder })));
-        if (onRefresh) onRefresh();
-      } catch (error) {
-        console.error("Error saving car order:", error);
-        handleFirestoreError(error, OperationType.UPDATE, 'cars');
-      }
-    }
-  };
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
   const [clipboard, setClipboard] = useState<{ booking: Booking } | null>(null);
@@ -855,10 +666,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     }
   };
 
-  // Drag and Drop Logic (Simplified for this dashboard)
-  const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
-  const [dropPreview, setDropPreview] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
-
+  // Tooltip Logic
   const [hoveredBooking, setHoveredBooking] = useState<{ booking: Booking; x: number; y: number } | null>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -887,66 +695,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       hoverTimeoutRef.current = null;
     }
   };
-
-  const handleDragStart = React.useCallback((e: React.DragEvent, booking: Booking) => {
-    setDraggedBooking(booking);
-    e.dataTransfer.setData('bookingId', booking.id);
-  }, []);
-
-  const handleDragEnd = React.useCallback(() => {
-    setDraggedBooking(null);
-    setDropPreview(null);
-  }, []);
-
-  const handleDrop = React.useCallback(async (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
-    e.preventDefault();
-    setDropPreview(null);
-    if (!draggedBooking) return;
-
-    const start = parseISO(draggedBooking.startDate);
-    const end = parseISO(draggedBooking.endDate);
-    const durationMs = end.getTime() - start.getTime();
-
-    const newStart = new Date(date);
-    newStart.setHours(slot === 'AM' ? 8 : 14, 0, 0, 0);
-    const newEnd = new Date(newStart.getTime() + durationMs);
-
-    try {
-      const newCarId = carId === 'unassigned' ? '' : carId;
-      await updateDoc(doc(db, 'bookings', draggedBooking.id), {
-        carId: newCarId,
-        startDate: newStart.toISOString(),
-        endDate: newEnd.toISOString()
-      });
-
-      const car = cars.find(c => c.id === newCarId);
-      const oldCar = cars.find(c => c.id === draggedBooking.carId);
-      
-      let logMessage = `Rescheduled booking for ${draggedBooking.customerName}`;
-      if (draggedBooking.carId !== newCarId) {
-        const from = oldCar?.name || 'Unassigned';
-        const to = car?.name || 'Unassigned';
-        logMessage = `Moved booking for ${draggedBooking.customerName} from ${from} to ${to}`;
-      }
-
-      await logSystemActivity(
-        'Update Booking (Timeline Drag)',
-        logMessage,
-        'Bookings',
-        { 
-          bookingId: draggedBooking.id, 
-          customerName: draggedBooking.customerName,
-          fromCarId: draggedBooking.carId,
-          toCarId: newCarId
-        }
-      );
-
-      toast.success('Booking rescheduled');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `bookings/${draggedBooking.id}`);
-    }
-    setDraggedBooking(null);
-  }, [draggedBooking, cars]);
 
   const getCarTypeStyles = (type: string) => {
     const t = type.toLowerCase();
@@ -1002,32 +750,29 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     };
   };
 
-  const getDropPreviewStyle = (preview: { carId: string; date: Date; slot: 'AM' | 'PM' }, booking: Booking) => {
-    const start = parseISO(booking.startDate);
-    const end = parseISO(booking.endDate);
-    const durationMs = end.getTime() - start.getTime();
-    
-    const previewStart = new Date(preview.date);
-    previewStart.setHours(preview.slot === 'AM' ? 8 : 14, 0, 0, 0);
-    const previewEnd = new Date(previewStart.getTime() + durationMs);
-
-    const timelineStart = visibleDays[0];
-    const timelineEnd = visibleDays[visibleDays.length - 1];
-
-    if (previewEnd < timelineStart || previewStart > timelineEnd) return null;
-
-    const visibleStart = previewStart < timelineStart ? timelineStart : previewStart;
-    const visibleEnd = previewEnd > timelineEnd ? timelineEnd : previewEnd;
-
-    const startDayIdx = differenceInDays(visibleStart, timelineStart);
-    const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
-    const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
-
-    return {
-      left: `${(startDayIdx * 2 + startSlot) * 36}px`,
-      width: `${Math.max(totalSlots, 1) * 36}px`,
-    };
+  const getSlotFromEvent = (e: React.MouseEvent | React.DragEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const idx = Math.floor(x / 36);
+    const dayIdx = Math.floor(idx / 2);
+    const isPM = idx % 2 === 1;
+    return { day: visibleDays[dayIdx], slot: (isPM ? 'PM' : 'AM') as 'AM' | 'PM' };
   };
+
+  const handleRowClick = useCallback((e: React.MouseEvent, carId: string) => {
+    const target = e.target as HTMLElement;
+    // Don't trigger if clicking a booking bar
+    if (target.closest('.booking-bar')) return;
+    const { day, slot } = getSlotFromEvent(e);
+    handleSlotClick(carId, day, slot);
+  }, [visibleDays, handleSlotClick]);
+
+  const handleRowContextMenu = useCallback((e: React.MouseEvent, carId: string) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.booking-bar')) return;
+    const { day, slot } = getSlotFromEvent(e);
+    handleSlotContextMenu(e, carId, day, slot);
+  }, [visibleDays, clipboard, handleSlotContextMenu]);
 
   if (!auth.currentUser) {
     return (
@@ -1047,7 +792,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       <div 
         ref={timelineContainerRef} 
         onScroll={handleScroll}
-        className="flex-1 overflow-auto custom-scrollbar relative will-change-transform"
+        className={cn(
+          "flex-1 overflow-auto custom-scrollbar relative will-change-transform",
+          isScrolling && "is-scrolling"
+        )}
       >
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
@@ -1055,18 +803,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
               <div className="flex flex-col">
                 <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
-                <button 
-                  onClick={() => setIsRearrangeMode(!isRearrangeMode)}
-                  className={cn(
-                    "text-[8px] font-bold uppercase tracking-widest mt-1 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 w-fit",
-                    isRearrangeMode 
-                      ? "bg-brand-orange text-white" 
-                      : "bg-black/5 text-black/40 hover:bg-black/10"
-                  )}
-                >
-                  {isRearrangeMode ? <ShieldCheck size={8} /> : <GripVertical size={8} />}
-                  {isRearrangeMode ? 'Finish Rearrange' : 'Rearrange Fleet'}
-                </button>
               </div>
             </div>
             <div className="flex">
@@ -1124,62 +860,30 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             })()}
 
             {/* Unassigned Row */}
-            <div className="flex group h-8 bg-brand-orange/5">
+            <div className="flex group h-8 bg-brand-orange/5 virtual-row">
               <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
                 <div className="w-1 h-full absolute left-0 bg-brand-orange" />
                 <AlertCircle size={10} className="shrink-0 text-brand-orange" />
                 <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned</span>
               </div>
-              <div className="flex relative">
-                {daysInMonth.map(day => (
-                  <React.Fragment key={day.toISOString()}>
-                    <div
-                      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
-                      onClick={() => handleSlotClick('unassigned', day, 'AM')}
-                      onContextMenu={(e) => handleSlotContextMenu(e, 'unassigned', day, 'AM')}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'AM' });
-                      }}
-                      onDragLeave={() => setDropPreview(null)}
-                      onDrop={(e) => handleDrop(e, 'unassigned', day, 'AM')}
-                    />
-                    <div
-                      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/10 transition-colors cursor-pointer"
-                      onClick={() => handleSlotClick('unassigned', day, 'PM')}
-                      onContextMenu={(e) => handleSlotContextMenu(e, 'unassigned', day, 'PM')}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (draggedBooking) setDropPreview({ carId: 'unassigned', date: day, slot: 'PM' });
-                      }}
-                      onDragLeave={() => setDropPreview(null)}
-                      onDrop={(e) => handleDrop(e, 'unassigned', day, 'PM')}
-                    />
-                  </React.Fragment>
-                ))}
- 
-                {/* Unassigned Bookings */}
-                {dropPreview && dropPreview.carId === 'unassigned' && draggedBooking && (
-                  <div
-                    className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
-                    style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
-                  />
-                )}
+              <div 
+                className="flex relative timeline-grid-bg cursor-pointer border-b border-black/5 grow"
+                style={{ width: `${visibleDays.length * 72}px` }}
+                onClick={(e) => handleRowClick(e, 'unassigned')}
+                onContextMenu={(e) => handleRowContextMenu(e, 'unassigned')}
+              >
                 {bookings.filter(b => !b.carId || b.carId === '').map(booking => {
                   const style = getBookingStyle(booking);
                   if (!style) return null;
                   return (
                     <div
                       key={booking.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e as any, booking)}
-                      onDragEnd={handleDragEnd}
                       onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
                       onMouseLeave={handleMouseLeaveBooking}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
                       onContextMenu={(e) => handleBookingContextMenu(e, booking)}
                       className={cn(
-                        "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm",
+                        "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm booking-bar",
                         booking.isMaintenance && "maintenance-pattern"
                       )}
                       style={style || {}}
@@ -1196,43 +900,24 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               </div>
             </div>
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleCarDragEnd}
-            >
-              <SortableContext 
-                items={sortedCars.map(c => c.id)} 
-                strategy={verticalListSortingStrategy}
-              >
-                <div style={{ paddingTop, paddingBottom }}>
-                  {visibleCars.map(car => (
-                    <SortableCarRow
-                      key={car.id}
-                      car={car}
-                      daysInMonth={visibleDays}
-                      bookings={bookings}
-                      handleSlotClick={handleSlotClick}
-                      handleSlotContextMenu={handleSlotContextMenu}
-                      draggedBooking={draggedBooking}
-                      dropPreview={dropPreview}
-                      setDropPreview={setDropPreview}
-                      handleDrop={handleDrop}
-                      getBookingStyle={getBookingStyle}
-                      getDropPreviewStyle={getDropPreviewStyle}
-                      handleDragStart={handleDragStart}
-                      handleDragEnd={handleDragEnd}
-                      handleMouseEnterBooking={handleMouseEnterBooking}
-                      handleMouseLeaveBooking={handleMouseLeaveBooking}
-                      handleBookingClick={handleBookingClick}
-                      handleBookingContextMenu={handleBookingContextMenu}
-                      getCarTypeStyles={getCarTypeStyles}
-                      isRearrangeMode={isRearrangeMode}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+            <div className="relative">
+              {sortedCars.map(car => (
+                <CarRow
+                  key={car.id}
+                  car={car}
+                  daysInMonth={visibleDays}
+                  bookings={bookings}
+                  handleRowClick={handleRowClick}
+                  handleRowContextMenu={handleRowContextMenu}
+                  getBookingStyle={getBookingStyle}
+                  handleMouseEnterBooking={handleMouseEnterBooking}
+                  handleMouseLeaveBooking={handleMouseLeaveBooking}
+                  handleBookingClick={handleBookingClick}
+                  handleBookingContextMenu={handleBookingContextMenu}
+                  getCarTypeStyles={getCarTypeStyles}
+                />
+              ))}
+            </div>
             {bookings.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-white/40 backdrop-blur-md p-8 border border-white/60 rounded-[32px] flex flex-col items-center gap-4 shadow-xl">

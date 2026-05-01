@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
@@ -38,7 +38,16 @@ export const CRM: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [formLocation, setFormLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(localSearchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [localSearchQuery]);
 
   const safeFormat = (dateValue: any, formatStr: string, fallback: string = 'N/A') => {
     if (!dateValue) return fallback;
@@ -75,6 +84,12 @@ export const CRM: React.FC = () => {
     const fetchData = async (force = false) => {
       // Guard against running before auth is ready or if user logged out
       if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
+
+      // ONLY fetch if we have a search query or a forced refresh
+      if (!force && localSearchQuery.length < 3 && customers.length === 0) {
         setLoading(false);
         return;
       }
@@ -140,15 +155,23 @@ export const CRM: React.FC = () => {
     };
 
     const unsubscribe = auth.onAuthStateChanged(user => {
-      if (user) {
+      if (user && localSearchQuery.length >= 3) {
         fetchData();
-      } else {
+      } else if (!user) {
         setLoading(false);
       }
     });
 
+    // Also trigger fetch if searchQuery changes and we have no data
+    if (auth.currentUser && localSearchQuery.length >= 3 && customers.length === 0) {
+      fetchData();
+    } else if (auth.currentUser && localSearchQuery.length < 3) {
+      // Just clear loading if we are authenticated but not searching
+      setLoading(false);
+    }
+
     return () => unsubscribe();
-  }, []);
+  }, [localSearchQuery]);
 
   useEffect(() => {
     if (!selectedCustomer) {
@@ -424,11 +447,26 @@ export const CRM: React.FC = () => {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCustomers = useMemo(() => {
+    if (searchQuery.length < 3) return [];
+    
+    const query = searchQuery.toLowerCase();
+    const results = [];
+    
+    for (let i = 0; i < customers.length; i++) {
+      const c = customers[i];
+      if (
+        c.firstName.toLowerCase().includes(query) ||
+        c.lastName?.toLowerCase().includes(query) ||
+        c.email.toLowerCase().includes(query) ||
+        c.mobileNumber?.includes(query)
+      ) {
+        results.push(c);
+        if (results.length >= 30) break; // Hard limit to top 30
+      }
+    }
+    return results;
+  }, [customers, searchQuery]);
 
   if (loading) {
     return (
@@ -457,8 +495,8 @@ export const CRM: React.FC = () => {
               type="text" 
               placeholder="Search customers..." 
               className="pl-11 pr-6 py-2.5 bg-white/40 backdrop-blur-md border border-white/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all w-72"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={localSearchQuery}
+              onChange={(e) => setLocalSearchQuery(e.target.value)}
             />
           </div>
           <input 
@@ -496,7 +534,16 @@ export const CRM: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Customer List */}
         <div className="w-80 border-r border-white/10 bg-white/20 backdrop-blur-md overflow-y-auto custom-scrollbar">
-          {filteredCustomers.length > 0 ? (
+          {searchQuery.length < 3 ? (
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 rounded-3xl bg-white/40 border border-white/60 flex items-center justify-center mx-auto mb-4">
+                <Search className="text-[#141414]/20" size={32} />
+              </div>
+              <p className="text-[#141414]/60 font-bold uppercase tracking-widest text-[10px] leading-relaxed">
+                Type a name or phone number<br />to search customers
+              </p>
+            </div>
+          ) : filteredCustomers.length > 0 ? (
             filteredCustomers.map(customer => (
               <button
                 key={customer.id}

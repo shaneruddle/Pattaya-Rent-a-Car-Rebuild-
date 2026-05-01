@@ -38,7 +38,7 @@ interface NewRentalProps {
 
 type Step = 'selection' | 'vehicle_type' | 'details' | 'photos' | 'confirmation';
 
-export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete }) => {
+export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], onComplete }) => {
   const [step, setStep] = useState<Step>('selection');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,9 +72,25 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
 
   // Photos State
   const [photos, setPhotos] = useState<string[]>([]);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Stop camera on unmount or when step changes away from photos
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'photos') {
+      stopCamera();
+    }
+  }, [step]);
 
   useEffect(() => {
     fetchCustomers();
@@ -127,8 +143,8 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
     setStep('vehicle_type');
   };
 
-  const startCamera = async () => {
-    setIsCameraOpen(true);
+  const requestCameraPermissions = async () => {
+    setIsCameraActive(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: 'environment' },
@@ -140,7 +156,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
     } catch (err) {
       console.error("Error accessing camera:", err);
       toast.error("Could not access camera");
-      setIsCameraOpen(false);
+      setIsCameraActive(false);
     }
   };
 
@@ -148,8 +164,9 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
-    setIsCameraOpen(false);
+    setIsCameraActive(false);
   };
 
   const takePhoto = () => {
@@ -769,10 +786,11 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Damage Photos ({photos.length}/10)</h3>
                   <button
-                    onClick={startCamera}
-                    className="p-3 bg-brand-orange text-white rounded-full hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20"
+                    onClick={requestCameraPermissions}
+                    className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 text-[10px] font-bold uppercase tracking-widest"
                   >
-                    <Camera size={20} />
+                    <Camera size={16} />
+                    Take Photo
                   </button>
                 </div>
 
@@ -893,7 +911,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars, bookings, onComplete
 
       {/* Camera Modal */}
       <AnimatePresence>
-        {isCameraOpen && (
+        {isCameraActive && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

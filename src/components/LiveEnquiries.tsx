@@ -36,7 +36,7 @@ interface LiveEnquiriesProps {
   onRefresh?: () => void;
 }
 
-export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings, cars, onRefresh }) => {
+export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], cars = [], onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEnquiry, setSelectedEnquiry] = useState<Booking | null>(null);
   const [isEditing, setIsEditing] = useState(false);

@@ -9,11 +9,6 @@ interface HeaderProps {
   availability: { free: number; total: number };
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  statusFilter: string | null;
-  setStatusFilter: (status: string | null) => void;
-  typeFilter: string | null;
-  setTypeFilter: (type: string | null) => void;
-  carTypes: string[];
   onNewBooking?: () => void;
 }
 
@@ -23,11 +18,6 @@ export const Header: React.FC<HeaderProps> = ({
   availability,
   searchQuery,
   setSearchQuery,
-  statusFilter,
-  setStatusFilter,
-  typeFilter,
-  setTypeFilter,
-  carTypes,
   onNewBooking
 }) => {
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
@@ -36,11 +26,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   const clearFilters = () => {
     setSearchQuery('');
-    setStatusFilter(null);
-    setTypeFilter(null);
   };
 
-  const hasActiveFilters = searchQuery || statusFilter || typeFilter;
+  const hasActiveFilters = searchQuery;
 
   return (
     <header className="bg-white/40 backdrop-blur-xl border-b border-black/10 sticky top-0 z-20">
@@ -86,37 +74,13 @@ export const Header: React.FC<HeaderProps> = ({
             />
           </div>
 
-          {/* Filters */}
-          <div className="flex items-center gap-2">
-            <select
-              className="bg-white/40 border border-black/20 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
-              value={statusFilter || ''}
-              onChange={(e) => setStatusFilter(e.target.value || null)}
-            >
-              <option value="">Status</option>
-              <option value="Paid">Paid</option>
-              <option value="Pending">Pending</option>
-            </select>
-
-            <select
-              className="bg-white/40 border border-black/20 rounded-full h-10 px-4 text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange outline-none cursor-pointer hover:border-brand-orange/30 transition-colors backdrop-blur-md"
-              value={typeFilter || ''}
-              onChange={(e) => setTypeFilter(e.target.value || null)}
-            >
-              <option value="">Type</option>
-              {carTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-
-            <button
-              onClick={onNewBooking}
-              className="bg-brand-orange text-white h-10 px-6 rounded-full flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20"
-            >
-              <Plus size={16} />
-              New Booking
-            </button>
-          </div>
+          <button
+            onClick={onNewBooking}
+            className="bg-brand-orange text-white h-10 px-6 rounded-full flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20"
+          >
+            <Plus size={16} />
+            New Booking
+          </button>
         </div>
       </div>
 
@@ -129,18 +93,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="bg-white/60 border border-white/80 text-[#1A1A1A] px-2 py-1 rounded-full text-[10px] flex items-center gap-1">
                 Search: {searchQuery}
                 <button onClick={() => setSearchQuery('')} className="hover:text-brand-orange"><X size={10} /></button>
-              </span>
-            )}
-            {statusFilter && (
-              <span className="bg-white/60 border border-white/80 text-[#1A1A1A] px-2 py-1 rounded-full text-[10px] flex items-center gap-1">
-                Status: {statusFilter}
-                <button onClick={() => setStatusFilter(null)} className="hover:text-brand-orange"><X size={10} /></button>
-              </span>
-            )}
-            {typeFilter && (
-              <span className="bg-white/60 border border-white/80 text-[#1A1A1A] px-2 py-1 rounded-full text-[10px] flex items-center gap-1">
-                Type: {typeFilter}
-                <button onClick={() => setTypeFilter(null)} className="hover:text-brand-orange"><X size={10} /></button>
               </span>
             )}
             <button 

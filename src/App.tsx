@@ -29,7 +29,6 @@ import { MarketingFAQ } from './components/MarketingFAQ';
 import { BlogManager } from './components/BlogManager';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { AIAssistant } from './components/AIAssistant';
-import { NewRental } from './components/NewRental';
 import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
@@ -38,6 +37,7 @@ import { LogIn, Loader2 } from 'lucide-react';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
 import { safeLocalStorage } from './lib/storage';
 
+import { NewRental } from './components/NewRental';
 import { BookingEngine } from './components/BookingEngine';
 import { LanguageProvider } from './LanguageContext';
 import { PricingProvider } from './contexts/PricingContext';
@@ -99,8 +99,6 @@ function AppContent() {
 
   // Filtering State
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [newBookingTrigger, setNewBookingTrigger] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastDataFetch, setLastDataFetch] = useState<number>(() => {
@@ -323,20 +321,12 @@ function AppContent() {
 
   const filteredBookings = useMemo(() => {
     const result = bookings.filter(booking => {
-      const car = cars.find(c => c.id === booking.carId);
-      
       // Search query (Customer Name or Mobile)
       const matchesSearch = 
         booking.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (booking.mobileNumber && booking.mobileNumber.includes(searchQuery));
       
-      // Status filter
-      const matchesStatus = !statusFilter || booking.status === statusFilter;
-      
-      // Car Type filter
-      const matchesType = !typeFilter || car?.type === typeFilter;
-      
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch;
     });
 
     if (bookings.length > 0 && result.length < bookings.length) {
@@ -352,7 +342,7 @@ function AppContent() {
     }
 
     return result;
-  }, [bookings, cars, searchQuery, statusFilter, typeFilter]);
+  }, [bookings, searchQuery]);
 
   console.log('AppContent: Auth state:', { loading, user: !!user, isStaff });
 
@@ -592,11 +582,6 @@ function AppContent() {
                 availability={availability}
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                typeFilter={typeFilter}
-                setTypeFilter={setTypeFilter}
-                carTypes={Array.from(new Set(cars.filter(c => c.isActive !== false).map(c => c.type)))}
                 onNewBooking={() => setNewBookingTrigger(prev => prev + 1)}
               />
               <Timeline
