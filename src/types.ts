@@ -68,7 +68,7 @@ export interface Booking {
   mobileNumber?: string;
   startDate: string; // ISO string
   endDate: string; // ISO string
-  status: 'Paid' | 'Pending';
+  status: 'Paid' | 'Pending' | 'Completed';
   amount?: number;
   notes?: string;
   requestedCarType?: string;

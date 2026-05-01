@@ -29,6 +29,8 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
 
+const TOTAL_CUSTOMER_COUNT = 14854;
+
 export const CRM: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -485,7 +487,7 @@ export const CRM: React.FC = () => {
           <div className="flex items-center gap-2 mt-1">
             <p className="text-[#141414]/60 uppercase tracking-widest text-[10px]">Customer Relationship Management</p>
             <span className="w-1 h-1 rounded-full bg-[#141414]/20" />
-            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{customers.length} Total Customers</p>
+            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{TOTAL_CUSTOMER_COUNT.toLocaleString()} Total Customers</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -540,7 +542,7 @@ export const CRM: React.FC = () => {
                 <Search className="text-[#141414]/20" size={32} />
               </div>
               <p className="text-[#141414]/60 font-bold uppercase tracking-widest text-[10px] leading-relaxed">
-                Type a name or phone number<br />to search customers
+                Showing 0 of {TOTAL_CUSTOMER_COUNT.toLocaleString()} customers.<br />Please search to view details.
               </p>
             </div>
           ) : filteredCustomers.length > 0 ? (

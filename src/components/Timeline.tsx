@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -36,7 +37,324 @@ interface CarRowProps {
   handleBookingClick: (booking: Booking) => void;
   handleBookingContextMenu: (e: React.MouseEvent, booking: Booking) => void;
   getCarTypeStyles: (type: string) => any;
+  onManageBooking: (booking: Booking) => void;
 }
+
+const ManageRentalModal: React.FC<{
+  booking: Booking;
+  isOpen: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+  carName: string;
+}> = ({ booking, isOpen, onClose, onRefresh, carName }) => {
+  const [loading, setLoading] = useState(false);
+  const [extraCharges, setExtraCharges] = useState<number>(0);
+  const [extraReason, setExtraReason] = useState('');
+  const [extensionPayment, setExtensionPayment] = useState<number>(0);
+  const [extensionDays, setExtensionDays] = useState<number>(1);
+
+  if (!isOpen) return null;
+
+  const handleEndRental = async () => {
+    setLoading(true);
+    try {
+      // 1. Update Booking Status
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'Completed'
+      });
+
+      // 2. Log Extra Charges to Finance if > 0
+      if (extraCharges > 0) {
+        const accs = await getDocs(collection(db, 'accounts'));
+        const defaultAcc = accs.docs.find(d => d.data().name === 'Cash Car')?.id || accs.docs[0]?.id || 'unknown';
+        
+        await addDoc(collection(db, 'transactions'), {
+          type: 'Income',
+          amount: Number(extraCharges),
+          date: new Date().toISOString(),
+          category: 'Extra Charges',
+          carId: booking.carId,
+          bookingId: booking.id,
+          accountId: defaultAcc,
+          description: `Extra charges for ${booking.customerName}: ${extraReason}`
+        });
+      }
+
+      // 3. Send Email
+      const emailHtml = `
+        <div style="font-family: serif; padding: 40px; background-color: #f9f7f2; color: #1a1a1a;">
+          <h1 style="italic; font-size: 24px;">Rental Return Confirmation</h1>
+          <p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10px; font-weight: bold; color: #666;">Pattaya Rent a Car</p>
+          <div style="margin-top: 40px; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+            <p>Dear <strong>${booking.customerName}</strong>,</p>
+            <p>Thank you for choosing Pattaya Rent a Car. Your rental of <strong>${carName}</strong> has been successfully completed.</p>
+            ${extraCharges > 0 ? `
+              <div style="margin-top: 20px; padding: 20px; background: #fff5f0; border-radius: 12px; border-left: 4px solid #ff5a00;">
+                <p style="margin: 0; font-weight: bold; color: #ff5a00;">Extra Charges Applied</p>
+                <p style="margin: 5px 0 0 0; font-size: 18px;">${extraCharges.toLocaleString()} THB</p>
+                <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.6;">Reason: ${extraReason}</p>
+              </div>
+            ` : ''}
+            <p style="margin-top: 30px;">We hope you had a pleasant experience. See you again soon!</p>
+          </div>
+        </div>
+      `;
+
+      await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: booking.email || 'info@pattayarentacar.com',
+          subject: `Rental Return Confirmation - ${carName} - Pattaya Rent a Car`,
+          html: emailHtml,
+        }),
+      });
+
+      await addDoc(collection(db, 'mail'), {
+        to: booking.email || 'info@pattayarentacar.com',
+        message: {
+          subject: `Rental Return Confirmation - ${carName} - Pattaya Rent a Car`,
+          html: emailHtml,
+        }
+      });
+
+      toast.success('Email Sent & Calendar Updated');
+      onRefresh();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to complete return');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExtendRental = async () => {
+    setLoading(true);
+    try {
+      const currentEndDate = parseISO(booking.endDate);
+      const newEndDate = addDays(currentEndDate, extensionDays);
+
+      // 1. Update Booking
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        endDate: newEndDate.toISOString()
+      });
+
+      // 2. Log Income to Finance
+      if (extensionPayment > 0) {
+        const accs = await getDocs(collection(db, 'accounts'));
+        const defaultAcc = accs.docs.find(d => d.data().name === 'Cash Car')?.id || accs.docs[0]?.id || 'unknown';
+
+        await addDoc(collection(db, 'transactions'), {
+          type: 'Income',
+          amount: Number(extensionPayment),
+          date: new Date().toISOString(),
+          category: 'Rental Extension',
+          carId: booking.carId,
+          bookingId: booking.id,
+          accountId: defaultAcc,
+          description: `Extension payment (+${extensionDays} days) from ${booking.customerName}`
+        });
+      }
+
+      // 3. Send Email
+      const emailHtml = `
+        <div style="font-family: serif; padding: 40px; background-color: #f9f7f2; color: #1a1a1a;">
+          <h1 style="italic; font-size: 24px;">Rental Extension Acknowledged</h1>
+          <p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10px; font-weight: bold; color: #666;">Pattaya Rent a Car</p>
+          <div style="margin-top: 40px; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+            <p>Dear <strong>${booking.customerName}</strong>,</p>
+            <p>Your rental of <strong>${carName}</strong> has been extended by <strong>${extensionDays} day(s)</strong>.</p>
+            <div style="margin-top: 20px; padding: 20px; background: #f0fdf4; border-radius: 12px; border-left: 4px solid #10b981;">
+              <p style="margin: 0; font-weight: bold; color: #10b981;">New Return Date</p>
+              <p style="margin: 5px 0 0 0; font-size: 18px;">${format(newEndDate, 'PPP p')}</p>
+              <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.6;">Payment Received: ${extensionPayment.toLocaleString()} THB</p>
+            </div>
+            <p style="margin-top: 30px;">Thank you for your business!</p>
+          </div>
+        </div>
+      `;
+
+      await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: booking.email || 'info@pattayarentacar.com',
+          subject: `Rental Extension Acknowledged - ${carName} - Pattaya Rent a Car`,
+          html: emailHtml,
+        }),
+      });
+
+      await addDoc(collection(db, 'mail'), {
+        to: booking.email || 'info@pattayarentacar.com',
+        message: {
+          subject: `Rental Extension Acknowledged - ${carName} - Pattaya Rent a Car`,
+          html: emailHtml,
+        }
+      });
+
+      toast.success('Email Sent & Calendar Updated');
+      onRefresh();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to extend rental');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-[#1A1A1A]/40 backdrop-blur-md"
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="relative bg-white/95 backdrop-blur-2xl border border-white/60 w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-8 border-b border-black/5 flex items-center justify-between bg-white/50">
+          <div>
+            <h2 className="font-serif italic text-3xl text-[#1A1A1A]">Manage Rental: {booking.customerName}</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mt-1">{carName} • Command Center</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center text-[#1A1A1A]/40 hover:bg-brand-orange hover:text-white transition-all shadow-sm"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-8 overflow-y-auto space-y-12">
+          {/* Feature 1: End Rental */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-brand-orange/10 flex items-center justify-center shadow-inner">
+                <Check size={20} className="text-brand-orange" />
+              </div>
+              <h3 className="text-sm font-bold text-[#1A1A1A] uppercase tracking-wider">End Rental (Return)</h3>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 bg-white/40 p-6 rounded-[32px] border border-white/60 shadow-sm">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Final Extra Charges (THB)</label>
+                <div className="relative">
+                  <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-orange" />
+                  <input
+                    type="number"
+                    value={extraCharges}
+                    onChange={e => setExtraCharges(Number(e.target.value))}
+                    className="w-full bg-black/5 border-0 p-4 pl-10 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Reason for Charge</label>
+                <input
+                  type="text"
+                  value={extraReason}
+                  onChange={e => setExtraReason(e.target.value)}
+                  className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-medium focus:ring-2 ring-brand-orange outline-none transition-all"
+                  placeholder="e.g. Fuel, Cleaning, Scratch"
+                />
+              </div>
+              <div className="col-span-2 pt-2">
+                <button
+                  onClick={handleEndRental}
+                  disabled={loading}
+                  className="w-full h-14 bg-emerald-500 text-white rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Complete Return</>}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div className="h-[1px] bg-black/5 relative">
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[8px] font-bold text-black/10 uppercase tracking-[0.3em]">Quick Actions</span>
+          </div>
+
+          {/* Feature 2: Extend Rental */}
+          <section className="space-y-6 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center shadow-inner">
+                <Zap size={20} className="text-blue-500" />
+              </div>
+              <h3 className="text-sm font-bold text-[#1A1A1A] uppercase tracking-wider">Extend Rental</h3>
+            </div>
+
+            <div className="space-y-6 bg-white/40 p-6 rounded-[32px] border border-white/60 shadow-sm">
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Duration</label>
+                <div className="flex gap-2">
+                  {[1, 2, 7].map(days => (
+                    <button
+                      key={days}
+                      onClick={() => setExtensionDays(days)}
+                      className={cn(
+                        "flex-1 h-12 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all border shadow-sm",
+                        extensionDays === days 
+                          ? "bg-blue-500 text-white border-blue-500" 
+                          : "bg-white border-black/5 text-[#1A1A1A]/40 hover:bg-blue-50"
+                      )}
+                    >
+                      +{days} Day{days > 1 ? 's' : ''}
+                    </button>
+                  ))}
+                  <div className="flex-[2] relative">
+                    <input
+                      type="number"
+                      value={extensionDays}
+                      onChange={e => setExtensionDays(Number(e.target.value))}
+                      className="w-full h-12 bg-black/5 border-0 px-4 rounded-2xl text-xs font-bold focus:ring-2 ring-blue-500 outline-none transition-all text-center"
+                      placeholder="Custom Days"
+                    />
+                    <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-[8px] font-bold text-black/20 uppercase">Days</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment Received (THB)</label>
+                <div className="relative">
+                  <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500" />
+                  <input
+                    type="number"
+                    value={extensionPayment}
+                    onChange={e => setExtensionPayment(Number(e.target.value))}
+                    className="w-full bg-black/5 border-0 p-4 pl-10 rounded-2xl text-sm font-bold focus:ring-2 ring-blue-500 outline-none transition-all"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={handleExtendRental}
+                  disabled={loading}
+                  className="w-full h-14 bg-blue-500 text-white rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <><Zap size={16} /> Confirm Extension</>}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </motion.div>
+    </div>
+  );
+
+  return createPortal(modalContent, document.body);
+};
 
 const getBrandSlug = (name: string) => {
   const n = name.toLowerCase();
@@ -63,7 +381,8 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
   handleMouseLeaveBooking,
   handleBookingClick,
   handleBookingContextMenu,
-  getCarTypeStyles
+  getCarTypeStyles,
+  onManageBooking
 }) => {
   const typeStyles = getCarTypeStyles(car.type || car.category || '');
   
@@ -130,19 +449,37 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
               onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
               onMouseLeave={handleMouseLeaveBooking}
               onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-              onContextMenu={(e) => handleBookingContextMenu(e, booking)}
+              onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
               className={cn(
-                "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm booking-bar",
+                "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
                 booking.isMaintenance && "maintenance-pattern"
               )}
               style={style || {}}
             >
-              <span className={cn(
-                "text-[10px] font-bold uppercase tracking-widest truncate leading-none",
-                booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
-              )}>
-                {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
-              </span>
+              <div className="flex items-center justify-between w-full h-full relative overflow-hidden">
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 flex items-center gap-1",
+                  booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
+                )}>
+                  {!booking.isMaintenance && booking.notes && booking.notes.trim() !== '' && (
+                    <FileText size={10} className="shrink-0 opacity-60" />
+                  )}
+                  {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                </span>
+                
+                {!booking.isMaintenance && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onManageBooking(booking);
+                    }}
+                    className="opacity-0 group-hover/booking:opacity-100 p-0.5 bg-white/40 hover:bg-white/60 rounded-md transition-all shadow-sm ml-1"
+                    title="Manage Rental"
+                  >
+                    <Settings size={10} className="text-[#1A1A1A]" />
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -233,6 +570,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   });
 
   const [sortedCars, setSortedCars] = useState<Car[]>([]);
+  const [manageBooking, setManageBooking] = useState<Booking | null>(null);
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
 
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -414,6 +753,40 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const end = addDays(endOfMonth(currentDate), 15);
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
+
+  const availabilityData = useMemo(() => {
+    const activeCarsCount = cars.filter(c => c.isActive !== false).length;
+    return visibleDays.map(day => {
+      const amStart = new Date(day);
+      amStart.setHours(9, 0, 0, 0);
+      const amEnd = new Date(day);
+      amEnd.setHours(13, 59, 59, 999);
+
+      const pmStart = new Date(day);
+      pmStart.setHours(14, 0, 0, 0);
+      const pmEnd = new Date(day);
+      pmEnd.setHours(23, 59, 59, 999);
+
+      const amBooked = bookings.filter(b => {
+        if (!b.carId) return false;
+        const start = parseISO(b.startDate);
+        const end = parseISO(b.endDate);
+        return (start <= amEnd && end >= amStart);
+      }).length;
+
+      const pmBooked = bookings.filter(b => {
+        if (!b.carId) return false;
+        const start = parseISO(b.startDate);
+        const end = parseISO(b.endDate);
+        return (start <= pmEnd && end >= pmStart);
+      }).length;
+
+      return {
+        am: activeCarsCount - amBooked,
+        pm: activeCarsCount - pmBooked
+      };
+    });
+  }, [cars, bookings, visibleDays]);
 
   const monthsInView = useMemo(() => {
     const months: { month: Date; days: Date[] }[] = [];
@@ -799,37 +1172,64 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       >
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
-          <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
-            <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
-              <div className="flex flex-col">
-                <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+          <div className="flex flex-col sticky top-0 z-30 shadow-md">
+            <div className="flex bg-white/40 backdrop-blur-xl">
+              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
+                <div className="flex flex-col">
+                  <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+                </div>
+              </div>
+              <div className="flex">
+                {monthsInView.map(({ month, days }) => (
+                  <div key={month.toISOString()} className="flex flex-col border-r border-black/10 last:border-r-0">
+                    <div className="sticky top-0 z-40 py-1.5 px-4 text-[10px] font-bold uppercase tracking-[0.3em] bg-white/90 backdrop-blur-sm text-[#1A1A1A]/80 border-b border-black/5 flex items-center gap-2">
+                      <Calendar size={10} className="text-brand-orange" />
+                      {format(month, 'MMMM yyyy')}
+                    </div>
+                    <div className="flex">
+                      {days.map(day => (
+                        <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r last:border-r-0 border-black/5 bg-white/20">
+                          <div className={cn(
+                            "text-center py-1 text-[9px] font-bold uppercase tracking-wider",
+                            isSameDay(day, new Date()) ? "bg-brand-orange text-white" : "bg-brand-orange/5 text-brand-orange"
+                          )}>
+                            {format(day, 'EEE d')}
+                          </div>
+                          <div className="flex text-[8px] font-bold text-center border-t border-white/20 text-[#1A1A1A]/60">
+                            <div className="w-1/2 py-1 border-r border-white/20">AM</div>
+                            <div className="w-1/2 py-1">PM</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="flex">
-              {monthsInView.map(({ month, days }) => (
-                <div key={month.toISOString()} className="flex flex-col border-r border-black/10 last:border-r-0">
-                  <div className="sticky top-0 z-40 py-1.5 px-4 text-[10px] font-bold uppercase tracking-[0.3em] bg-white/90 backdrop-blur-sm text-[#1A1A1A]/80 border-b border-black/5 flex items-center gap-2">
-                    <Calendar size={10} className="text-brand-orange" />
-                    {format(month, 'MMMM yyyy')}
+
+            {/* Availability Row */}
+            <div className="flex h-7 bg-green-50 border-b border-black/10">
+              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-black/10 bg-green-100 sticky left-0 z-50 px-3 flex items-center backdrop-blur-md">
+                <span className="text-[10px] font-bold text-green-800 uppercase tracking-widest whitespace-nowrap">Cars Available</span>
+              </div>
+              <div className="flex timeline-grid-bg">
+                {availabilityData.map((data, idx) => (
+                  <div key={idx} className="w-[72px] flex-shrink-0 flex items-center">
+                    <div className={cn(
+                      "w-1/2 text-center text-[10px] leading-none",
+                      data.am < 5 ? "text-red-600 font-bold" : "text-green-800 font-medium"
+                    )}>
+                      {data.am}
+                    </div>
+                    <div className={cn(
+                      "w-1/2 text-center text-[10px] leading-none",
+                      data.pm < 5 ? "text-red-600 font-bold" : "text-green-800 font-medium"
+                    )}>
+                      {data.pm}
+                    </div>
                   </div>
-                  <div className="flex">
-                    {days.map(day => (
-                      <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r last:border-r-0 border-black/5 bg-white/20">
-                        <div className={cn(
-                          "text-center py-1 text-[9px] font-bold uppercase tracking-wider",
-                          isSameDay(day, new Date()) ? "bg-brand-orange text-white" : "bg-brand-orange/5 text-brand-orange"
-                        )}>
-                          {format(day, 'EEE d')}
-                        </div>
-                        <div className="flex text-[8px] font-bold text-center border-t border-white/20 text-[#1A1A1A]/60">
-                          <div className="w-1/2 py-1 border-r border-white/20">AM</div>
-                          <div className="w-1/2 py-1">PM</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
@@ -881,19 +1281,38 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
                       onMouseLeave={handleMouseLeaveBooking}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-                      onContextMenu={(e) => handleBookingContextMenu(e, booking)}
+                      onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
                       className={cn(
-                        "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm booking-bar",
+                        "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
                         booking.isMaintenance && "maintenance-pattern"
                       )}
                       style={style || {}}
                     >
-                      <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-widest truncate leading-none",
-                        booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
-                      )}>
-                        {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
-                      </span>
+                      <div className="flex items-center justify-between w-full h-full relative overflow-hidden">
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 flex items-center gap-1",
+                          booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
+                        )}>
+                          {!booking.isMaintenance && booking.notes && booking.notes.trim() !== '' && (
+                            <FileText size={10} className="shrink-0 opacity-60" />
+                          )}
+                          {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                        </span>
+                        
+                        {!booking.isMaintenance && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setManageBooking(booking);
+                              setIsManageModalOpen(true);
+                            }}
+                            className="opacity-0 group-hover/booking:opacity-100 p-0.5 bg-white/40 hover:bg-white/60 rounded-md transition-all shadow-sm ml-1"
+                            title="Manage Rental"
+                          >
+                            <Settings size={10} className="text-[#1A1A1A]" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -915,6 +1334,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   handleBookingClick={handleBookingClick}
                   handleBookingContextMenu={handleBookingContextMenu}
                   getCarTypeStyles={getCarTypeStyles}
+                  onManageBooking={(booking) => {
+                    setManageBooking(booking);
+                    setIsManageModalOpen(true);
+                  }}
                 />
               ))}
             </div>
@@ -1032,6 +1455,16 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   <span className="text-sm font-bold text-brand-orange">
                     ฿{(hoveredBooking.booking.amount || 0).toLocaleString()}
                   </span>
+                </div>
+
+                <div className="pt-3 mt-1 border-t border-[#1A1A1A]/5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
+                  <p className={cn(
+                    "text-[10px] leading-relaxed break-words",
+                    hoveredBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
+                  )}>
+                    {hoveredBooking.booking.notes || 'No notes added'}
+                  </p>
                 </div>
               </div>
 
@@ -1832,6 +2265,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
         onClose={() => setShowImportantInfo(false)} 
         isBikeMode={editingBooking?.requestedCarType === 'Motorbike' || cars.find(c => c.id === formData.carId)?.category === 'Motorbike' || title?.toLowerCase().includes('bike')}
       />
+
+      <AnimatePresence>
+        {isManageModalOpen && manageBooking && (
+          <ManageRentalModal
+            booking={manageBooking}
+            isOpen={isManageModalOpen}
+            onClose={() => setIsManageModalOpen(false)}
+            onRefresh={onRefresh}
+            carName={cars.find(c => c.id === manageBooking.carId)?.name || 'Vehicle'}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
