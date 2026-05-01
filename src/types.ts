@@ -15,6 +15,7 @@ export interface Car {
   lastOilChangeKms: number;
   lastOilChangeDate: string; // ISO date
   order: number;
+  sortOrder?: number;
   pricePerDay?: number;
   imageUrl?: string;
   seats?: number;
@@ -78,6 +79,8 @@ export interface Booking {
   };
   deliveryNotes?: string;
   deposit?: number;
+  isMaintenance?: boolean;
+  maintenanceDescription?: string;
 }
 
 export interface Rental {

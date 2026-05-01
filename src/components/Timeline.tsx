@@ -2,9 +2,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, GripVertical, Wrench } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
@@ -13,6 +13,25 @@ import 'react-day-picker/dist/style.css';
 import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
 import { DatePickerCustom } from './ui/DatePickerCustom';
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface TimelineProps {
   cars: Car[];
@@ -23,6 +42,245 @@ interface TimelineProps {
   onRefresh?: () => void;
   title?: string;
 }
+
+interface TimelineCellProps {
+  carId: string;
+  day: Date;
+  slot: 'AM' | 'PM';
+  handleSlotClick: (carId: string, day: Date, slot: 'AM' | 'PM') => void;
+  handleSlotContextMenu: (e: React.MouseEvent, carId: string, day: Date, slot: 'AM' | 'PM') => void;
+  draggedBooking: Booking | null;
+  setDropPreview: (preview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null) => void;
+  handleDrop: (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => void;
+}
+
+const TimelineCell: React.FC<TimelineCellProps> = React.memo(({
+  carId,
+  day,
+  slot,
+  handleSlotClick,
+  handleSlotContextMenu,
+  draggedBooking,
+  setDropPreview,
+  handleDrop
+}) => {
+  return (
+    <div
+      className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
+      onClick={() => handleSlotClick(carId, day, slot)}
+      onContextMenu={(e) => handleSlotContextMenu(e, carId, day, slot)}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (draggedBooking) setDropPreview({ carId: carId, date: day, slot: slot });
+      }}
+      onDragLeave={() => setDropPreview(null)}
+      onDrop={(e) => handleDrop(e, carId, day, slot)}
+    />
+  );
+});
+
+interface SortableCarRowProps {
+  car: Car;
+  daysInMonth: Date[];
+  bookings: Booking[];
+  handleSlotClick: (carId: string, day: Date, slot: 'AM' | 'PM') => void;
+  handleSlotContextMenu: (e: React.MouseEvent, carId: string, day: Date, slot: 'AM' | 'PM') => void;
+  draggedBooking: Booking | null;
+  dropPreview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null;
+  setDropPreview: (preview: { carId: string; date: Date; slot: 'AM' | 'PM' } | null) => void;
+  handleDrop: (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => void;
+  getBookingStyle: (booking: Booking) => any;
+  getDropPreviewStyle: (preview: any, booking: Booking) => any;
+  handleDragStart: (e: React.DragEvent, booking: Booking) => void;
+  handleDragEnd: () => void;
+  handleMouseEnterBooking: (booking: Booking, e: React.MouseEvent) => void;
+  handleMouseLeaveBooking: () => void;
+  handleBookingClick: (booking: Booking) => void;
+  handleBookingContextMenu: (e: React.MouseEvent, booking: Booking) => void;
+  getCarTypeStyles: (type: string) => any;
+  isRearrangeMode: boolean;
+}
+
+const getBrandSlug = (name: string) => {
+  const n = name.toLowerCase();
+  if (n.includes('toyota')) return 'toyota';
+  if (n.includes('honda')) return 'honda';
+  if (n.includes('ford')) return 'ford';
+  if (n.includes('nissan')) return 'nissan';
+  if (n.includes('mg')) return 'mg';
+  return null;
+};
+
+const cleanCarName = (name: string) => {
+  return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
+};
+
+const SortableCarRow: React.FC<SortableCarRowProps> = React.memo(({
+  car,
+  daysInMonth,
+  bookings,
+  handleSlotClick,
+  handleSlotContextMenu,
+  draggedBooking,
+  dropPreview,
+  setDropPreview,
+  handleDrop,
+  getBookingStyle,
+  getDropPreviewStyle,
+  handleDragStart,
+  handleDragEnd,
+  handleMouseEnterBooking,
+  handleMouseLeaveBooking,
+  handleBookingClick,
+  handleBookingContextMenu,
+  getCarTypeStyles,
+  isRearrangeMode
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ 
+    id: car.id,
+    disabled: !isRearrangeMode
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 100 : 'auto',
+    position: 'relative' as const,
+  };
+
+  const typeStyles = getCarTypeStyles(car.type || car.category || '');
+  
+  const brandSlug = getBrandSlug(car.name);
+  const displayName = cleanCarName(car.make && car.model ? `${car.make} ${car.model}` : car.name);
+
+  const isMaintenanceToday = useMemo(() => {
+    const today = startOfDay(new Date());
+    return bookings.some(b => 
+      b.carId === car.id && 
+      b.isMaintenance && 
+      isWithinInterval(today, { start: startOfDay(parseISO(b.startDate)), end: endOfDay(parseISO(b.endDate)) })
+    );
+  }, [bookings, car.id]);
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex group h-8">
+      <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-1 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
+        <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
+        
+        {isRearrangeMode && (
+          <button 
+            {...attributes} 
+            {...listeners} 
+            className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-black/10 hover:text-brand-orange transition-colors shrink-0"
+          >
+            <GripVertical size={12} />
+          </button>
+        )}
+
+        {brandSlug ? (
+          <img 
+            src={`https://cdn.simpleicons.org/${brandSlug}`}
+            alt={brandSlug}
+            className="w-4 h-4 shrink-0"
+          />
+        ) : (
+          <typeStyles.icon size={12} className={cn("shrink-0", typeStyles.color)} />
+        )}
+        <div className="flex-1 flex items-center justify-between min-w-0">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">
+              {displayName}
+            </span>
+            <span className="text-[9px] text-[#1A1A1A]/40 font-medium shrink-0">
+              {car.yearOfManufacture && car.yearOfManufacture.toString().slice(-4)}
+            </span>
+            {car.engineSize && (
+              <span className="text-[8px] text-[#1A1A1A]/40 font-medium shrink-0">
+                {car.engineSize.toString().replace(/cc/gi, '')}
+              </span>
+            )}
+            {isMaintenanceToday && (
+              <Wrench size={10} className="text-gray-500 animate-pulse shrink-0" />
+            )}
+          </div>
+          <span className="text-[9px] text-slate-500 font-mono leading-tight ml-auto whitespace-nowrap">
+            {car.plateNumber}
+          </span>
+        </div>
+      </div>
+      <div className="flex relative">
+        {daysInMonth.map(day => (
+          <React.Fragment key={day.toISOString()}>
+            <TimelineCell
+              carId={car.id}
+              day={day}
+              slot="AM"
+              handleSlotClick={handleSlotClick}
+              handleSlotContextMenu={handleSlotContextMenu}
+              draggedBooking={draggedBooking}
+              setDropPreview={setDropPreview}
+              handleDrop={handleDrop}
+            />
+            <TimelineCell
+              carId={car.id}
+              day={day}
+              slot="PM"
+              handleSlotClick={handleSlotClick}
+              handleSlotContextMenu={handleSlotContextMenu}
+              draggedBooking={draggedBooking}
+              setDropPreview={setDropPreview}
+              handleDrop={handleDrop}
+            />
+          </React.Fragment>
+        ))}
+
+        {/* Bookings for this car */}
+        {dropPreview && dropPreview.carId === car.id && draggedBooking && (
+          <div
+            className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
+            style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
+          />
+        )}
+        {bookings.filter(b => b.carId === car.id).map(booking => {
+          const style = getBookingStyle(booking);
+          if (!style) return null;
+          return (
+              <div
+              key={booking.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e as any, booking)}
+              onDragEnd={handleDragEnd}
+              onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
+              onMouseLeave={handleMouseLeaveBooking}
+              onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
+              onContextMenu={(e) => handleBookingContextMenu(e, booking)}
+              className={cn(
+                "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm",
+                booking.isMaintenance && "maintenance-pattern"
+              )}
+              style={style || {}}
+            >
+              <span className={cn(
+                "text-[10px] font-bold uppercase tracking-widest truncate leading-none",
+                booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
+              )}>
+                {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate, newBookingTrigger, onLogIncome, onRefresh, title = "Car Fleet" }) => {
   const [selectedSlot, setSelectedSlot] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
@@ -39,7 +297,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     notes: '',
     deliveryAddress: '',
     deliveryNotes: '',
-    deliveryLocation: undefined
+    deliveryLocation: undefined,
+    isMaintenance: false,
+    maintenanceDescription: ''
   });
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -50,6 +310,24 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const vehicleSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
+  const [isVehicleDropdownOpen, setIsVehicleDropdownOpen] = useState(false);
+
+  const filteredFleet = useMemo(() => {
+    const query = vehicleSearchQuery.toLowerCase();
+    if (!query) return cars.slice(0, 10);
+    return cars
+      .filter(car => {
+        const name = car.name.toLowerCase();
+        const model = (car.model || '').toLowerCase();
+        const make = (car.make || '').toLowerCase();
+        const plate = (car.plateNumber || '').toLowerCase();
+        return name.includes(query) || model.includes(query) || make.includes(query) || plate.includes(query);
+      })
+      .slice(0, 10);
+  }, [cars, vehicleSearchQuery]);
+
   const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,6 +350,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
         setShowCustomerSuggestions(false);
       }
+      if (vehicleSuggestionsRef.current && !vehicleSuggestionsRef.current.contains(event.target as Node)) {
+        setIsVehicleDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -82,6 +363,90 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     return cached ? parseInt(cached) : 0;
   });
 
+  const [sortedCars, setSortedCars] = useState<Car[]>([]);
+
+  const [isRearrangeMode, setIsRearrangeMode] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(600);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (timelineContainerRef.current) {
+        setContainerHeight(timelineContainerRef.current.clientHeight);
+      }
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
+
+  const ROW_HEIGHT = 32;
+  const BUFFER = 5;
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER);
+  const endIndex = Math.min(sortedCars.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + BUFFER);
+
+  const visibleCars = useMemo(() => sortedCars.slice(startIndex, endIndex), [sortedCars, startIndex, endIndex]);
+  const paddingTop = startIndex * ROW_HEIGHT;
+  const paddingBottom = (sortedCars.length - endIndex) * ROW_HEIGHT;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const isTimeValid = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    const total = h * 60 + m;
+    return total >= 9 * 60 && total <= 17 * 60 + 30;
+  };
+
+  useEffect(() => {
+    const sorted = [...cars].sort((a, b) => {
+      const orderA = a.sortOrder ?? a.order ?? 0;
+      const orderB = b.sortOrder ?? b.order ?? 0;
+      return orderA - orderB;
+    });
+    setSortedCars(sorted);
+  }, [cars]);
+
+  const handleCarDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = sortedCars.findIndex((car) => car.id === active.id);
+      const newIndex = sortedCars.findIndex((car) => car.id === over.id);
+      
+      const newOrder = arrayMove(sortedCars, oldIndex, newIndex);
+      setSortedCars(newOrder);
+
+      try {
+        const batch = writeBatch(db);
+        newOrder.forEach((car, index) => {
+          const carRef = doc(db, 'cars', car.id);
+          batch.update(carRef, { sortOrder: index });
+        });
+        await batch.commit();
+        toast.success('Vehicle order saved');
+        console.log('New Vehicle Order:', newOrder.map(c => ({ id: c.id, name: c.name, sortOrder: c.sortOrder })));
+        if (onRefresh) onRefresh();
+      } catch (error) {
+        console.error("Error saving car order:", error);
+        handleFirestoreError(error, OperationType.UPDATE, 'cars');
+      }
+    }
+  };
+
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
   const [clipboard, setClipboard] = useState<{ booking: Booking } | null>(null);
 
@@ -91,17 +456,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
 
-  const handleBookingContextMenu = (e: React.MouseEvent, booking: Booking) => {
+  const handleBookingContextMenu = React.useCallback((e: React.MouseEvent, booking: Booking) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, booking });
-  };
+  }, []);
 
-  const handleSlotContextMenu = (e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
+  const handleSlotContextMenu = React.useCallback((e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
     if (clipboard) {
       setContextMenu({ x: e.clientX, y: e.clientY, carId, date, slot });
     }
-  };
+  }, [clipboard]);
 
   const handleCutBooking = (booking: Booking) => {
     setClipboard({ booking });
@@ -256,7 +621,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleSlotClick = (carId: string, date: Date, slot: 'AM' | 'PM') => {
+  const handleSlotClick = React.useCallback((carId: string, date: Date, slot: 'AM' | 'PM') => {
     setSelectedSlot({ carId, date, slot });
     setEditingBooking(null);
     setModalMode('edit');
@@ -281,11 +646,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       notes: '',
       deliveryAddress: '',
       deliveryNotes: '',
-      deliveryLocation: undefined
+      deliveryLocation: undefined,
+      isMaintenance: false,
+      maintenanceDescription: ''
     });
     setDateRange({ from: start, to: end });
     setIsModalOpen(true);
-  };
+  }, [cars]); // cars needed for potentially filtering or validating, though not strictly used here, good to keep dependencies clean
 
   useEffect(() => {
     if (newBookingTrigger && newBookingTrigger > 0) {
@@ -293,13 +660,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     }
   }, [newBookingTrigger]);
 
-  const handleBookingClick = (booking: Booking) => {
+  const handleBookingClick = React.useCallback((booking: Booking) => {
     setEditingBooking(booking);
     setFormData({ 
       ...booking,
       deliveryAddress: booking.deliveryAddress || '',
       deliveryNotes: booking.deliveryNotes || '',
-      deliveryLocation: booking.deliveryLocation
+      deliveryLocation: booking.deliveryLocation,
+      isMaintenance: booking.isMaintenance || false,
+      maintenanceDescription: booking.maintenanceDescription || ''
     });
     setModalMode('view');
     setShowDeleteConfirm(false);
@@ -312,7 +681,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       to: end 
     });
     setIsModalOpen(true);
-  };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,8 +696,38 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       const [endH, endM] = dropOffTime.split(':').map(Number);
       end.setHours(endH, endM, 0, 0);
 
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+      if (startMinutes < 9 * 60 || startMinutes > 17 * 60 + 30 || endMinutes < 9 * 60 || endMinutes > 17 * 60 + 30) {
+        toast.error('Office hours are 09:00 - 17:30');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check for overlaps (excluding the current booking if editing)
+      const overlapping = bookings.find(b => {
+        if (editingBooking && b.id === editingBooking.id) return false;
+        if (b.carId !== formData.carId && b.carId !== (formData.carId === '' ? '' : formData.carId)) return false;
+        if (!b.carId && formData.carId) return false; // Both are unassigned, or one is unassigned
+        
+        // Match cars if both have IDs
+        if (b.carId && formData.carId && b.carId !== formData.carId) return false;
+
+        const bStart = parseISO(b.startDate);
+        const bEnd = parseISO(b.endDate);
+        
+        return (start < bEnd && end > bStart);
+      });
+
+      if (overlapping && formData.carId !== '') {
+        toast.error(`Schedule conflict: Car is already booked or in maintenance for this period.`);
+        setIsSubmitting(false);
+        return;
+      }
+
       const dataToSave = {
         ...formData,
+        customerName: formData.isMaintenance ? `Maintenance: ${formData.maintenanceDescription?.slice(0, 20) || ''}` : formData.customerName,
         startDate: start.toISOString(),
         endDate: end.toISOString(),
       };
@@ -463,7 +862,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
   const [hoveredBooking, setHoveredBooking] = useState<{ booking: Booking; x: number; y: number } | null>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMouseEnterBooking = (booking: Booking, e: React.MouseEvent) => {
+  const handleMouseEnterBooking = React.useCallback((booking: Booking, e: React.MouseEvent) => {
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
@@ -474,13 +873,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       x: rect.left, 
       y: rect.bottom 
     });
-  };
+  }, []);
 
-  const handleMouseLeaveBooking = () => {
+  const handleMouseLeaveBooking = React.useCallback(() => {
     hoverTimeoutRef.current = setTimeout(() => {
       setHoveredBooking(null);
     }, 300); // 300ms delay to allow moving mouse to tooltip
-  };
+  }, []);
 
   const handleMouseEnterTooltip = () => {
     if (hoverTimeoutRef.current) {
@@ -489,17 +888,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, booking: Booking) => {
+  const handleDragStart = React.useCallback((e: React.DragEvent, booking: Booking) => {
     setDraggedBooking(booking);
     e.dataTransfer.setData('bookingId', booking.id);
-  };
+  }, []);
 
-  const handleDragEnd = () => {
+  const handleDragEnd = React.useCallback(() => {
     setDraggedBooking(null);
     setDropPreview(null);
-  };
+  }, []);
 
-  const handleDrop = async (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
+  const handleDrop = React.useCallback(async (e: React.DragEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
     setDropPreview(null);
     if (!draggedBooking) return;
@@ -547,7 +946,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
       handleFirestoreError(error, OperationType.UPDATE, `bookings/${draggedBooking.id}`);
     }
     setDraggedBooking(null);
-  };
+  }, [draggedBooking, cars]);
 
   const getCarTypeStyles = (type: string) => {
     const t = type.toLowerCase();
@@ -584,7 +983,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
     
     let bgColor = '#FF6321'; // Default brand-orange
     
-    if (booking.status === 'Paid') {
+    if (booking.isMaintenance) {
+      bgColor = '#4B5563'; // Dark Grey (gray-600)
+    } else if (booking.status === 'Paid') {
       bgColor = '#10B981'; // Green (emerald-500)
     } else if (isUnpaid) {
       bgColor = '#EAB308'; // Yellow (yellow-500) - Unpaid
@@ -643,12 +1044,30 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-warm-bg">
-      <div ref={timelineContainerRef} className="flex-1 overflow-auto custom-scrollbar relative">
+      <div 
+        ref={timelineContainerRef} 
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto custom-scrollbar relative will-change-transform"
+      >
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
           <div className="flex sticky top-0 z-30 bg-white/40 backdrop-blur-xl">
             <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
-              <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+              <div className="flex flex-col">
+                <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+                <button 
+                  onClick={() => setIsRearrangeMode(!isRearrangeMode)}
+                  className={cn(
+                    "text-[8px] font-bold uppercase tracking-widest mt-1 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 w-fit",
+                    isRearrangeMode 
+                      ? "bg-brand-orange text-white" 
+                      : "bg-black/5 text-black/40 hover:bg-black/10"
+                  )}
+                >
+                  {isRearrangeMode ? <ShieldCheck size={8} /> : <GripVertical size={8} />}
+                  {isRearrangeMode ? 'Finish Rearrange' : 'Rearrange Fleet'}
+                </button>
+              </div>
             </div>
             <div className="flex">
               {monthsInView.map(({ month, days }) => (
@@ -759,11 +1178,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       onMouseLeave={handleMouseLeaveBooking}
                       onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
                       onContextMenu={(e) => handleBookingContextMenu(e, booking)}
-                      className="absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
+                      className={cn(
+                        "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm",
+                        booking.isMaintenance && "maintenance-pattern"
+                      )}
                       style={style || {}}
                     >
-                      <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">
-                        {booking.customerName}
+                      <span className={cn(
+                        "text-[10px] font-bold uppercase tracking-widest truncate leading-none",
+                        booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
+                      )}>
+                        {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
                       </span>
                     </div>
                   );
@@ -771,120 +1196,43 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
               </div>
             </div>
 
-            {cars.map(car => {
-              const typeStyles = getCarTypeStyles(car.type || car.category || '');
-              
-              // Brand Icon Logic
-              const getBrandSlug = (name: string) => {
-                const n = name.toLowerCase();
-                if (n.includes('toyota')) return 'toyota';
-                if (n.includes('honda')) return 'honda';
-                if (n.includes('ford')) return 'ford';
-                if (n.includes('nissan')) return 'nissan';
-                if (n.includes('mg')) return 'mg';
-                return null;
-              };
-
-              const cleanCarName = (name: string) => {
-                return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
-              };
-
-              const brandSlug = getBrandSlug(car.name);
-              const displayName = cleanCarName(car.make && car.model ? `${car.make} ${car.model}` : car.name);
-              
-              return (
-                <div key={car.id} className="flex group h-8">
-                  <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
-                    <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
-                    {brandSlug ? (
-                      <img 
-                        src={`https://cdn.simpleicons.org/${brandSlug}`}
-                        alt={brandSlug}
-                        className="w-4 h-4 shrink-0"
-                      />
-                    ) : (
-                      <typeStyles.icon size={12} className={cn("shrink-0", typeStyles.color)} />
-                    )}
-                    <div className="flex-1 flex items-center justify-between min-w-0">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="text-[10px] font-bold text-[#1A1A1A] truncate leading-tight">
-                          {displayName}
-                        </span>
-                        <span className="text-[9px] text-[#1A1A1A]/40 font-medium shrink-0">
-                          {car.yearOfManufacture && car.yearOfManufacture.toString().slice(-4)}
-                        </span>
-                        {car.engineSize && (
-                          <span className="text-[8px] text-[#1A1A1A]/40 font-medium shrink-0">
-                            {car.engineSize.toString().replace(/cc/gi, '')}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[9px] text-slate-500 font-mono leading-tight ml-auto whitespace-nowrap">
-                        {car.plateNumber}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex relative">
-                    {daysInMonth.map(day => (
-                      <React.Fragment key={day.toISOString()}>
-                        <div
-                          className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
-                          onClick={() => handleSlotClick(car.id, day, 'AM')}
-                          onContextMenu={(e) => handleSlotContextMenu(e, car.id, day, 'AM')}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'AM' });
-                          }}
-                          onDragLeave={() => setDropPreview(null)}
-                          onDrop={(e) => handleDrop(e, car.id, day, 'AM')}
-                        />
-                        <div
-                          className="w-[36px] flex-shrink-0 border-r border-b border-black/10 group-hover:bg-brand-orange/5 transition-colors cursor-pointer"
-                          onClick={() => handleSlotClick(car.id, day, 'PM')}
-                          onContextMenu={(e) => handleSlotContextMenu(e, car.id, day, 'PM')}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            if (draggedBooking) setDropPreview({ carId: car.id, date: day, slot: 'PM' });
-                          }}
-                          onDragLeave={() => setDropPreview(null)}
-                          onDrop={(e) => handleDrop(e, car.id, day, 'PM')}
-                        />
-                      </React.Fragment>
-                    ))}
- 
-                    {/* Bookings for this car */}
-                    {dropPreview && dropPreview.carId === car.id && draggedBooking && (
-                      <div
-                        className="absolute h-6 top-1 rounded-md border-2 border-dashed border-brand-orange/50 bg-brand-orange/10 pointer-events-none z-0"
-                        style={getDropPreviewStyle(dropPreview, draggedBooking) || {}}
-                      />
-                    )}
-                    {bookings.filter(b => b.carId === car.id).map(booking => {
-                      const style = getBookingStyle(booking);
-                      if (!style) return null;
-                      return (
-                        <div
-                          key={booking.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e as any, booking)}
-                          onDragEnd={handleDragEnd}
-                          onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
-                          onMouseLeave={handleMouseLeaveBooking}
-                          onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
-                          onContextMenu={(e) => handleBookingContextMenu(e, booking)}
-                          className="absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center overflow-hidden border border-white/20 backdrop-blur-sm"
-                          style={style || {}}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-widest truncate leading-none text-[#1A1A1A]">
-                            {booking.customerName}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleCarDragEnd}
+            >
+              <SortableContext 
+                items={sortedCars.map(c => c.id)} 
+                strategy={verticalListSortingStrategy}
+              >
+                <div style={{ paddingTop, paddingBottom }}>
+                  {visibleCars.map(car => (
+                    <SortableCarRow
+                      key={car.id}
+                      car={car}
+                      daysInMonth={visibleDays}
+                      bookings={bookings}
+                      handleSlotClick={handleSlotClick}
+                      handleSlotContextMenu={handleSlotContextMenu}
+                      draggedBooking={draggedBooking}
+                      dropPreview={dropPreview}
+                      setDropPreview={setDropPreview}
+                      handleDrop={handleDrop}
+                      getBookingStyle={getBookingStyle}
+                      getDropPreviewStyle={getDropPreviewStyle}
+                      handleDragStart={handleDragStart}
+                      handleDragEnd={handleDragEnd}
+                      handleMouseEnterBooking={handleMouseEnterBooking}
+                      handleMouseLeaveBooking={handleMouseLeaveBooking}
+                      handleBookingClick={handleBookingClick}
+                      handleBookingContextMenu={handleBookingContextMenu}
+                      getCarTypeStyles={getCarTypeStyles}
+                      isRearrangeMode={isRearrangeMode}
+                    />
+                  ))}
                 </div>
-              );
-            })}
+              </SortableContext>
+            </DndContext>
             {bookings.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-white/40 backdrop-blur-md p-8 border border-white/60 rounded-[32px] flex flex-col items-center gap-4 shadow-xl">
@@ -915,8 +1263,20 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
             <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="text-sm font-bold text-[#1A1A1A]">{hoveredBooking.booking.customerName}</h4>
-                  <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{hoveredBooking.booking.email || 'No email'}</p>
+                  <h4 className="text-sm font-bold text-[#1A1A1A]">
+                    {hoveredBooking.booking.isMaintenance ? (
+                      <span className="flex items-center gap-2">
+                        <Wrench size={14} className="text-gray-600" /> Maintenance
+                      </span>
+                    ) : hoveredBooking.booking.customerName}
+                  </h4>
+                  {hoveredBooking.booking.isMaintenance ? (
+                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
+                      {hoveredBooking.booking.maintenanceDescription}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{hoveredBooking.booking.email || 'No email'}</p>
+                  )}
                   <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
                     {hoveredBooking.booking.carId 
                       ? cars.find(c => c.id === hoveredBooking.booking.carId)?.name 
@@ -926,15 +1286,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 <div className="flex flex-col items-end gap-2">
                   <span className={cn(
                     "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                    hoveredBooking.booking.status === 'Paid' 
-                      ? "bg-green-100 text-green-600" 
-                      : (parseISO(hoveredBooking.booking.startDate) < new Date()
-                          ? "bg-yellow-100 text-yellow-600"
-                          : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
-                              ? "bg-red-100 text-red-600" 
-                              : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600")))
+                    hoveredBooking.booking.isMaintenance
+                      ? "bg-gray-100 text-gray-600"
+                      : (hoveredBooking.booking.status === 'Paid' 
+                          ? "bg-green-100 text-green-600" 
+                          : (parseISO(hoveredBooking.booking.startDate) < new Date()
+                              ? "bg-yellow-100 text-yellow-600"
+                              : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
+                                  ? "bg-red-100 text-red-600" 
+                                  : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
                   )}>
-                    {hoveredBooking.booking.status}
+                    {hoveredBooking.booking.isMaintenance ? 'Maintenance' : hoveredBooking.booking.status}
                   </span>
                   <div className="flex gap-1.5">
                     <button
@@ -1070,7 +1432,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 </div>
               ) : modalMode === 'view' && editingBooking ? (
                 <div className="space-y-8">
-                  {editingBooking.email && !customerInCRM && (
+                  {editingBooking.isMaintenance && (
+                    <div className="bg-gray-100 border border-gray-300 p-5 rounded-3xl flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-gray-600 flex items-center justify-center shadow-lg">
+                        <Wrench size={24} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">Maintenance Mode Active</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest text-[#1A1A1A]">Vehicle is scheduled for repair</p>
+                      </div>
+                    </div>
+                  )}
+                  {editingBooking.email && !customerInCRM && !editingBooking.isMaintenance && (
                     <div className="bg-brand-orange/10 border border-brand-orange/30 p-5 rounded-3xl flex items-center justify-between gap-4 backdrop-blur-md">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-brand-orange flex items-center justify-center shadow-lg shadow-brand-orange/20">
@@ -1108,18 +1481,29 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Customer</p>
-                      <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.customerName}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Email</p>
-                      <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60 truncate">{editingBooking.email || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Mobile</p>
-                      <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.mobileNumber || 'N/A'}</p>
-                    </div>
+                    {!editingBooking.isMaintenance ? (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Customer</p>
+                          <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.customerName}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Email</p>
+                          <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60 truncate">{editingBooking.email || 'N/A'}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Mobile</p>
+                          <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">{editingBooking.mobileNumber || 'N/A'}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="col-span-2 space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1"><Wrench size={12} className="inline mr-1" /> Repair Description</p>
+                        <p className="text-lg font-bold text-gray-900 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                          {editingBooking.maintenanceDescription || 'Scheduled Maintenance'}
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Vehicle</p>
                       <p className="text-lg font-bold text-gray-900 bg-white/40 p-3 rounded-2xl border border-white/60">
@@ -1133,13 +1517,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                       <div className="h-[52px] flex items-center">
                         <span className={cn(
                           "px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full border border-black/10 shadow-sm",
-                          editingBooking.status === 'Paid' 
-                            ? "bg-emerald-500 text-white" 
-                            : (isFuture(parseISO(editingBooking.startDate)) 
-                                ? "bg-red-500 text-white" 
-                                : ((!editingBooking.carId || editingBooking.carId === 'unassigned') ? "bg-yellow-500 text-white" : "bg-brand-orange text-white"))
+                          editingBooking.isMaintenance 
+                            ? "bg-gray-600 text-white"
+                            : (editingBooking.status === 'Paid' 
+                                ? "bg-emerald-500 text-white" 
+                                : (isFuture(parseISO(editingBooking.startDate)) 
+                                    ? "bg-red-500 text-white" 
+                                    : ((!editingBooking.carId || editingBooking.carId === 'unassigned') ? "bg-yellow-500 text-white" : "bg-brand-orange text-white")))
                         )}>
-                          {editingBooking.status}
+                          {editingBooking.isMaintenance ? 'Maintenance' : editingBooking.status}
                         </span>
                       </div>
                     </div>
@@ -1239,118 +1625,258 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="flex items-center gap-2 pb-4 border-b border-white/20">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, isMaintenance: !formData.isMaintenance })}
+                      className={cn(
+                        "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
+                        !formData.isMaintenance 
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                          : "bg-white/40 text-[#1A1A1A]/40 hover:bg-white/60"
+                      )}
+                    >
+                      <User size={14} /> Rental Booking
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, isMaintenance: !formData.isMaintenance })}
+                      className={cn(
+                        "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
+                        formData.isMaintenance 
+                          ? "bg-gray-600 text-white shadow-lg shadow-gray-600/20" 
+                          : "bg-white/40 text-[#1A1A1A]/40 hover:bg-white/60"
+                      )}
+                    >
+                      <Wrench size={14} /> Maintenance
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2"><FileText size={12} /> Customer Name</span>
-                          {formData.customerName && (
-                            <span className="text-[8px] text-emerald-500 font-bold">Search results below</span>
-                          )}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                            value={formData.customerName}
-                            onChange={e => {
-                              setFormData({ ...formData, customerName: e.target.value });
-                              setShowCustomerSuggestions(true);
-                            }}
-                            onFocus={() => setShowCustomerSuggestions(true)}
-                            placeholder="Enter name or search existing..."
-                            required
-                          />
-                          <AnimatePresence>
-                            {showCustomerSuggestions && filteredCustomers.length > 0 && (
-                              <motion.div
-                                ref={suggestionsRef}
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="absolute z-50 left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl max-h-48 overflow-y-auto"
-                              >
-                                {filteredCustomers.map(customer => (
-                                  <button
-                                    key={customer.id}
-                                    type="button"
-                                    onClick={() => handleSelectCustomer(customer)}
-                                    className="w-full p-3 text-left hover:bg-brand-orange hover:text-white flex items-center justify-between border-b border-white/20 last:border-0 transition-colors"
+                      {!formData.isMaintenance ? (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2"><FileText size={12} /> Customer Name</span>
+                              {formData.customerName && (
+                                <span className="text-[8px] text-emerald-500 font-bold">Search results below</span>
+                              )}
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
+                                value={formData.customerName}
+                                onChange={e => {
+                                  setFormData({ ...formData, customerName: e.target.value });
+                                  setShowCustomerSuggestions(true);
+                                }}
+                                onFocus={() => setShowCustomerSuggestions(true)}
+                                placeholder="Enter name or search existing..."
+                                required={!formData.isMaintenance}
+                              />
+                              <AnimatePresence>
+                                {showCustomerSuggestions && filteredCustomers.length > 0 && (
+                                  <motion.div
+                                    ref={suggestionsRef}
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="absolute z-50 left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl max-h-48 overflow-y-auto"
                                   >
-                                    <div>
-                                      <p className="text-xs font-bold">{customer.firstName} {customer.lastName}</p>
-                                      <p className="text-[10px] opacity-60">{customer.email}</p>
-                                    </div>
-                                    <ChevronRight size={14} className="opacity-40" />
-                                  </button>
-                                ))}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                                    {filteredCustomers.map(customer => (
+                                      <button
+                                        key={customer.id}
+                                        type="button"
+                                        onClick={() => handleSelectCustomer(customer)}
+                                        className="w-full p-3 text-left hover:bg-brand-orange hover:text-white flex items-center justify-between border-b border-white/20 last:border-0 transition-colors"
+                                      >
+                                        <div>
+                                          <p className="text-xs font-bold">{customer.firstName} {customer.lastName}</p>
+                                          <p className="text-[10px] opacity-60">{customer.email}</p>
+                                        </div>
+                                        <ChevronRight size={14} className="opacity-40" />
+                                      </button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                              <Mail size={12} /> Email Address
+                            </label>
+                            <input
+                              type="email"
+                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
+                              value={formData.email}
+                              onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                              <Phone size={12} /> Mobile Number
+                            </label>
+                            <input
+                              type="text"
+                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
+                              value={formData.mobileNumber}
+                              onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                              <DollarSign size={12} /> Amount (THB)
+                            </label>
+                            <input
+                              type="number"
+                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
+                              value={formData.amount}
+                              onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                              <ShieldCheck size={12} /> Deposit Held (THB)
+                            </label>
+                            <input
+                              type="number"
+                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
+                              value={formData.deposit}
+                              onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                              <Wrench size={12} /> Repair Detail
+                            </label>
+                            <textarea
+                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-gray-600 outline-none transition-all min-h-[120px]"
+                              value={formData.maintenanceDescription}
+                              onChange={e => setFormData({ ...formData, maintenanceDescription: e.target.value })}
+                              placeholder="Describe the repair or service needed..."
+                              required={formData.isMaintenance}
+                            />
+                          </div>
+                          <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Maintenance Note</p>
+                            <p className="text-[11px] text-gray-500 leading-relaxed italic">
+                              Switching to Maintenance Mode hides customer fields and marks this period as "Fleet Repair". The vehicle will be unavailable for rentals during this time.
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <Mail size={12} /> Email Address
-                        </label>
-                        <input
-                          type="email"
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                          value={formData.email}
-                          onChange={e => setFormData({ ...formData, email: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <Phone size={12} /> Mobile Number
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                          value={formData.mobileNumber}
-                          onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <DollarSign size={12} /> Amount (THB)
-                        </label>
-                        <input
-                          type="number"
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
-                          value={formData.amount}
-                          onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <ShieldCheck size={12} /> Deposit Held (THB)
-                        </label>
-                        <input
-                          type="number"
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
-                          value={formData.deposit}
-                          onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
-                        />
-                      </div>
+                      )}
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
                           <CarIconType size={12} /> Assigned Vehicle
                         </label>
-                        <div className="relative">
-                          <select
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all appearance-none pr-10"
-                            value={formData.carId || ''}
-                            onChange={e => setFormData({ ...formData, carId: e.target.value })}
+                        <div className="relative" ref={vehicleSuggestionsRef}>
+                          <div 
+                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus-within:border-brand-orange outline-none transition-all cursor-pointer flex items-center justify-between"
+                            onClick={() => setIsVehicleDropdownOpen(!isVehicleDropdownOpen)}
                           >
-                            <option value="">Unassigned</option>
-                            {cars.map(car => (
-                              <option key={car.id} value={car.id}>
-                                {car.make && car.model ? `${car.make} ${car.model}` : car.name} • {car.plateNumber}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none opacity-40" size={16} />
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              {formData.carId ? (
+                                (() => {
+                                  const car = cars.find(c => c.id === formData.carId);
+                                  if (!car) return <span>Unassigned</span>;
+                                  const brandSlug = getBrandSlug(car.name);
+                                  const typeStyles = getCarTypeStyles(car.type || car.category || '');
+                                  const displayName = cleanCarName(car.make && car.model ? `${car.make} ${car.model}` : car.name);
+                                  return (
+                                    <>
+                                      {brandSlug ? (
+                                        <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4 shrink-0" alt="" />
+                                      ) : (
+                                        <typeStyles.icon size={12} className={cn("shrink-0", typeStyles.color)} />
+                                      )}
+                                      <span className="truncate">{car.make} {car.model} {car.yearOfManufacture} • {car.plateNumber}</span>
+                                    </>
+                                  );
+                                })()
+                              ) : (
+                                <span className="text-gray-400">Unassigned</span>
+                              )}
+                            </div>
+                            <ChevronRight className={cn("rotate-90 opacity-40 transition-transform", isVehicleDropdownOpen && "-rotate-90")} size={16} />
+                          </div>
+
+                          <AnimatePresence>
+                            {isVehicleDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="absolute z-50 left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl border border-white/60 shadow-2xl rounded-3xl overflow-hidden flex flex-col"
+                              >
+                                <div className="p-2 border-b border-white/20">
+                                  <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                    <input 
+                                      autoFocus
+                                      type="text"
+                                      className="w-full bg-black/5 p-2 pl-9 rounded-xl text-xs outline-none border-0"
+                                      placeholder="Search model or plate..."
+                                      value={vehicleSearchQuery}
+                                      onChange={e => setVehicleSearchQuery(e.target.value)}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto">
+                                  <button
+                                    type="button"
+                                    className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest border-b border-white/10"
+                                    onClick={() => {
+                                      setFormData({ ...formData, carId: '' });
+                                      setIsVehicleDropdownOpen(false);
+                                      setVehicleSearchQuery('');
+                                    }}
+                                  >
+                                    Unassigned
+                                  </button>
+                                  {filteredFleet.length > 0 ? (
+                                    filteredFleet.map(car => {
+                                      const brandSlug = getBrandSlug(car.name);
+                                      const typeStyles = getCarTypeStyles(car.type || car.category || '');
+                                      return (
+                                        <button
+                                          key={car.id}
+                                          type="button"
+                                          className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors flex items-center gap-3 border-b border-white/10 last:border-0"
+                                          onClick={() => {
+                                            setFormData({ ...formData, carId: car.id });
+                                            setIsVehicleDropdownOpen(false);
+                                            setVehicleSearchQuery('');
+                                          }}
+                                        >
+                                          {brandSlug ? (
+                                            <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4" alt="" />
+                                          ) : (
+                                            <typeStyles.icon size={12} className={typeStyles.color} />
+                                          )}
+                                          <div className="flex flex-col">
+                                            <span className="text-xs font-bold">{car.make} {car.model} {car.yearOfManufacture}</span>
+                                            <span className="text-[10px] opacity-60 font-mono">{car.plateNumber}</span>
+                                          </div>
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-8 text-center">
+                                      <Search size={24} className="mx-auto text-gray-300 mb-2" />
+                                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">No vehicle found</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -1383,7 +1909,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                         <button
                           type="button"
                           onClick={() => setShowDatePicker(true)}
-                          className="w-full bg-white/40 border-b-2 border-white/60 p-4 rounded-t-2xl text-left hover:bg-white/60 transition-all shadow-sm"
+                          className={cn(
+                            "w-full bg-white/40 border-b-2 p-4 rounded-t-2xl text-left hover:bg-white/60 transition-all shadow-sm",
+                            (!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) ? "border-red-500" : "border-white/60"
+                          )}
                         >
                           <div className="flex justify-between items-center">
                             <div>
@@ -1400,6 +1929,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                               </p>
                             </div>
                           </div>
+                          {(!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) && (
+                            <p className="text-[10px] text-red-500 font-bold mt-2 animate-pulse">
+                              Office hours are 09:00 - 17:30
+                            </p>
+                          )}
                         </button>
 
                         <AnimatePresence>
@@ -1426,6 +1960,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars, bookings, currentDate,
                                   onClose={() => setShowDatePicker(false)}
                                   onApply={() => setShowDatePicker(false)}
                                   isBikeMode={title?.toLowerCase().includes('bike')}
+                                  useFilteredTimes={true}
                                 />
                               </motion.div>
                             </div>
