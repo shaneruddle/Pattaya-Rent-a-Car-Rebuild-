@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { processTemplate } from '../lib/emailUtils';
 import { Booking, Car } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
 import { 
@@ -189,14 +190,14 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     });
   };
 
-  const copyEmailTemplate = (enquiry: Booking) => {
-    const firstName = enquiry.customerName.split(' ')[0] || 'Customer';
-    const car = enquiry.requestedCarType || 'requested car';
-    const total = `฿${(enquiry.amount || 0).toLocaleString()}`;
+  const copyEmailTemplate = async (enquiry: Booking) => {
+    try {
+      // 1. Fetch the template
+      const templateDoc = await getDoc(doc(db, 'email_templates', 'enquiry_reply'));
+      
+      let bodyTemplate = `Hi {{customer_name}},
 
-    const template = `Hi ${firstName},
-
-Thanks for your email. We can confirm availability of the ${car} (or similar) at a total rate of ${total}
+Thanks for your email. We can confirm availability of the {{vehicle_model}} (or similar) at a total rate of {{total_price}}
 
 Included in your rental:
 
@@ -210,12 +211,27 @@ In addition you can book now, pay later and cancel at anytime free of charge
 
 Do you wish to proceed with the booking ?`;
 
-    navigator.clipboard.writeText(template).then(() => {
+      if (templateDoc.exists()) {
+        bodyTemplate = templateDoc.data().body;
+      }
+
+      // 2. Process template
+      const placeholders = {
+        '{{customer_name}}': enquiry.customerName.split(' ')[0] || 'Customer',
+        '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
+        '{{total_price}}': (enquiry.amount || 0).toLocaleString(),
+        '{{return_date}}': `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
+      };
+
+      const finalBody = processTemplate(bodyTemplate, placeholders);
+
+      // 3. Copy to clipboard
+      await navigator.clipboard.writeText(finalBody);
       toast.success('Email template copied to clipboard!');
-    }).catch(err => {
+    } catch (err) {
       console.error('Failed to copy: ', err);
       toast.error('Failed to copy template');
-    });
+    }
   };
 
   return (

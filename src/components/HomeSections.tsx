@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, addDoc } from 'firebase/firestore';
 import { db, storage, logSystemActivity, handleFirestoreError, OperationType } from '../firebase';
+import { sendTemplatedEmail } from '../lib/emailUtils';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { toast } from 'sonner';
 import { StorageImage } from './StorageImage';
@@ -198,8 +199,14 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
       });
       console.log('EnquiryForm: Saved to enquiries, ID:', enquiryRef.id);
 
-      console.log('EnquiryForm: Sending email via API...');
+      console.log('EnquiryForm: Sending emails via helpers...');
       try {
+        // 1. Send Confirmation to Customer using template
+        await sendTemplatedEmail('website_enquiry', formData.email, {
+          '{{customer_name}}': formData.name,
+        });
+
+        // 2. Send Notification to Staff
         const emailResponse = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -221,28 +228,28 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
           console.error('EnquiryForm: Email API failed:', errorData);
-          // We don't throw here to still allow the enquiry to be saved to Firestore
         } else {
-          console.log('EnquiryForm: Email sent successfully via API');
+          console.log('EnquiryForm: Staff notification sent successfully');
         }
       } catch (emailErr) {
-        console.error('EnquiryForm: Error calling email API:', emailErr);
+        console.error('EnquiryForm: Error handling emails:', emailErr);
       }
 
-      // Also save to mail collection for logging (even if extension is removed)
+      // 3. Save to mail collection for logging
+      await addDoc(collection(db, 'mail'), {
+        to: formData.email,
+        message: {
+          subject: 'Message Received - Pattaya Rent a Car',
+          html: `<p>Thank you for your message, ${formData.name}. We will contact you soon.</p>`
+        },
+      });
+
       await addDoc(collection(db, 'mail'), {
         to: 'info@pattayarentacar.com',
         replyTo: formData.email,
         message: {
           subject: `New Website Enquiry from ${formData.name}`,
-          html: `
-            <h3>New Website Enquiry</h3>
-            <p><strong>Name:</strong> ${formData.name}</p>
-            <p><strong>Email:</strong> ${formData.email}</p>
-            <p><strong>Phone:</strong> ${formData.phone}</p>
-            <p><strong>Message:</strong></p>
-            <p>${formData.message.replace(/\n/g, '<br>')}</p>
-          `,
+          html: `Message from ${formData.name} received. Email: ${formData.email}. Phone: ${formData.phone}.`
         },
       });
       console.log('EnquiryForm: Email document created');

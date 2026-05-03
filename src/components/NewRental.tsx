@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, storage, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { sendTemplatedEmail } from '../lib/emailUtils';
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Booking, Customer, Rental } from '../types';
@@ -68,6 +69,8 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
     customerName: '',
     customerEmail: '',
     customerPhone: '',
+    returnNote: '',
+    totalPaid: 0,
   });
 
   // Photos State
@@ -124,10 +127,12 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       dateOut: booking.startDate,
       dateIn: booking.endDate,
       totalCharge: booking.amount || 0,
+      totalPaid: booking.amount || 0,
       depositAmount: booking.deposit || 3000,
       customerName: booking.customerName,
       customerEmail: booking.email || '',
       customerPhone: booking.mobileNumber || '',
+      returnNote: booking.returnNote || '',
     });
     setStep('vehicle_type');
   };
@@ -279,11 +284,19 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         depositAmount: formData.depositAmount,
         damagePhotos: photoUrls.filter(url => !url.startsWith('data:')), // Store only storage URLs in the main doc
         status: 'Active',
+        paymentStatus: formData.totalPaid < formData.totalCharge ? 'pending' : 'paid',
         createdAt: new Date().toISOString(),
         processedBy: auth.currentUser?.email || 'Unknown'
       };
 
       const rentalRef = await addDoc(collection(db, 'rentals'), rentalData);
+
+      // 3.1 Update optional returnNote in booking if it came from booking
+      if (selectedBooking && formData.returnNote) {
+        await updateDoc(doc(db, 'bookings', selectedBooking.id), {
+          returnNote: formData.returnNote
+        });
+      }
 
       // 3a. Store base64 photos in a separate collection to avoid 1MB limit
       const base64Photos = photoUrls.filter(url => url.startsWith('data:'));
@@ -302,7 +315,8 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       // 4. Update Booking Status if exists
       if (selectedBooking) {
         await updateDoc(doc(db, 'bookings', selectedBooking.id), {
-          status: 'Paid'
+          status: 'Paid',
+          paymentStatus: formData.totalPaid < formData.totalCharge ? 'pending' : 'paid'
         });
       }
 
@@ -314,55 +328,35 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         { rentalId: rentalRef.id, customerId }
       );
 
-      // 6. Send Confirmation Email via Trigger Email extension
+      // 6. Send Templated Confirmation Email
       const carName = cars.find(c => c.id === formData.carId)?.name || 'Vehicle';
-      const emailHtml = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; rounded: 20px;">
-          <h2 style="color: #FF5C00;">Rental Confirmation</h2>
-          <p>Dear ${formData.customerName},</p>
-          <p>Thank you for choosing Pattaya Rent a Car. Your rental has been processed successfully.</p>
-          
-          <div style="background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0;">
-            <p><strong>Vehicle:</strong> ${carName}</p>
-            <p><strong>Dates:</strong> ${format(new Date(formData.dateOut), 'dd MMM yyyy HH:mm')} to ${format(new Date(formData.dateIn), 'dd MMM yyyy HH:mm')}</p>
-            <p><strong>Total Charge:</strong> ${formData.totalCharge.toLocaleString()} THB</p>
-            <p><strong>Deposit Paid:</strong> ${formData.depositAmount.toLocaleString()} THB</p>
-          </div>
-
-          <h3>Damage Inspection Photos</h3>
-          <p>The following photos were taken at the time of rental for your reference:</p>
-          <div style="display: grid; grid-template-cols: 1fr 1fr; gap: 10px;">
+      const plateNumber = cars.find(c => c.id === formData.carId)?.plateNumber || '';
+      
+      const photoGridHtml = photoUrls.length > 0 ? `
+        <div style="margin-top: 20px;">
+          <h3 style="font-size: 14px; text-transform: uppercase; color: #666;">Damage Inspection Photos</h3>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px;">
             ${photoUrls.map(url => `
-              <div style="margin-bottom: 10px;">
-                <img src="${url}" style="width: 100%; border-radius: 5px; border: 1px solid #ddd;" />
+              <div style="margin-bottom: 5px;">
+                <img src="${url}" style="width: 100%; border-radius: 8px; border: 1px solid #eee;" alt="Car Photo" />
               </div>
             `).join('')}
           </div>
-
-          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #666;">
-            Pattaya Rent a Car<br />
-            Phone: +66 83 077 6928<br />
-            Email: info@pattayarentacar.com
-          </p>
         </div>
-      `;
+      ` : '';
 
-      // Send emails via API
-      console.log('NewRental: Sending emails via API...');
       try {
-        // 1. Send to Customer
-        await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: formData.customerEmail,
-            subject: `Rental Confirmation - ${carName} - Pattaya Rent a Car`,
-            html: emailHtml,
-          }),
+        // 1. Send to Customer using template
+        await sendTemplatedEmail('rental_confirmation', formData.customerEmail, {
+          '{{customer_name}}': formData.customerName,
+          '{{vehicle_model}}': carName,
+          '{{plate_number}}': plateNumber,
+          '{{return_date}}': format(new Date(formData.dateIn), 'dd MMM yyyy HH:mm'),
+          '{{total_price}}': formData.totalCharge.toLocaleString(),
+          '{{photos}}': photoGridHtml
         });
 
-        // 2. Send to Staff
+        // 2. Send to Staff (Simple notification)
         await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -373,41 +367,19 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
             html: `
               <h3>New Rental Processed</h3>
               <p><strong>Customer:</strong> ${formData.customerName}</p>
-              <p><strong>Vehicle:</strong> ${carName}</p>
+              <p><strong>Vehicle:</strong> ${carName} (${plateNumber})</p>
               <p><strong>Processed By:</strong> ${auth.currentUser?.email}</p>
               <p><a href="${window.location.origin}/bookings">View in Dashboard</a></p>
             `,
           }),
         });
-        console.log('NewRental: Emails sent successfully via API');
+
+        console.log('NewRental: Emails handled successfully');
       } catch (emailErr) {
-        console.error('NewRental: Error calling email API:', emailErr);
+        console.error('NewRental: Error handling emails:', emailErr);
       }
 
-      await addDoc(collection(db, 'mail'), {
-        to: formData.customerEmail,
-        message: {
-          subject: `Rental Confirmation - ${carName} - Pattaya Rent a Car`,
-          html: emailHtml,
-        },
-      });
-
-      // Also send a copy to staff
-      await addDoc(collection(db, 'mail'), {
-        to: 'info@pattayarentacar.com',
-        replyTo: formData.customerEmail,
-        message: {
-          subject: `[STAFF] New Rental Processed: ${formData.customerName}`,
-          html: `
-            <h3>New Rental Processed</h3>
-            <p><strong>Customer:</strong> ${formData.customerName}</p>
-            <p><strong>Vehicle:</strong> ${carName}</p>
-            <p><strong>Processed By:</strong> ${auth.currentUser?.email}</p>
-            <p><a href="${window.location.origin}/bookings">View in Dashboard</a></p>
-          `,
-        },
-      });
-
+      // 7. Success log
       toast.success('Rental processed and confirmation email sent!');
       
       onComplete();
@@ -715,16 +687,29 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Deposit (THB)</label>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Total Paid (THB)</label>
                       <div className="relative">
-                        <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500" size={14} />
                         <input
                           type="number"
                           className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none"
-                          value={formData.depositAmount}
-                          onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                          value={formData.totalPaid}
+                          onChange={(e) => setFormData({ ...formData, totalPaid: Number(e.target.value) })}
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Deposit (THB)</label>
+                    <div className="relative">
+                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                      <input
+                        type="number"
+                        className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none"
+                        value={formData.depositAmount}
+                        onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                      />
                     </div>
                   </div>
 
@@ -752,6 +737,16 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                         value={formData.customerPhone}
                         onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                       />
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Return Note</label>
+                        <textarea
+                          rows={2}
+                          value={formData.returnNote}
+                          onChange={(e) => setFormData({ ...formData, returnNote: e.target.value })}
+                          className="w-full p-4 bg-amber-50/50 border border-amber-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none transition-all"
+                          placeholder="e.g. Collect from house, Owes 2000 baht..."
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -865,6 +860,10 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                   <div className="flex justify-between py-3 border-b border-gray-50">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Total Charge</span>
                     <span className="text-sm font-bold text-brand-orange">{formData.totalCharge.toLocaleString()} THB</span>
+                  </div>
+                  <div className="flex justify-between py-3 border-b border-gray-50">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Total Paid</span>
+                    <span className="text-sm font-bold text-emerald-600">{formData.totalPaid.toLocaleString()} THB</span>
                   </div>
                   <div className="flex justify-between py-3 border-b border-gray-50">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Deposit</span>

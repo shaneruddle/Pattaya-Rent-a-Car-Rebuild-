@@ -78,9 +78,11 @@ export interface Booking {
     lng: number;
   };
   deliveryNotes?: string;
+  returnNote?: string;
   deposit?: number;
   isMaintenance?: boolean;
   maintenanceDescription?: string;
+  paymentStatus?: 'paid' | 'pending';
 }
 
 export interface Rental {
@@ -94,6 +96,7 @@ export interface Rental {
   depositAmount: number;
   damagePhotos: string[]; // base64 or URLs
   status: 'Active' | 'Completed' | 'Cancelled';
+  paymentStatus?: 'paid' | 'pending';
   createdAt: string; // ISO string
   processedBy: string; // user email
 }
@@ -226,4 +229,19 @@ export interface ReviewSettings {
   autoReplyEnabled: boolean;
   autoReplyTemplate: string;
   minRatingForAutoReply: number;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  lastUpdated?: string;
+}
+
+export interface AppSettings {
+  id: string; // 'global'
+  bccEmail: string;
+  bankDetails: string;
+  updatedAt?: string;
 }

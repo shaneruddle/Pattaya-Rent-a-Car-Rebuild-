@@ -64,8 +64,7 @@
   }
 
   .virtual-row {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 32px;
+    /* Optimization removed due to rendering issues */
   }
 
   /* Quill Editor Styling */

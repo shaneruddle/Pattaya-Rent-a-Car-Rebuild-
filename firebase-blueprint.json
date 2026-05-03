@@ -97,7 +97,8 @@
             "lng": { "type": "number" }
           }
         },
-        "deliveryNotes": { "type": "string", "description": "Internal notes for the delivery." }
+        "deliveryNotes": { "type": "string", "description": "Internal notes for the delivery." },
+        "returnNote": { "type": "string", "description": "Specific notes for when the car is returned." }
       },
       "required": ["carId", "customerName", "startDate", "endDate", "status"]
     },

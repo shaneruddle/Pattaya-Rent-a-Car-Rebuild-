@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Booking, Car } from '../types';
 import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getYear, isValid, differenceInDays, addDays } from 'date-fns';
-import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, CheckCircle2, Mail, Phone, FileText, DollarSign, ShieldCheck } from 'lucide-react';
+import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, AlertTriangle, CheckCircle2, Mail, Phone, FileText, DollarSign, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { LocationPicker } from './LocationPicker';
@@ -9,6 +9,7 @@ import { DatePickerCustom } from './ui/DatePickerCustom';
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
+import { sendTemplatedEmail } from '../lib/emailUtils';
 
 interface BookingsProps {
   bookings: Booking[];
@@ -23,6 +24,8 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
   // Modal State
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [originalBooking, setOriginalBooking] = useState<Booking | null>(null);
+  const [showExtensionPrompt, setShowExtensionPrompt] = useState<{ booking: Booking, carName: string } | null>(null);
   const [deletingBooking, setDeletingBooking] = useState<Booking | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pickUpTime, setPickUpTime] = useState('09:30');
@@ -112,8 +115,26 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
         { bookingId: editingBooking.id, customerName: editingBooking.customerName }
       );
 
+      // Check if this was an extension
+      const originalEndDate = originalBooking ? parseISO(originalBooking.endDate) : null;
+      const newEndDate = parseISO(editingBooking.endDate);
+      
+      const isExtension = originalEndDate && isValid(originalEndDate) && isValid(newEndDate) && newEndDate > originalEndDate;
+
       toast.success('Booking updated successfully');
+      
+      const updatedBooking = { ...editingBooking };
+      const carName = car?.name || 'Vehicle';
+      
       setEditingBooking(null);
+      setOriginalBooking(null);
+      
+      if (isExtension) {
+        setShowExtensionPrompt({ 
+          booking: updatedBooking, 
+          carName: carName 
+        });
+      }
       
       if (onRefresh) {
         onRefresh();
@@ -124,6 +145,40 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
       toast.error('Failed to update booking');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const handleSendExtensionEmail = async () => {
+    if (!showExtensionPrompt) return;
+    
+    const { booking, carName } = showExtensionPrompt;
+    if (!booking.email) {
+      toast.error('Customer email not found');
+      setShowExtensionPrompt(null);
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const returnDate = format(parseISO(booking.endDate), 'PPP');
+      const totalPrice = booking.amount?.toLocaleString() || '0';
+      
+      await sendTemplatedEmail('extension_acknowledged', booking.email, {
+        '{{customer_name}}': booking.customerName,
+        '{{vehicle_model}}': carName,
+        '{{return_date}}': returnDate,
+        '{{total_price}}': totalPrice
+      });
+      
+      toast.success('Extension confirmation email sent');
+    } catch (error) {
+      console.error('Error sending extension email:', error);
+      toast.error('Email failed to send, but booking was updated');
+    } finally {
+      setIsSendingEmail(false);
+      setShowExtensionPrompt(null);
     }
   };
 
@@ -327,6 +382,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                             </button>
                             <button
                               onClick={() => {
+                                setOriginalBooking(booking);
                                 setEditingBooking(booking);
                                 const start = parseISO(booking.startDate);
                                 const end = parseISO(booking.endDate);
@@ -528,11 +584,20 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                     </div>
                   </div>
                 )}
+                {viewingBooking.returnNote && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">Return Note</p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-[#1A1A1A]/60 leading-relaxed font-medium">
+                      {viewingBooking.returnNote}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-8 bg-[#1A1A1A]/5 flex gap-4">
                 <button
                   onClick={() => {
+                    setOriginalBooking(viewingBooking);
                     setEditingBooking(viewingBooking);
                     setViewingBooking(null);
                   }}
@@ -763,6 +828,17 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                       />
                     </div>
 
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Return Note</label>
+                      <textarea
+                        rows={2}
+                        value={editingBooking.returnNote || ''}
+                        onChange={(e) => setEditingBooking({ ...editingBooking, returnNote: e.target.value })}
+                        className="w-full p-4 bg-amber-50/50 border border-amber-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none"
+                        placeholder="e.g. Collect from house, Owes 2000 baht..."
+                      />
+                    </div>
+
                     {/* Delivery Section */}
                     <div className="space-y-4 pt-4 border-t border-[#1A1A1A]/5">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange">Delivery Information</p>
@@ -873,6 +949,56 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
             </motion.div>
           </div>
         )}
+        {/* Extension Confirmation Prompt */}
+        <AnimatePresence>
+          {showExtensionPrompt && (
+            <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => !isSendingEmail && setShowExtensionPrompt(null)}
+                className="absolute inset-0 bg-[#1A1A1A]/20 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative bg-white/90 backdrop-blur-2xl border border-white/60 w-full max-w-sm rounded-[40px] shadow-2xl p-8 text-center"
+              >
+                <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 mx-auto mb-6">
+                  <Mail size={32} />
+                </div>
+                <h3 className="font-serif italic text-2xl text-[#1A1A1A] mb-2">Booking Extended</h3>
+                <p className="text-[#1A1A1A]/60 text-sm mb-8 leading-relaxed">
+                  Would you like to send a confirmation email for this extension to <span className="font-bold text-[#1A1A1A]">{showExtensionPrompt.booking.customerName}</span>?
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setShowExtensionPrompt(null)}
+                    disabled={isSendingEmail}
+                    className="bg-white border border-[#1A1A1A]/10 text-[#1A1A1A] py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-[#1A1A1A]/5 transition-all disabled:opacity-50"
+                  >
+                    Skip
+                  </button>
+                  <button
+                    onClick={handleSendExtensionEmail}
+                    disabled={isSendingEmail}
+                    className="bg-blue-500 text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isSendingEmail ? (
+                      <Clock className="animate-spin" size={14} />
+                    ) : (
+                      <Mail size={14} />
+                    )}
+                    Send Email
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
       </AnimatePresence>
     </div>
   );

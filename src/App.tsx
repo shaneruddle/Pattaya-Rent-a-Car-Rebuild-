@@ -28,6 +28,7 @@ import { ImageManagement } from './components/ImageManagement';
 import { MarketingFAQ } from './components/MarketingFAQ';
 import { BlogManager } from './components/BlogManager';
 import { LiveEnquiries } from './components/LiveEnquiries';
+import { EmailTemplates } from './components/EmailTemplates';
 import { AIAssistant } from './components/AIAssistant';
 import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -76,7 +77,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -107,12 +108,12 @@ function AppContent() {
   });
 
   const isStaff = useMemo(() => {
-    const email = user?.email?.toLowerCase().trim();
+    const email = user?.email?.toLowerCase()?.trim() || '';
     return email?.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
 
   const isAdmin = useMemo(() => {
-    const email = user?.email?.toLowerCase();
+    const email = user?.email?.toLowerCase() || '';
     return [
       'info@pattayarentacar.com',
       'gift@pattayarentacar.com',
@@ -173,10 +174,6 @@ function AppContent() {
     // Cache for 10 minutes to save quota
     const CACHE_DURATION = 10 * 60 * 1000;
     
-    // Using a ref or a functional state update wouldn't work easily here
-    // with the current structure. Let's just use the current values at call time.
-    // We can use a guard inside to check against the global state.
-    
     // Using localStorage directly for the check prevents the dependency loop with lastDataFetch state
     const lastFetch = Number(safeLocalStorage.getItem('prac_last_fetch') || 0);
     const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
@@ -185,14 +182,9 @@ function AppContent() {
       const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
       if (cachedCars) {
         console.log('AppContent: Using cached data to save reads');
-        // We still set state to ensure UI is in sync, but we don't fetch from network
         try {
           const parsedCars = JSON.parse(cachedCars);
-          const parsedBookings = JSON.parse(safeLocalStorage.getItem('prac_cached_bookings') || '[]');
-          const parsedLogs = JSON.parse(safeLocalStorage.getItem('prac_cached_logs') || '[]');
           setCars(parsedCars);
-          setBookings(parsedBookings);
-          setLogs(parsedLogs);
           return;
         } catch (e) {
           console.error('Error parsing cached data:', e);
@@ -202,23 +194,13 @@ function AppContent() {
 
     try {
       console.log('AppContent: Fetching fresh data from Firestore...');
-      const carsQuery = query(collection(db, 'cars'), orderBy('order', 'asc'));
+      const carsQuery = collection(db, 'cars');
       const carsSnapshot = await safeGetDocs(carsQuery);
       
       const carsData = carsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Car));
       const sortedCars = carsData.sort((a, b) => (a.order || 0) - (b.order || 0));
       console.log(`AppContent: Fetched ${sortedCars.length} cars`);
       setCars(sortedCars);
-
-      // Fetch all bookings (limited to 500) to ensure we see data
-      const bookingsQuery = query(
-        collection(db, 'bookings'), 
-        limit(500)
-      );
-      
-      const bookingsSnapshot = await safeGetDocs(bookingsQuery);
-      const bookingsData = bookingsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking));
-      setBookings(bookingsData);
   
       setConnectionStatus('online');
   
@@ -228,7 +210,6 @@ function AppContent() {
         setLastError(null);
         safeLocalStorage.setItem('prac_last_fetch', now.toString(), true);
         safeLocalStorage.setItem('prac_cached_cars', JSON.stringify(sortedCars), true);
-        safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
       } catch (error: any) {
       console.error('Error fetching initial data:', error);
       const errorMessage = error.message || String(error);
@@ -258,7 +239,7 @@ function AppContent() {
           'info@pattayarentacar.com',
           'gift@pattayarentacar.com',
           'rak@pattayarentacar.com'
-        ].includes(user.email?.toLowerCase() || '');
+        ].includes(user?.email?.toLowerCase() || '');
 
         if (!docSnap.exists()) {
           console.log('Creating user document for:', user.email);
@@ -284,8 +265,28 @@ function AppContent() {
     };
     ensureUserDoc();
 
-    console.log('Fetching data for user:', user.email);
+    console.log('Fetching cars and setting up bookings listener for user:', user.email);
     fetchData();
+
+    // Set up real-time bookings listener
+    const bookingsQuery = query(
+      collection(db, 'bookings'), 
+      orderBy('startDate', 'desc'),
+      limit(500)
+    );
+
+    const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
+      const bookingsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking));
+      setBookings(bookingsData);
+      safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
+    }, (error) => {
+      console.error("Bookings listener error:", error);
+      handleFirestoreError(error, OperationType.GET, 'bookings');
+    });
+
+    return () => {
+      unsubscribeBookings();
+    };
   }, [user, isStaff, fetchData]);
 
   useEffect(() => {
@@ -321,10 +322,12 @@ function AppContent() {
 
   const filteredBookings = useMemo(() => {
     const result = bookings.filter(booking => {
+      const name = booking.customerName || '';
+      const mobile = booking.mobileNumber || '';
       // Search query (Customer Name or Mobile)
       const matchesSearch = 
-        booking.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (booking.mobileNumber && booking.mobileNumber.includes(searchQuery));
+        (name?.toLowerCase() || '').includes(searchQuery?.toLowerCase() || '') ||
+        (mobile?.includes(searchQuery) || false);
       
       return matchesSearch;
     });
@@ -585,7 +588,11 @@ function AppContent() {
                 onNewBooking={() => setNewBookingTrigger(prev => prev + 1)}
               />
               <Timeline
-                cars={cars.filter(c => (currentView === 'timeline_cars' ? c.category === 'Car' : c.category === 'Motorbike') && c.isActive !== false)}
+                cars={cars.filter(c => {
+                  const cat = (c.category || 'Car')?.toLowerCase() || '';
+                  const targetCat = currentView === 'timeline_cars' ? 'car' : 'motorbike';
+                  return cat === targetCat && c.isActive !== false;
+                })}
                 bookings={filteredBookings}
                 currentDate={currentDate}
                 newBookingTrigger={newBookingTrigger}
@@ -627,6 +634,8 @@ function AppContent() {
             <CRM />
           ) : currentView === 'user_management' ? (
             <UserManagement />
+          ) : currentView === 'email_templates' ? (
+            <EmailTemplates />
           ) : currentView === 'logs' ? (
             <Logs logs={logs} />
           ) : currentView === 'new_rental' ? (

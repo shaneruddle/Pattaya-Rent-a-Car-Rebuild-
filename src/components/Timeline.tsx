@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft } from 'lucide-react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
+import { sendTemplatedEmail } from '../lib/emailUtils';
 import { DayPicker, DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import { LocationPicker } from './LocationPicker';
@@ -32,12 +33,11 @@ interface CarRowProps {
   handleRowClick: (e: React.MouseEvent, carId: string) => void;
   handleRowContextMenu: (e: React.MouseEvent, carId: string) => void;
   getBookingStyle: (booking: Booking) => any;
-  handleMouseEnterBooking: (booking: Booking, e: React.MouseEvent) => void;
-  handleMouseLeaveBooking: () => void;
-  handleBookingClick: (booking: Booking) => void;
+  handleBookingBarClick: (booking: Booking, e: React.MouseEvent) => void;
   handleBookingContextMenu: (e: React.MouseEvent, booking: Booking) => void;
   getCarTypeStyles: (type: string) => any;
   onManageBooking: (booking: Booking) => void;
+  onQuickNoteEdit: (booking: Booking, field: 'deliveryNotes' | 'returnNote', rect: DOMRect) => void;
 }
 
 const ManageRentalModal: React.FC<{
@@ -81,42 +81,20 @@ const ManageRentalModal: React.FC<{
       }
 
       // 3. Send Email
-      const emailHtml = `
-        <div style="font-family: serif; padding: 40px; background-color: #f9f7f2; color: #1a1a1a;">
-          <h1 style="italic; font-size: 24px;">Rental Return Confirmation</h1>
-          <p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10px; font-weight: bold; color: #666;">Pattaya Rent a Car</p>
-          <div style="margin-top: 40px; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
-            <p>Dear <strong>${booking.customerName}</strong>,</p>
-            <p>Thank you for choosing Pattaya Rent a Car. Your rental of <strong>${carName}</strong> has been successfully completed.</p>
-            ${extraCharges > 0 ? `
-              <div style="margin-top: 20px; padding: 20px; background: #fff5f0; border-radius: 12px; border-left: 4px solid #ff5a00;">
-                <p style="margin: 0; font-weight: bold; color: #ff5a00;">Extra Charges Applied</p>
-                <p style="margin: 5px 0 0 0; font-size: 18px;">${extraCharges.toLocaleString()} THB</p>
-                <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.6;">Reason: ${extraReason}</p>
-              </div>
-            ` : ''}
-            <p style="margin-top: 30px;">We hope you had a pleasant experience. See you again soon!</p>
-          </div>
-        </div>
-      `;
+      try {
+        const carSnap = await getDoc(doc(db, 'cars', booking.carId));
+        const plateNumber = carSnap.exists() ? carSnap.data().plateNumber : '';
 
-      await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: booking.email || 'info@pattayarentacar.com',
-          subject: `Rental Return Confirmation - ${carName} - Pattaya Rent a Car`,
-          html: emailHtml,
-        }),
-      });
-
-      await addDoc(collection(db, 'mail'), {
-        to: booking.email || 'info@pattayarentacar.com',
-        message: {
-          subject: `Rental Return Confirmation - ${carName} - Pattaya Rent a Car`,
-          html: emailHtml,
-        }
-      });
+        await sendTemplatedEmail('return_confirmation', booking.email || 'info@pattayarentacar.com', {
+          '{{customer_name}}': booking.customerName,
+          '{{vehicle_model}}': carName,
+          '{{plate_number}}': plateNumber,
+          '{{total_price}}': extraCharges > 0 ? extraCharges.toLocaleString() : (booking.amount || 0).toLocaleString(),
+        });
+      } catch (emailError) {
+        console.error('Failed to send templated email:', emailError);
+        // Fallback or just ignore if it's secondary
+      }
 
       toast.success('Email Sent & Calendar Updated');
       onRefresh();
@@ -137,7 +115,8 @@ const ManageRentalModal: React.FC<{
 
       // 1. Update Booking
       await updateDoc(doc(db, 'bookings', booking.id), {
-        endDate: newEndDate.toISOString()
+        endDate: newEndDate.toISOString(),
+        paymentStatus: 'pending'
       });
 
       // 2. Log Income to Finance
@@ -158,40 +137,16 @@ const ManageRentalModal: React.FC<{
       }
 
       // 3. Send Email
-      const emailHtml = `
-        <div style="font-family: serif; padding: 40px; background-color: #f9f7f2; color: #1a1a1a;">
-          <h1 style="italic; font-size: 24px;">Rental Extension Acknowledged</h1>
-          <p style="text-transform: uppercase; letter-spacing: 2px; font-size: 10px; font-weight: bold; color: #666;">Pattaya Rent a Car</p>
-          <div style="margin-top: 40px; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
-            <p>Dear <strong>${booking.customerName}</strong>,</p>
-            <p>Your rental of <strong>${carName}</strong> has been extended by <strong>${extensionDays} day(s)</strong>.</p>
-            <div style="margin-top: 20px; padding: 20px; background: #f0fdf4; border-radius: 12px; border-left: 4px solid #10b981;">
-              <p style="margin: 0; font-weight: bold; color: #10b981;">New Return Date</p>
-              <p style="margin: 5px 0 0 0; font-size: 18px;">${format(newEndDate, 'PPP p')}</p>
-              <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.6;">Payment Received: ${extensionPayment.toLocaleString()} THB</p>
-            </div>
-            <p style="margin-top: 30px;">Thank you for your business!</p>
-          </div>
-        </div>
-      `;
-
-      await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: booking.email || 'info@pattayarentacar.com',
-          subject: `Rental Extension Acknowledged - ${carName} - Pattaya Rent a Car`,
-          html: emailHtml,
-        }),
-      });
-
-      await addDoc(collection(db, 'mail'), {
-        to: booking.email || 'info@pattayarentacar.com',
-        message: {
-          subject: `Rental Extension Acknowledged - ${carName} - Pattaya Rent a Car`,
-          html: emailHtml,
-        }
-      });
+      try {
+        await sendTemplatedEmail('extension_acknowledged', booking.email || 'info@pattayarentacar.com', {
+          '{{customer_name}}': booking.customerName,
+          '{{vehicle_model}}': carName,
+          '{{return_date}}': format(newEndDate, 'PPP p'),
+          '{{total_price}}': extensionPayment.toLocaleString(),
+        });
+      } catch (emailError) {
+        console.error('Failed to send templated email:', emailError);
+      }
 
       toast.success('Email Sent & Calendar Updated');
       onRefresh();
@@ -357,7 +312,7 @@ const ManageRentalModal: React.FC<{
 };
 
 const getBrandSlug = (name: string) => {
-  const n = name.toLowerCase();
+  const n = (name || '').toLowerCase();
   if (n.includes('toyota')) return 'toyota';
   if (n.includes('honda')) return 'honda';
   if (n.includes('ford')) return 'ford';
@@ -367,6 +322,7 @@ const getBrandSlug = (name: string) => {
 };
 
 const cleanCarName = (name: string) => {
+  if (!name) return '';
   return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
 };
 
@@ -377,12 +333,11 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
   handleRowClick,
   handleRowContextMenu,
   getBookingStyle,
-  handleMouseEnterBooking,
-  handleMouseLeaveBooking,
-  handleBookingClick,
+  handleBookingBarClick,
   handleBookingContextMenu,
   getCarTypeStyles,
-  onManageBooking
+  onManageBooking,
+  onQuickNoteEdit
 }) => {
   const typeStyles = getCarTypeStyles(car.type || car.category || '');
   
@@ -418,7 +373,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
               {displayName}
             </span>
             <span className="text-[9px] text-[#1A1A1A]/40 font-medium shrink-0">
-              {car.yearOfManufacture && car.yearOfManufacture.toString().slice(-4)}
+              {car.yearOfManufacture ? car.yearOfManufacture.toString().slice(-4) : ''}
             </span>
             {car.engineSize && (
               <span className="text-[8px] text-[#1A1A1A]/40 font-medium shrink-0">
@@ -446,9 +401,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
           return (
               <div
               key={booking.id}
-              onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
-              onMouseLeave={handleMouseLeaveBooking}
-              onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
+              onClick={(e) => handleBookingBarClick(booking, e)}
               onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
               className={cn(
                 "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
@@ -456,28 +409,60 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
               )}
               style={style || {}}
             >
-              <div className="flex items-center justify-between w-full h-full relative overflow-hidden">
-                <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 flex items-center gap-1",
-                  booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
-                )}>
-                  {!booking.isMaintenance && booking.notes && booking.notes.trim() !== '' && (
-                    <FileText size={10} className="shrink-0 opacity-60" />
-                  )}
-                  {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
-                </span>
-                
+              <div className="flex items-center w-full h-full relative">
                 {!booking.isMaintenance && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onManageBooking(booking);
+                      onQuickNoteEdit(booking, 'deliveryNotes', e.currentTarget.getBoundingClientRect());
                     }}
-                    className="opacity-0 group-hover/booking:opacity-100 p-0.5 bg-white/40 hover:bg-white/60 rounded-md transition-all shadow-sm ml-1"
-                    title="Manage Rental"
+                    className={cn(
+                      "absolute left-1 z-20 p-0.5 rounded transition-all shadow-sm flex items-center justify-center",
+                      booking.deliveryNotes?.trim() 
+                        ? "text-emerald-700 bg-white ring-1 ring-emerald-500/50" 
+                        : "text-[#1A1A1A]/40 bg-white/40 ring-1 ring-black/5"
+                    )}
+                    title="Start Note"
                   >
-                    <Settings size={10} className="text-[#1A1A1A]" />
+                    <Clipboard size={10} />
                   </button>
+                )}
+
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 min-w-0 text-left pl-6 pr-12",
+                  booking.isMaintenance ? "text-white/90" : (booking.paymentStatus === 'pending' ? "text-black" : "text-[#1A1A1A]")
+                )}>
+                  {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                </span>
+                
+                {!booking.isMaintenance && (
+                  <div className="absolute right-1 z-20 flex items-center gap-0.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onQuickNoteEdit(booking, 'returnNote', e.currentTarget.getBoundingClientRect());
+                      }}
+                      className={cn(
+                        "p-0.5 rounded transition-all shadow-sm flex items-center justify-center",
+                        booking.returnNote?.trim() 
+                          ? "text-amber-700 bg-white ring-1 ring-amber-500/50" 
+                          : "text-[#1A1A1A]/40 bg-white/40 ring-1 ring-black/5"
+                      )}
+                      title="End Note"
+                    >
+                      <AlertTriangle size={10} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onManageBooking(booking);
+                      }}
+                      className="p-0.5 bg-white/60 hover:bg-white rounded-md transition-all shadow-sm border border-black/5"
+                      title="Manage Rental"
+                    >
+                      <Settings size={10} className="text-[#1A1A1A]" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -488,7 +473,131 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
   );
 });
 
+const QuickNotePopup: React.FC<{
+  booking: Booking;
+  field: 'deliveryNotes' | 'returnNote';
+  rect: DOMRect;
+  onSave: (notes: string) => Promise<void>;
+  onClose: () => void;
+}> = ({ booking, field, rect, onSave, onClose }) => {
+  const [value, setValue] = useState(booking[field] || '');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const lastSavedValue = useRef(booking[field] || '');
+  
+  // Debounce save
+  useEffect(() => {
+    if (value === lastSavedValue.current) return;
+    
+    const timer = setTimeout(() => {
+      saveData(value);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  const saveData = async (newValue: string) => {
+    if (newValue === lastSavedValue.current) return;
+    setStatus('saving');
+    try {
+      await onSave(newValue);
+      lastSavedValue.current = newValue;
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2000);
+    } catch (error) {
+      setStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.quick-note-popup')) {
+        // Save one last time on close if needed
+        if (value !== lastSavedValue.current) {
+          saveData(value).finally(onClose);
+        } else {
+          onClose();
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose, value]);
+
+  return (
+    <div 
+      className="fixed z-[100] quick-note-popup bg-white shadow-2xl rounded-xl border border-black/10 p-3 w-64 animate-in fade-in zoom-in duration-200"
+      style={{ 
+        top: `${rect.bottom + 8}px`,
+        left: `${Math.min(window.innerWidth - 264, Math.max(8, rect.left - 110))}px`
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className={cn(
+            "w-6 h-6 rounded-lg flex items-center justify-center",
+            field === 'deliveryNotes' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+          )}>
+            {field === 'deliveryNotes' ? <Clipboard size={14} /> : <AlertTriangle size={14} />}
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+            {field === 'deliveryNotes' ? 'Start Note' : 'End Note'}
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-1">
+          {status === 'saving' && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 animate-pulse">
+              <Loader2 size={10} className="animate-spin" />
+              <span className="text-[8px] font-bold uppercase tracking-wider">Saving</span>
+            </div>
+          )}
+          {status === 'saved' && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+              <Check size={10} />
+              <span className="text-[8px] font-bold uppercase tracking-wider">Saved</span>
+            </div>
+          )}
+          {status === 'error' && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-100">
+              <AlertCircle size={10} />
+              <span className="text-[8px] font-bold uppercase tracking-wider">Failed</span>
+            </div>
+          )}
+        </div>
+      </div>
+      <textarea
+        autoFocus
+        className="w-full h-24 text-xs p-2 bg-gray-50 rounded-lg border border-transparent focus:border-brand-orange/30 outline-none resize-none transition-all"
+        placeholder={`Add a ${field === 'deliveryNotes' ? 'start' : 'end'} note...`}
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={() => saveData(value)}
+      />
+    </div>
+  );
+};
+
 export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], currentDate, newBookingTrigger, onLogIncome, onRefresh, title = "Car Fleet" }) => {
+  const [quickNoteEdit, setQuickNoteEdit] = useState<{
+    booking: Booking;
+    field: 'deliveryNotes' | 'returnNote';
+    rect: DOMRect;
+  } | null>(null);
+
+  const handleQuickNoteSave = async (notes: string) => {
+    if (!quickNoteEdit) return;
+    try {
+      await updateDoc(doc(db, 'bookings', quickNoteEdit.booking.id), {
+        [quickNoteEdit.field]: notes
+      });
+      // We don't close the popup here to allow continuous editing with feedback
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${quickNoteEdit.booking.id}`);
+      throw error;
+    }
+  };
+
   const [selectedSlot, setSelectedSlot] = useState<{ carId: string; date: Date; slot: 'AM' | 'PM' } | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -503,9 +612,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     notes: '',
     deliveryAddress: '',
     deliveryNotes: '',
+    returnNote: '',
     deliveryLocation: undefined,
     isMaintenance: false,
-    maintenanceDescription: ''
+    maintenanceDescription: '',
+    paymentStatus: 'paid'
   });
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -521,11 +632,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const [isVehicleDropdownOpen, setIsVehicleDropdownOpen] = useState(false);
 
   const filteredFleet = useMemo(() => {
-    const query = vehicleSearchQuery.toLowerCase();
+    const query = (vehicleSearchQuery || '').toLowerCase();
     if (!query) return cars.slice(0, 10);
     return cars
       .filter(car => {
-        const name = car.name.toLowerCase();
+        const name = (car.name || '').toLowerCase();
         const model = (car.model || '').toLowerCase();
         const make = (car.make || '').toLowerCase();
         const plate = (car.plateNumber || '').toLowerCase();
@@ -558,6 +669,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       }
       if (vehicleSuggestionsRef.current && !vehicleSuggestionsRef.current.contains(event.target as Node)) {
         setIsVehicleDropdownOpen(false);
+      }
+      // Click outside to close summary
+      const target = event.target as HTMLElement;
+      if (summaryBookingInfo && !target.closest('.booking-summary-popover') && !target.closest('.booking-bar')) {
+        setSummaryBookingInfo(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -725,9 +841,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const search = formData.customerName?.toLowerCase() || '';
     if (!search || !showCustomerSuggestions) return [];
     return customers.filter(c => 
-      c.firstName.toLowerCase().includes(search) ||
-      c.lastName?.toLowerCase().includes(search) ||
-      c.email.toLowerCase().includes(search)
+      (c.firstName || '').toLowerCase().includes(search) ||
+      (c.lastName || '').toLowerCase().includes(search) ||
+      (c.email || '').toLowerCase().includes(search)
     ).slice(0, 5);
   }, [customers, formData.customerName, showCustomerSuggestions]);
 
@@ -758,12 +874,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const activeCarsCount = cars.filter(c => c.isActive !== false).length;
     return visibleDays.map(day => {
       const amStart = new Date(day);
-      amStart.setHours(9, 0, 0, 0);
+      amStart.setHours(0, 0, 0, 0);
       const amEnd = new Date(day);
-      amEnd.setHours(13, 59, 59, 999);
+      amEnd.setHours(11, 59, 59, 999);
 
       const pmStart = new Date(day);
-      pmStart.setHours(14, 0, 0, 0);
+      pmStart.setHours(12, 0, 0, 0);
       const pmEnd = new Date(day);
       pmEnd.setHours(23, 59, 59, 999);
 
@@ -1040,37 +1156,52 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   };
 
   // Tooltip Logic
-  const [hoveredBooking, setHoveredBooking] = useState<{ booking: Booking; x: number; y: number } | null>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [summaryBookingInfo, setSummaryBookingInfo] = useState<{ id: string; x: number; y: number } | null>(null);
+  
+  const summaryBooking = useMemo(() => {
+    if (!summaryBookingInfo) return null;
+    const b = bookings.find(x => x.id === summaryBookingInfo.id);
+    if (!b) return null;
+    return { booking: b, x: summaryBookingInfo.x, y: summaryBookingInfo.y };
+  }, [bookings, summaryBookingInfo]);
 
-  const handleMouseEnterBooking = React.useCallback((booking: Booking, e: React.MouseEvent) => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
+  const handleBookingBarClick = (booking: Booking, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Capture state immediately
     const rect = e.currentTarget.getBoundingClientRect();
-    setHoveredBooking({ 
-      booking, 
+    setSummaryBookingInfo({ 
+      id: booking.id, 
       x: rect.left, 
       y: rect.bottom 
     });
-  }, []);
+  };
 
-  const handleMouseLeaveBooking = React.useCallback(() => {
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredBooking(null);
-    }, 300); // 300ms delay to allow moving mouse to tooltip
-  }, []);
-
-  const handleMouseEnterTooltip = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
+  const handleOpenManageModal = (booking: Booking) => {
+    setEditingBooking(booking);
+    setFormData({ 
+      ...booking,
+      deliveryAddress: booking.deliveryAddress || '',
+      deliveryNotes: booking.deliveryNotes || '',
+      deliveryLocation: booking.deliveryLocation,
+      isMaintenance: booking.isMaintenance || false,
+      maintenanceDescription: booking.maintenanceDescription || ''
+    });
+    setModalMode('view');
+    setShowDeleteConfirm(false);
+    const start = parseISO(booking.startDate);
+    const end = parseISO(booking.endDate);
+    setPickUpTime(format(start, 'HH:mm'));
+    setDropOffTime(format(end, 'HH:mm'));
+    setDateRange({ 
+      from: start, 
+      to: end 
+    });
+    setIsModalOpen(true);
   };
 
   const getCarTypeStyles = (type: string) => {
-    const t = type.toLowerCase();
+    const t = (type || '').toLowerCase();
     if (t.includes('economy') || t.includes('small')) return { color: 'text-blue-500', bg: 'bg-blue-500', icon: CarIconType };
     if (t.includes('sedan') || t.includes('medium')) return { color: 'text-emerald-500', bg: 'bg-emerald-500', icon: CarIconType };
     if (t.includes('suv') || t.includes('large')) return { color: 'text-purple-500', bg: 'bg-purple-500', icon: CarIconType };
@@ -1086,8 +1217,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     
     if (!isValid(start) || !isValid(end)) return null;
 
-    const timelineStart = visibleDays[0];
-    const timelineEnd = visibleDays[visibleDays.length - 1];
+    const timelineStart = startOfDay(visibleDays[0]);
+    const timelineEnd = endOfDay(visibleDays[visibleDays.length - 1]);
 
     // Filter bookings that overlap with visible range
     if (end < timelineStart || start > timelineEnd) return null;
@@ -1095,9 +1226,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const visibleStart = start < timelineStart ? timelineStart : start;
     const visibleEnd = end > timelineEnd ? timelineEnd : end;
 
-    const startDayIdx = differenceInDays(visibleStart, timelineStart);
-    const startSlot = visibleStart.getHours() >= 14 ? 1 : 0;
-    const totalSlots = differenceInDays(visibleEnd, visibleStart) * 2 + (visibleEnd.getHours() >= 14 ? 1 : 0) - (visibleStart.getHours() >= 14 ? 1 : 0);
+    const startDayIdx = differenceInDays(startOfDay(visibleStart), timelineStart);
+    const startSlot = visibleStart.getHours() >= 12 ? 1 : 0;
+    
+    const endDayIdx = differenceInDays(startOfDay(visibleEnd), timelineStart);
+    const endSlot = visibleEnd.getHours() >= 12 ? 1 : 0;
+    
+    const startSlotIdx = startDayIdx * 2 + startSlot;
+    const endSlotIdx = endDayIdx * 2 + endSlot;
+    const totalSlots = Math.max(endSlotIdx - startSlotIdx + 1, 1);
 
     const isFutureBooking = isFuture(start);
     const isUnpaid = start < new Date() && booking.status !== 'Paid';
@@ -1106,6 +1243,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     
     if (booking.isMaintenance) {
       bgColor = '#4B5563'; // Dark Grey (gray-600)
+    } else if (booking.paymentStatus === 'pending') {
+      bgColor = '#FACC15'; // Yellow (yellow-400)
     } else if (booking.status === 'Paid') {
       bgColor = '#10B981'; // Green (emerald-500)
     } else if (isUnpaid) {
@@ -1117,8 +1256,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     }
 
     return {
-      left: `${(startDayIdx * 2 + startSlot) * 36}px`,
-      width: `${Math.max(totalSlots, 1) * 36}px`,
+      left: `${startSlotIdx * 36}px`,
+      width: `${totalSlots * 36}px`,
       backgroundColor: bgColor
     };
   };
@@ -1132,13 +1271,16 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     return { day: visibleDays[dayIdx], slot: (isPM ? 'PM' : 'AM') as 'AM' | 'PM' };
   };
 
-  const handleRowClick = useCallback((e: React.MouseEvent, carId: string) => {
+  const handleRowClick = useCallback((e: React.MouseEvent, _carId: string) => {
     const target = e.target as HTMLElement;
     // Don't trigger if clicking a booking bar
     if (target.closest('.booking-bar')) return;
-    const { day, slot } = getSlotFromEvent(e);
-    handleSlotClick(carId, day, slot);
-  }, [visibleDays, handleSlotClick]);
+    
+    // Close summary if open
+    if (summaryBookingInfo) {
+      setSummaryBookingInfo(null);
+    }
+  }, [summaryBookingInfo]);
 
   const handleRowContextMenu = useCallback((e: React.MouseEvent, carId: string) => {
     const target = e.target as HTMLElement;
@@ -1278,9 +1420,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   return (
                     <div
                       key={booking.id}
-                      onMouseEnter={(e) => handleMouseEnterBooking(booking, e)}
-                      onMouseLeave={handleMouseLeaveBooking}
-                      onClick={(e) => { e.stopPropagation(); handleBookingClick(booking); }}
+                      onClick={(e) => handleBookingBarClick(booking, e)}
                       onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
                       className={cn(
                         "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
@@ -1288,29 +1428,69 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       )}
                       style={style || {}}
                     >
-                      <div className="flex items-center justify-between w-full h-full relative overflow-hidden">
-                        <span className={cn(
-                          "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 flex items-center gap-1",
-                          booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
-                        )}>
-                          {!booking.isMaintenance && booking.notes && booking.notes.trim() !== '' && (
-                            <FileText size={10} className="shrink-0 opacity-60" />
-                          )}
-                          {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
-                        </span>
-                        
+                      <div className="flex items-center w-full h-full relative">
                         {!booking.isMaintenance && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setManageBooking(booking);
-                              setIsManageModalOpen(true);
+                              setQuickNoteEdit({
+                                booking,
+                                field: 'deliveryNotes',
+                                rect: e.currentTarget.getBoundingClientRect()
+                              });
                             }}
-                            className="opacity-0 group-hover/booking:opacity-100 p-0.5 bg-white/40 hover:bg-white/60 rounded-md transition-all shadow-sm ml-1"
-                            title="Manage Rental"
+                            className={cn(
+                              "absolute left-1 z-20 p-0.5 rounded transition-all shadow-sm flex items-center justify-center",
+                              booking.deliveryNotes?.trim() 
+                                ? "text-emerald-700 bg-white ring-1 ring-emerald-500/50" 
+                                : "text-[#1A1A1A]/40 bg-white/40 ring-1 ring-black/5"
+                            )}
+                            title="Start Note"
                           >
-                            <Settings size={10} className="text-[#1A1A1A]" />
+                            <Clipboard size={10} />
                           </button>
+                        )}
+
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 min-w-0 text-left pl-6 pr-12",
+                          booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
+                        )}>
+                          {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                        </span>
+                        
+                        {!booking.isMaintenance && (
+                          <div className="absolute right-1 z-20 flex items-center gap-0.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuickNoteEdit({
+                                  booking,
+                                  field: 'returnNote',
+                                  rect: e.currentTarget.getBoundingClientRect()
+                                });
+                              }}
+                              className={cn(
+                                "p-0.5 rounded transition-all shadow-sm flex items-center justify-center",
+                                booking.returnNote?.trim() 
+                                  ? "text-amber-700 bg-white ring-1 ring-amber-500/50" 
+                                  : "text-[#1A1A1A]/40 bg-white/40 ring-1 ring-black/5"
+                              )}
+                              title="End Note"
+                            >
+                              <AlertTriangle size={10} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setManageBooking(booking);
+                                setIsManageModalOpen(true);
+                              }}
+                              className="p-0.5 bg-white/60 hover:bg-white rounded-md transition-all shadow-sm border border-black/5"
+                              title="Manage Rental"
+                            >
+                              <Settings size={10} className="text-[#1A1A1A]" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1320,26 +1500,41 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
             </div>
 
             <div className="relative">
-              {sortedCars.map(car => (
-                <CarRow
-                  key={car.id}
-                  car={car}
-                  daysInMonth={visibleDays}
-                  bookings={bookings}
-                  handleRowClick={handleRowClick}
-                  handleRowContextMenu={handleRowContextMenu}
-                  getBookingStyle={getBookingStyle}
-                  handleMouseEnterBooking={handleMouseEnterBooking}
-                  handleMouseLeaveBooking={handleMouseLeaveBooking}
-                  handleBookingClick={handleBookingClick}
-                  handleBookingContextMenu={handleBookingContextMenu}
-                  getCarTypeStyles={getCarTypeStyles}
-                  onManageBooking={(booking) => {
-                    setManageBooking(booking);
-                    setIsManageModalOpen(true);
-                  }}
-                />
-              ))}
+              {cars.length === 0 ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="bg-white/40 backdrop-blur-md p-8 border border-white/60 rounded-[32px] flex flex-col items-center gap-4 shadow-xl max-w-sm text-center">
+                    <div className="w-16 h-16 bg-brand-orange/10 rounded-2xl flex items-center justify-center">
+                      <TruckIcon size={32} className="text-brand-orange/20" />
+                    </div>
+                    <h3 className="font-serif italic text-lg text-[#1A1A1A]">No Vehicles Found</h3>
+                    <p className="text-xs text-[#1A1A1A]/40 leading-relaxed uppercase tracking-widest font-bold">
+                      There are no active {(title?.toLowerCase() || 'vehicles')} in this category.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                sortedCars.map(car => (
+                  <CarRow
+                    key={car.id}
+                    car={car}
+                    daysInMonth={visibleDays}
+                    bookings={bookings}
+                    handleRowClick={handleRowClick}
+                    handleRowContextMenu={handleRowContextMenu}
+                    getBookingStyle={getBookingStyle}
+                    handleBookingBarClick={handleBookingBarClick}
+                    handleBookingContextMenu={handleBookingContextMenu}
+                    getCarTypeStyles={getCarTypeStyles}
+                    onManageBooking={(booking) => {
+                      setManageBooking(booking);
+                      setIsManageModalOpen(true);
+                    }}
+                    onQuickNoteEdit={(booking, field, rect) => {
+                      setQuickNoteEdit({ booking, field, rect });
+                    }}
+                  />
+                ))
+              )}
             </div>
             {bookings.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -1354,17 +1549,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       </div>
 
       <AnimatePresence>
-        {hoveredBooking && (
+        {summaryBooking && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            onMouseEnter={handleMouseEnterTooltip}
-            onMouseLeave={handleMouseLeaveBooking}
-            className="fixed z-[200]"
+            className="fixed z-[200] booking-summary-popover"
             style={{
-              left: hoveredBooking.x,
-              top: hoveredBooking.y + 10,
+              left: Math.min(window.innerWidth - 300, Math.max(16, summaryBooking.x)),
+              top: summaryBooking.y + 10,
               transform: 'translateY(0)'
             }}
           >
@@ -1372,47 +1565,59 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h4 className="text-sm font-bold text-[#1A1A1A]">
-                    {hoveredBooking.booking.isMaintenance ? (
+                    {summaryBooking.booking.isMaintenance ? (
                       <span className="flex items-center gap-2">
                         <Wrench size={14} className="text-gray-600" /> Maintenance
                       </span>
-                    ) : hoveredBooking.booking.customerName}
+                    ) : summaryBooking.booking.customerName}
                   </h4>
-                  {hoveredBooking.booking.isMaintenance ? (
+                  {summaryBooking.booking.isMaintenance ? (
                     <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
-                      {hoveredBooking.booking.maintenanceDescription}
+                      {summaryBooking.booking.maintenanceDescription}
                     </p>
                   ) : (
-                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{hoveredBooking.booking.email || 'No email'}</p>
+                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{summaryBooking.booking.email || 'No email'}</p>
                   )}
                   <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
-                    {hoveredBooking.booking.carId 
-                      ? cars.find(c => c.id === hoveredBooking.booking.carId)?.name 
-                      : (hoveredBooking.booking.requestedCarType || 'Unassigned')}
+                    {summaryBooking.booking.carId 
+                      ? cars.find(c => c.id === summaryBooking.booking.carId)?.name 
+                      : (summaryBooking.booking.requestedCarType || 'Unassigned')}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className={cn(
                     "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                    hoveredBooking.booking.isMaintenance
+                    summaryBooking.booking.isMaintenance
                       ? "bg-gray-100 text-gray-600"
-                      : (hoveredBooking.booking.status === 'Paid' 
+                      : (summaryBooking.booking.status === 'Paid' 
                           ? "bg-green-100 text-green-600" 
-                          : (parseISO(hoveredBooking.booking.startDate) < new Date()
+                          : (parseISO(summaryBooking.booking.startDate) < new Date()
                               ? "bg-yellow-100 text-yellow-600"
-                              : (isFuture(parseISO(hoveredBooking.booking.startDate)) 
+                              : (isFuture(parseISO(summaryBooking.booking.startDate)) 
                                   ? "bg-red-100 text-red-600" 
-                                  : ((!hoveredBooking.booking.carId || hoveredBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
+                                  : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
                   )}>
-                    {hoveredBooking.booking.isMaintenance ? 'Maintenance' : hoveredBooking.booking.status}
+                    {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
                   </span>
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 pointer-events-auto">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCutBooking(hoveredBooking.booking);
+                        handleOpenManageModal(summaryBooking.booking);
+                        setSummaryBookingInfo(null);
                       }}
-                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all pointer-events-auto"
+                      className="px-3 py-1.5 bg-brand-orange text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-orange/90 transition-all flex items-center gap-2 shadow-sm"
+                    >
+                      <Settings size={12} />
+                      Manage
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCutBooking(summaryBooking.booking);
+                        setSummaryBookingInfo(null);
+                      }}
+                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all"
                       title="Cut Booking"
                     >
                       <Scissors size={12} />
@@ -1420,14 +1625,24 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setEditingBooking(hoveredBooking.booking);
+                        setEditingBooking(summaryBooking.booking);
                         setShowDeleteConfirm(true);
-                        setHoveredBooking(null);
+                        setSummaryBookingInfo(null);
                       }}
-                      className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all pointer-events-auto"
+                      className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
                       title="Delete Booking"
                     >
                       <Trash2 size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSummaryBookingInfo(null);
+                      }}
+                      className="p-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-200 transition-all"
+                      title="Close Summary"
+                    >
+                      <X size={12} />
                     </button>
                   </div>
                 </div>
@@ -1437,23 +1652,33 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
                   <Calendar size={12} className="text-brand-orange" />
                   <span>
-                    {isValid(parseISO(hoveredBooking.booking.startDate)) && isValid(parseISO(hoveredBooking.booking.endDate)) ? (
-                      `${format(parseISO(hoveredBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(hoveredBooking.booking.endDate), 'MMM d, HH:mm')}`
+                    {isValid(parseISO(summaryBooking.booking.startDate)) && isValid(parseISO(summaryBooking.booking.endDate)) ? (
+                      `${format(parseISO(summaryBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(summaryBooking.booking.endDate), 'MMM d, HH:mm')}`
                     ) : 'Invalid dates'}
                   </span>
                 </div>
+
+                {summaryBooking.booking.returnNote && (
+                  <div className="flex items-start gap-2 text-[10px] bg-brand-orange/10 p-2 rounded-lg border border-brand-orange/20 mt-1">
+                    <AlertTriangle size={12} className="text-brand-orange shrink-0 mt-0.5" />
+                    <div className="text-[#1A1A1A] font-medium leading-relaxed">
+                      <span className="font-bold uppercase text-[8px] block mb-0.5">End Note:</span>
+                      {summaryBooking.booking.returnNote}
+                    </div>
+                  </div>
+                )}
                 
-                {hoveredBooking.booking.mobileNumber && (
+                {summaryBooking.booking.mobileNumber && (
                   <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
                     <Phone size={12} className="text-brand-orange" />
-                    <span>{hoveredBooking.booking.mobileNumber}</span>
+                    <span>{summaryBooking.booking.mobileNumber}</span>
                   </div>
                 )}
 
                 <div className="pt-2 border-t border-[#1A1A1A]/5 flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Amount</span>
                   <span className="text-sm font-bold text-brand-orange">
-                    ฿{(hoveredBooking.booking.amount || 0).toLocaleString()}
+                    ฿{(summaryBooking.booking.amount || 0).toLocaleString()}
                   </span>
                 </div>
 
@@ -1461,9 +1686,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
                   <p className={cn(
                     "text-[10px] leading-relaxed break-words",
-                    hoveredBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
+                    summaryBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
                   )}>
-                    {hoveredBooking.booking.notes || 'No notes added'}
+                    {summaryBooking.booking.notes || 'No notes added'}
                   </p>
                 </div>
               </div>
@@ -1710,8 +1935,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         )}
                         {editingBooking.deliveryNotes && (
                           <div className="p-4 bg-brand-orange/5 border border-brand-orange/10 rounded-2xl">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-2">Delivery Notes (Internal)</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-2">Start Note</p>
                             <p className="text-sm text-gray-700 italic leading-relaxed">{editingBooking.deliveryNotes}</p>
+                          </div>
+                        )}
+                        {editingBooking.returnNote && (
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">End Note</p>
+                            <p className="text-sm text-gray-700 font-medium leading-relaxed">{editingBooking.returnNote}</p>
                           </div>
                         )}
                       </div>
@@ -1719,6 +1950,28 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   )}
 
                   <div className="flex gap-4 pt-4">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const newStatus = editingBooking.paymentStatus === 'pending' ? 'paid' : 'pending';
+                          await updateDoc(doc(db, 'bookings', editingBooking.id), {
+                            paymentStatus: newStatus
+                          });
+                          toast.success(`Payment marked as ${newStatus}`);
+                        } catch (error) {
+                          handleFirestoreError(error, OperationType.UPDATE, `bookings/${editingBooking.id}`);
+                        }
+                      }}
+                      className={cn(
+                        "h-12 px-6 border transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] rounded-full",
+                        editingBooking.paymentStatus === 'pending'
+                          ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5 hover:bg-emerald-500 hover:text-white"
+                          : "border-red-500/30 text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white"
+                      )}
+                    >
+                      <DollarSign size={16} /> 
+                      {editingBooking.paymentStatus === 'pending' ? 'Mark as Paid' : 'Mark as Pending'}
+                    </button>
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
                       className="h-12 px-6 border border-red-500/30 text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] rounded-full"
@@ -1772,6 +2025,38 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
                   <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
+                          <DollarSign size={12} /> Payment Status
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, paymentStatus: 'paid' })}
+                            className={cn(
+                              "flex-1 h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all border",
+                              formData.paymentStatus === 'paid'
+                                ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20"
+                                : "bg-white/40 text-gray-400 border-white/60"
+                            )}
+                          >
+                            Paid
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, paymentStatus: 'pending' })}
+                            className={cn(
+                              "flex-1 h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all border",
+                              formData.paymentStatus === 'pending'
+                                ? "bg-yellow-400 text-black border-yellow-400 shadow-lg shadow-yellow-400/20"
+                                : "bg-white/40 text-gray-400 border-white/60"
+                            )}
+                          >
+                            Pending
+                          </button>
+                        </div>
+                      </div>
+
                       {!formData.isMaintenance ? (
                         <>
                           <div className="space-y-2">
@@ -2077,7 +2362,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                                   onDropOffTimeChange={setDropOffTime}
                                   onClose={() => setShowDatePicker(false)}
                                   onApply={() => setShowDatePicker(false)}
-                                  isBikeMode={title?.toLowerCase().includes('bike')}
+                                  isBikeMode={title?.toLowerCase()?.includes('bike') || false}
                                   useFilteredTimes={true}
                                 />
                               </motion.div>
@@ -2085,6 +2370,17 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                           )}
                         </AnimatePresence>
                       </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">End Note</label>
+                        <textarea
+                          className="w-full bg-amber-50/50 border-b-2 border-amber-200 p-3 rounded-t-2xl text-sm focus:border-amber-500 outline-none transition-all h-20 resize-none"
+                          value={formData.returnNote}
+                          onChange={e => setFormData({ ...formData, returnNote: e.target.value })}
+                          placeholder="Condition of vehicle on return..."
+                        />
+                      </div>
+
                       <div className="flex items-center justify-end">
                         <button
                           type="button"
@@ -2128,12 +2424,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Delivery Notes (Internal)</label>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Start Note</label>
                           <textarea
                             className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm focus:border-brand-orange outline-none transition-all h-32 resize-none"
                             value={formData.deliveryNotes}
                             onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
-                            placeholder="Add internal notes for delivery..."
+                            placeholder="Add internal notes for start of rental..."
                           />
                         </div>
                       </div>
@@ -2263,7 +2559,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       <ImportantInfoModal 
         isOpen={showImportantInfo} 
         onClose={() => setShowImportantInfo(false)} 
-        isBikeMode={editingBooking?.requestedCarType === 'Motorbike' || cars.find(c => c.id === formData.carId)?.category === 'Motorbike' || title?.toLowerCase().includes('bike')}
+        isBikeMode={editingBooking?.requestedCarType === 'Motorbike' || cars.find(c => c.id === formData.carId)?.category === 'Motorbike' || (title?.toLowerCase()?.includes('bike') || false)}
       />
 
       <AnimatePresence>
@@ -2277,6 +2573,16 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
           />
         )}
       </AnimatePresence>
+
+      {quickNoteEdit && (
+        <QuickNotePopup
+          booking={quickNoteEdit.booking}
+          field={quickNoteEdit.field}
+          rect={quickNoteEdit.rect}
+          onSave={handleQuickNoteSave}
+          onClose={() => setQuickNoteEdit(null)}
+        />
+      )}
     </div>
   );
 };
