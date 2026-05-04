@@ -137,13 +137,13 @@ export const Rentals: React.FC<RentalsProps> = ({ cars }) => {
   const filteredRentals = rentals.filter(rental => {
     const customer = customers.find(c => c.id === rental.customerId);
     const car = cars.find(c => c.id === rental.carId);
-    const searchLower = searchTerm.toLowerCase();
+    const searchLower = (searchTerm || '').toLowerCase();
     
     return (
-      customer?.firstName.toLowerCase().includes(searchLower) ||
-      customer?.lastName.toLowerCase().includes(searchLower) ||
-      car?.name.toLowerCase().includes(searchLower) ||
-      car?.plateNumber.toLowerCase().includes(searchLower)
+      (customer?.firstName?.toLowerCase() || '').includes(searchLower) ||
+      (customer?.lastName?.toLowerCase() || '').includes(searchLower) ||
+      (car?.name?.toLowerCase() || '').includes(searchLower) ||
+      (car?.plateNumber?.toLowerCase() || '').includes(searchLower)
     );
   });
 

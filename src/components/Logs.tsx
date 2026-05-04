@@ -49,11 +49,11 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      const searchLower = searchTerm.toLowerCase();
+      const searchLower = (searchTerm || '').toLowerCase();
       const matchesSearch = 
-        log.action.toLowerCase().includes(searchLower) ||
-        log.description.toLowerCase().includes(searchLower) ||
-        log.user.toLowerCase().includes(searchLower);
+        (log.action?.toLowerCase() || '').includes(searchLower) ||
+        (log.description?.toLowerCase() || '').includes(searchLower) ||
+        (log.user?.toLowerCase() || '').includes(searchLower);
 
       const matchesCategory = categoryFilter === 'all' || log.category === categoryFilter;
 

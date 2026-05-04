@@ -480,8 +480,8 @@ export const FleetManager: React.FC = () => {
         const mappedData = {
           name: item.name || `${item.make || ''} ${item.model || ''}`.trim() || 'Unknown Vehicle',
           plateNumber: plate,
-          type: item.type || (item.model?.toLowerCase().includes('n-max') ? 'Scooter' : 'Motorbike'),
-          category: (item.category as any) || (item.type?.toLowerCase().includes('motorbike') ? 'Motorbike' : 'Car'),
+          type: item.type || ((item.model?.toLowerCase() || '').includes('n-max') ? 'Scooter' : 'Motorbike'),
+          category: (item.category as any) || ((item.type?.toLowerCase() || '').includes('motorbike') ? 'Motorbike' : 'Car'),
           make: item.make || '',
           model: item.model || '',
           yearOfManufacture: parseInt(item.year) || 2023,
@@ -495,7 +495,7 @@ export const FleetManager: React.FC = () => {
           engine: item.engine || '',
           transmission: item.transmission || 'Automatic',
           audio: item.audio || 'N/A',
-          isActive: item.is_active === undefined ? true : (String(item.is_active).toLowerCase() === 'true'),
+          isActive: item.is_active === undefined ? true : (String(item.is_active || '').toLowerCase() === 'true'),
           imageUrl: item.image_url || '',
           order: Number(item.order) || cars.length,
           updatedAt: new Date().toISOString()
@@ -564,7 +564,7 @@ export const FleetManager: React.FC = () => {
       Papa.parse(event, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+        transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
         complete: processData
       });
     } else {
@@ -573,7 +573,7 @@ export const FleetManager: React.FC = () => {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+        transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
         complete: processData
       });
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -745,13 +745,16 @@ Yamaha,New Aerox,Red,4กย 1611`;
     });
   };
 
-  const filteredCars = cars.filter(car => 
-    car.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    car.make.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    car.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    car.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    car.owner.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCars = cars.filter(car => {
+    const searchLower = (searchQuery || '').toLowerCase();
+    return (
+      (car.name?.toLowerCase() || '').includes(searchLower) ||
+      (car.make?.toLowerCase() || '').includes(searchLower) ||
+      (car.model?.toLowerCase() || '').includes(searchLower) ||
+      (car.plateNumber?.toLowerCase() || '').includes(searchLower) ||
+      (car.owner?.toLowerCase() || '').includes(searchLower)
+    );
+  });
 
   const activeCarsCount = cars.filter(c => c.category === 'Car' && c.isActive !== false).length;
   const activeBikesCount = cars.filter(c => (c.category === 'Motorbike' || c.type === 'Scooter' || c.type === 'Motorbike') && c.isActive !== false).length;

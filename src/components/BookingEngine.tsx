@@ -558,8 +558,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     if (!isBikeMode && category === 'Motorbike') return false;
 
     if (filters.seats !== 'all' && car.passengers !== parseInt(filters.seats)) return false;
-    if (filters.transmission !== 'all' && car.transmission?.toLowerCase() !== (filters.transmission || '').toLowerCase()) return false;
-    if (filters.fuel !== 'all' && car.fuelType?.toLowerCase() !== (filters.fuel || '').toLowerCase()) return false;
+    if (filters.transmission !== 'all' && (car.transmission?.toLowerCase() || '') !== (filters.transmission?.toLowerCase() || '')) return false;
+    if (filters.fuel !== 'all' && (car.fuelType?.toLowerCase() || '') !== (filters.fuel?.toLowerCase() || '')) return false;
     if (filters.engine !== 'all' && car.engineSize !== filters.engine) return false;
     return true;
   });
@@ -567,7 +567,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const calculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
     const carNameLower = (car.name || '').toLowerCase();
-    let searchName = car.priceGridVehicle?.toLowerCase() || carNameLower;
+    let searchName = (car.priceGridVehicle?.toLowerCase() || carNameLower);
 
     if (!car.priceGridVehicle) {
       if (carNameLower.includes('vios')) searchName = 'vios';
@@ -1406,9 +1406,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         
                         <ul className="grid grid-cols-2 gap-x-12 gap-y-4 text-[10px] font-bold uppercase tracking-widest text-black/40">
                           <li className="flex items-center gap-3"><Users size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('car.seats', { count: car.passengers || 5 })}</li>
-                          <li className="flex items-center gap-3"><Settings size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {car.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
+                          <li className="flex items-center gap-3"><Settings size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {(car.transmission?.toLowerCase() || '') === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
                           <li className="flex items-center gap-3"><Zap size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('filters.engine')} {car.engineSize || '1.5'}</li>
-                          <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(car.fuelType || 'Petrol').toLowerCase()}`)}</li>
+                          <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(car.fuelType?.toLowerCase() || 'petrol')}`)}</li>
                         </ul>
 
                         <div className="bg-green-50/50 border border-green-500/10 rounded-2xl p-6 flex items-center gap-4 mt-8">
@@ -1571,9 +1571,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     <ul className="grid grid-cols-2 gap-6 text-[10px] font-bold uppercase tracking-widest text-black/40 mb-12">
                       <li className="flex items-center gap-3"><Users size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('car.seats', { count: selectedCar.passengers || 5 })}</li>
                       <li className="flex items-center gap-3"><MessageSquare size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> CD/USB/AUX</li>
-                      <li className="flex items-center gap-3"><CarIcon size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {selectedCar.transmission?.toLowerCase() === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
+                      <li className="flex items-center gap-3"><CarIcon size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {(selectedCar.transmission?.toLowerCase() || '') === 'automatic' ? t('car.automatic') : t('car.manual')}</li>
                       <li className="flex items-center gap-3"><Zap size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t('filters.engine')} {selectedCar.engineSize || '1.5'}</li>
-                      <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(selectedCar.fuelType || 'Petrol').toLowerCase()}`)}</li>
+                      <li className="flex items-center gap-3"><Fuel size={16} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} /> {t(`car.${(selectedCar.fuelType?.toLowerCase() || 'petrol')}`)}</li>
                     </ul>
 
                     <div className="grid grid-cols-2 gap-8 mb-12">

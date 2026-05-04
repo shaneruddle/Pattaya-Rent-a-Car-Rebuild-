@@ -12,8 +12,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates' | 'reviews';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates' | 'reviews') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -29,7 +29,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   }, [isMobile]);
 
   const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
-  const isMarketingView = ['marketing_faq', 'blog', 'reviews'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
@@ -37,13 +36,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
       setIsSettingsExpanded(true);
     }
   }, [isSettingsView]);
-
-  // Auto-expand marketing if one of its views is active
-  useEffect(() => {
-    if (isMarketingView) {
-      setIsMarketingExpanded(true);
-    }
-  }, [isMarketingView]);
 
   return (
     <>
@@ -167,6 +159,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     </button>
                     <button
                       onClick={() => {
+                        onViewChange('finance');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'finance' 
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <DollarSign size={18} /> Finance
+                    </button>
+                    <button
+                      onClick={() => {
+                        onViewChange('fleet');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'fleet' 
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <CarIcon size={18} /> Fleet Manager
+                    </button>
+                    <button
+                      onClick={() => {
                         onViewChange('enquiries');
                         if (isMobile) setIsMobileMenuOpen(false);
                       }}
@@ -213,34 +233,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                   <>
                     <button
                       onClick={() => {
-                        onViewChange('finance');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'finance' 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <DollarSign size={18} /> Finance
-                    </button>
-                    <button
-                      onClick={() => {
-                        onViewChange('fleet');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'fleet' 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <CarIcon size={18} /> Fleet Manager
-                    </button>
-                    <button
-                      onClick={() => {
                         onViewChange('crm');
                         if (isMobile) setIsMobileMenuOpen(false);
                       }}
@@ -267,79 +259,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <Activity size={18} /> System Logs
                     </button>
-
-                    {/* Marketing Group */}
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setIsMarketingExpanded(!isMarketingExpanded)}
-                        className={cn(
-                          "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-between px-6 transition-all",
-                          isMarketingView
-                            ? "bg-brand-orange/10 text-brand-orange border border-brand-orange/20"
-                            : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <TrendingUp size={18} />
-                          Marketing
-                        </div>
-                        {isMarketingExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </button>
-
-                      <AnimatePresence>
-                        {isMarketingExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden pl-4 space-y-1"
-                          >
-                            <button
-                              onClick={() => {
-                                onViewChange('marketing_faq');
-                                if (isMobile) setIsMobileMenuOpen(false);
-                              }}
-                              className={cn(
-                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                                currentView === 'marketing_faq' 
-                                  ? "bg-brand-orange text-white shadow-md" 
-                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
-                              )}
-                            >
-                              <Bot size={14} /> FAQ's
-                            </button>
-                            <button
-                              onClick={() => {
-                                onViewChange('reviews');
-                                if (isMobile) setIsMobileMenuOpen(false);
-                              }}
-                              className={cn(
-                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                                currentView === 'reviews' 
-                                  ? "bg-brand-orange text-white shadow-md" 
-                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
-                              )}
-                            >
-                              <Star size={14} /> Reviews
-                            </button>
-                            <button
-                              onClick={() => {
-                                onViewChange('blog');
-                                if (isMobile) setIsMobileMenuOpen(false);
-                              }}
-                              className={cn(
-                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                                currentView === 'blog' 
-                                  ? "bg-brand-orange text-white shadow-md" 
-                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
-                              )}
-                            >
-                              <FileText size={14} /> Blog
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
 
                     {/* System Settings Group */}
                     <div className="space-y-1">
@@ -569,62 +488,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
             >
               <Activity size={20} />
             </button>
-
-            {/* Collapsed Marketing */}
-            <div className="flex flex-col items-center gap-2">
-              <button 
-                onClick={() => setIsMarketingExpanded(!isMarketingExpanded)}
-                className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                  isMarketingView ? "bg-brand-orange/10 text-brand-orange border border-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
-                )}
-                title="Marketing"
-              >
-                <TrendingUp size={20} />
-              </button>
-              
-              <AnimatePresence>
-                {isMarketingExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="flex flex-col items-center gap-2 overflow-hidden"
-                  >
-                    <button 
-                      onClick={() => onViewChange('marketing_faq')}
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'marketing_faq' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
-                      )}
-                      title="FAQ's"
-                    >
-                      <Bot size={16} />
-                    </button>
-                    <button 
-                      onClick={() => onViewChange('reviews')}
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'reviews' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
-                      )}
-                      title="Reviews"
-                    >
-                      <Star size={16} />
-                    </button>
-                    <button 
-                      onClick={() => onViewChange('blog')}
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'blog' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
-                      )}
-                      title="Blog"
-                    >
-                      <FileText size={16} />
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
 
             {/* Collapsed System Settings */}
             <div className="flex flex-col items-center gap-2">

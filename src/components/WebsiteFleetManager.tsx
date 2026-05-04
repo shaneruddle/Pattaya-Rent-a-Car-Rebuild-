@@ -200,7 +200,7 @@ export const WebsiteFleetManager: React.FC = () => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+      transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
       complete: async (results) => {
         const data = results.data as any[];
         

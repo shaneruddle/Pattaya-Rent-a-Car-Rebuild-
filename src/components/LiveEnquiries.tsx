@@ -49,9 +49,10 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     return bookings
       .filter(b => !b.carId || b.carId === '')
       .filter(b => {
+        const searchLower = (searchQuery || '').toLowerCase();
         const matchesSearch = 
-          b.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (b.email && b.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (b.customerName?.toLowerCase() || '').includes(searchLower) ||
+          (b.email?.toLowerCase() || '').includes(searchLower) ||
           (b.mobileNumber && b.mobileNumber.includes(searchQuery));
         return matchesSearch;
       })

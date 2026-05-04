@@ -52,7 +52,7 @@ interface FinanceProps {
 }
 
 const txDataToId = (date: string, amount: number, description: string, account: string) => {
-  const str = `${date}_${amount}_${description}_${account}`.toLowerCase();
+  const str = `${date || ''}_${amount}_${description || ''}_${account || ''}`.toLowerCase();
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
@@ -81,13 +81,13 @@ const parseCSVDate = (dateStr: string): Date | null => {
       
       if (cleaned.match(/^[a-zA-Z]{3}/i)) {
         // Month first: "Jun 30 2021"
-        monthName = parts[0].toLowerCase().substring(0, 3);
+        monthName = (parts[0] || '').toLowerCase().substring(0, 3);
         day = parseInt(parts[1]);
         yearStr = parts[2];
       } else {
         // Day first: "30 Jun 2021"
         day = parseInt(parts[0]);
-        monthName = parts[1].toLowerCase().substring(0, 3);
+        monthName = (parts[1] || '').toLowerCase().substring(0, 3);
         yearStr = parts[2];
       }
       
@@ -143,7 +143,7 @@ const parseCSVDate = (dateStr: string): Date | null => {
 };
 
 const getBrandSlug = (name: string) => {
-  const n = name.toLowerCase();
+  const n = (name || '').toLowerCase();
   if (n.includes('toyota')) return 'toyota';
   if (n.includes('honda')) return 'honda';
   if (n.includes('ford')) return 'ford';
@@ -154,7 +154,7 @@ const getBrandSlug = (name: string) => {
 
 const cleanCarName = (car: Car) => {
   const name = car.make && car.model ? `${car.make} ${car.model}` : car.name;
-  return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
+  return name?.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '')?.trim() || '';
 };
 
 const normalizeDescription = (text: string) => {
@@ -318,10 +318,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     const car = props.data.car as Car;
     if (!car) return <components.Option {...props}>{props.children}</components.Option>;
 
-    const brandSlug = getBrandSlug(car.name);
+    const brandSlug = getBrandSlug(car.name || '');
     const displayName = cleanCarName(car);
-    const year = car.yearOfManufacture?.toString().slice(-4);
-    const engine = car.engineSize?.toString().replace(/cc/gi, '');
+    const year = car.yearOfManufacture?.toString()?.slice(-4) || '';
+    const engine = car.engineSize?.toString()?.replace(/cc/gi, '') || '';
 
     return (
       <components.Option {...props}>
@@ -355,10 +355,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     const car = props.data.car as Car;
     if (!car) return <components.SingleValue {...props}>{props.children}</components.SingleValue>;
 
-    const brandSlug = getBrandSlug(car.name);
+    const brandSlug = getBrandSlug(car.name || '');
     const displayName = cleanCarName(car);
-    const year = car.yearOfManufacture?.toString().slice(-4);
-    const engine = car.engineSize?.toString().replace(/cc/gi, '');
+    const year = car.yearOfManufacture?.toString()?.slice(-4) || '';
+    const engine = car.engineSize?.toString()?.replace(/cc/gi, '') || '';
 
     return (
       <components.SingleValue {...props}>
@@ -415,14 +415,14 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
     // Filter by Search Term
     if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
+      const lowerSearch = (searchTerm || '').toLowerCase();
       result = result.filter(tx => {
-        const categoryMatch = tx.category.toLowerCase().includes(lowerSearch);
+        const categoryMatch = (tx.category || '').toLowerCase().includes(lowerSearch);
         const descriptionMatch = tx.description?.toLowerCase().includes(lowerSearch) ?? false;
-        const typeMatch = tx.type.toLowerCase().includes(lowerSearch);
-        const accountName = accounts.find(a => a.id === tx.accountId)?.name.toLowerCase() ?? '';
+        const typeMatch = (tx.type || '').toLowerCase().includes(lowerSearch);
+        const accountName = (accounts.find(a => a.id === tx.accountId)?.name || '').toLowerCase();
         const accountMatch = accountName.includes(lowerSearch);
-        const carName = tx.carId ? (cars.find(c => c.id === tx.carId)?.name.toLowerCase() ?? '') : '';
+        const carName = tx.carId ? (cars.find(c => c.id === tx.carId)?.name || '').toLowerCase() : '';
         const carMatch = carName.includes(lowerSearch);
         
         return categoryMatch || descriptionMatch || typeMatch || accountMatch || carMatch;
@@ -1043,7 +1043,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+      transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
       complete: async (results) => {
         const data = results.data as any[];
         let importedCount = 0;
@@ -1104,7 +1104,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
             // Normalize account name mapping for common variations
             let normalizedAccountName = accountName;
-            const lowerAcc = accountName.toLowerCase();
+            const lowerAcc = (accountName || '').toString().toLowerCase();
             
             if (lowerAcc.includes('cash') || lowerAcc === 'cash') normalizedAccountName = 'Cash Car';
             else if (lowerAcc.includes('kasikorn') || lowerAcc.includes('kbank') || lowerAcc.includes('k-bank')) {
@@ -1118,10 +1118,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             else if (lowerAcc.includes('shane') && lowerAcc.includes('kbank')) normalizedAccountName = 'Kbank Shane';
             else if (lowerAcc.includes('ktb') || lowerAcc.includes('krung')) normalizedAccountName = 'KTB Auto';
 
-            const account = accounts.find(a => a.name.toLowerCase() === normalizedAccountName.toLowerCase());
+            const account = accounts.find(a => (a.name?.toLowerCase() || '') === (normalizedAccountName?.toLowerCase() || ''));
             if (!account) {
               // Try to find any fallback account to avoid dropping data
-              const fallbackAccount = accounts.find(a => a.name.toLowerCase().includes('cash')) || accounts[0];
+              const fallbackAccount = accounts.find(a => (a.name?.toLowerCase() || '').includes('cash')) || accounts[0];
               if (fallbackAccount) {
                 // We'll use fallback but log it
                 console.warn(`Account "${accountName}" not found, using fallback "${fallbackAccount.name}"`);
@@ -1130,7 +1130,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                 continue;
               }
             }
-            const usedAccount = account || accounts.find(a => a.name.toLowerCase().includes('cash')) || accounts[0];
+            const usedAccount = account || accounts.find(a => (a.name?.toLowerCase() || '').includes('cash')) || accounts[0];
             if (!usedAccount) {
               errorCount++;
               continue;
@@ -1138,11 +1138,11 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
             let toAccountId = '';
             if (type === 'Transfer' && toAccountName) {
-              const toAccount = accounts.find(a => a.name.toLowerCase() === toAccountName.toLowerCase());
+              const toAccount = accounts.find(a => (a.name?.toLowerCase() || '') === (toAccountName?.toLowerCase() || ''));
               if (toAccount) toAccountId = toAccount.id;
             }
 
-            const car = vehicleName ? cars.find(c => c.name.toLowerCase() === vehicleName.toLowerCase()) : null;
+            const car = vehicleName ? cars.find(c => (c.name?.toLowerCase() || '') === (vehicleName?.toLowerCase() || '')) : null;
 
             // Use unique id from CSV if available, otherwise deterministic ID for deduplication
             const deterministicId = uniqueId || txDataToId(parsedDate.toISOString(), amount, description, normalizedAccountName);

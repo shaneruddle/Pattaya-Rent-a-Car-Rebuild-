@@ -42,11 +42,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
       if (!booking.carId || booking.carId === '' || booking.carId === 'unassigned') return false;
 
       const car = cars.find(c => c.id === booking.carId);
-      const searchLower = searchTerm.toLowerCase();
+      const searchLower = (searchTerm || '').toLowerCase();
       const matchesSearch = 
-        booking.customerName.toLowerCase().includes(searchLower) ||
-        (car?.name.toLowerCase().includes(searchLower)) ||
-        (car?.plateNumber.toLowerCase().includes(searchLower));
+        (booking.customerName?.toLowerCase() || '').includes(searchLower) ||
+        (car?.name?.toLowerCase() || '').includes(searchLower) ||
+        (car?.plateNumber?.toLowerCase() || '').includes(searchLower);
 
       const bookingDate = parseISO(booking.startDate);
       if (!isValid(bookingDate)) return false;
