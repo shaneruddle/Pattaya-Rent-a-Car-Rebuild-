@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, addDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity, storage } from '../firebase';
 import { sendTemplatedEmail } from '../lib/emailUtils';
 import { ref, getDownloadURL } from 'firebase/storage';
@@ -558,15 +558,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     if (!isBikeMode && category === 'Motorbike') return false;
 
     if (filters.seats !== 'all' && car.passengers !== parseInt(filters.seats)) return false;
-    if (filters.transmission !== 'all' && car.transmission?.toLowerCase() !== filters.transmission.toLowerCase()) return false;
-    if (filters.fuel !== 'all' && car.fuelType?.toLowerCase() !== filters.fuel.toLowerCase()) return false;
+    if (filters.transmission !== 'all' && car.transmission?.toLowerCase() !== (filters.transmission || '').toLowerCase()) return false;
+    if (filters.fuel !== 'all' && car.fuelType?.toLowerCase() !== (filters.fuel || '').toLowerCase()) return false;
     if (filters.engine !== 'all' && car.engineSize !== filters.engine) return false;
     return true;
   });
 
   const calculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
-    const carNameLower = car.name.toLowerCase();
+    const carNameLower = (car.name || '').toLowerCase();
     let searchName = car.priceGridVehicle?.toLowerCase() || carNameLower;
 
     if (!car.priceGridVehicle) {
@@ -589,9 +589,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     const getPriceFromData = (pricingData: any) => {
       if (!pricingData || !dateKey) return null;
       
-      const tabName = Object.keys(pricingData).find(tab => 
-        searchName === tab.toLowerCase() || tab.toLowerCase().includes(searchName) || searchName.includes(tab.toLowerCase())
-      );
+      const tabName = Object.keys(pricingData).find(tab => {
+        const t = (tab || '').toLowerCase();
+        return searchName === t || t.includes(searchName) || searchName.includes(t);
+      });
 
       if (tabName) {
         const pricing = pricingData[tabName];
@@ -697,7 +698,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         amount: calculateTotal(selectedCar),
         deliveryAddress: formData.requireDelivery ? formData.deliveryAddress : '',
         deliveryLocation: formData.requireDelivery ? formData.deliveryLocation : null,
-        deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : ''
+        deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : '',
+        createdAt: serverTimestamp()
       };
 
       // Save to bookings collection

@@ -27,6 +27,7 @@ import { Logs } from './components/Logs';
 import { ImageManagement } from './components/ImageManagement';
 import { MarketingFAQ } from './components/MarketingFAQ';
 import { BlogManager } from './components/BlogManager';
+import { ReviewManagement } from './components/ReviewManagement';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { EmailTemplates } from './components/EmailTemplates';
 import { AIAssistant } from './components/AIAssistant';
@@ -77,7 +78,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates' | 'reviews'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -346,6 +347,44 @@ function AppContent() {
 
     return result;
   }, [bookings, searchQuery]);
+
+  // Google OAuth exchange
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    
+    if (code) {
+      const exchangeCode = async () => {
+        const toastId = toast.loading('Connecting Google Business...');
+        try {
+          const origin = window.location.origin;
+          const response = await fetch('/api/auth/google/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, origin })
+          });
+          
+          if (response.ok) {
+            toast.success('Google Business Profile connected!', { id: toastId });
+            localStorage.setItem('prac_google_connected', 'true');
+            // Remove code from URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete('code');
+            window.history.replaceState({}, '', url.toString());
+            
+            // Trigger a refresh event for the ReviewManagement component
+            window.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+          } else {
+            const data = await response.json();
+            toast.error(data.error || 'Connection failed', { id: toastId });
+          }
+        } catch (err) {
+          toast.error('Connection failed. Please check your network.', { id: toastId });
+        }
+      };
+      exchangeCode();
+    }
+  }, []);
 
   console.log('AppContent: Auth state:', { loading, user: !!user, isStaff });
 
@@ -646,6 +685,8 @@ function AppContent() {
             <MarketingFAQ />
           ) : currentView === 'blog' ? (
             <BlogManager />
+          ) : currentView === 'reviews' ? (
+            <ReviewManagement />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <BookingEngine onLoginClick={() => {}} />

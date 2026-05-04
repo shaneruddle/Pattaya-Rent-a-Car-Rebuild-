@@ -118,9 +118,11 @@ export const FAQ: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const filteredItems = useMemo(() => {
     if (!faqItems) return [];
     return faqItems.filter(item => {
-      const matchesSearch = 
-        item.q.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        item.a.toLowerCase().includes(searchTerm.toLowerCase());
+      const q = (item.q || '').toLowerCase();
+      const a = (item.a || '').toLowerCase();
+      const st = (searchTerm || '').toLowerCase();
+      
+      const matchesSearch = q.includes(st) || a.includes(st);
       
       const matchesCategory = activeCategory === 'All' || (item.category || 'General') === activeCategory;
       

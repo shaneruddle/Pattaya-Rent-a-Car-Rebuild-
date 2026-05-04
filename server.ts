@@ -15,6 +15,7 @@ import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
+import { google } from "googleapis";
 
 let initLogs: string[] = [];
 function logInit(msg: string) {
@@ -203,6 +204,136 @@ async function startServer() {
   });
 
   app.use(express.json({ limit: '50mb' }));
+
+  // Google Business Auth Helpers
+  const getOAuth2Client = (redirectUri: string) => {
+    return new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri
+    );
+  };
+
+  const saveTokens = async (tokens: any) => {
+    try {
+      const configRef = firestore.collection('system_config').doc('google_business');
+      await configRef.set({
+        tokens,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      logInit('[Auth] Google Business tokens saved to Firestore');
+    } catch (error: any) {
+      logInit(`[Auth] Error saving tokens: ${error.message}`);
+    }
+  };
+
+  const getStoredTokens = async () => {
+    try {
+      const doc = await firestore.collection('system_config').doc('google_business').get();
+      return doc.exists ? doc.data().tokens : null;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  app.get("/api/auth/google/url", (req, res) => {
+    const origin = req.query.origin as string || 'http://localhost:3000';
+    const oauth2Client = getOAuth2Client(origin);
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/business.manage'],
+      prompt: 'consent'
+    });
+    res.json({ url });
+  });
+
+  app.post("/api/auth/google/exchange", async (req, res) => {
+    const { code, origin } = req.body;
+    if (!code) return res.status(400).json({ error: "Code missing" });
+    if (!origin) return res.status(400).json({ error: "Origin missing" });
+
+    try {
+      const oauth2Client = getOAuth2Client(origin);
+      const { tokens } = await oauth2Client.getToken(code as string);
+      await saveTokens(tokens);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Auth] Exchange error:", error.message);
+      res.status(500).json({ error: `Authentication failed: ${error.message}` });
+    }
+  });
+
+  app.get("/api/auth/google/status", async (req, res) => {
+    const tokens = await getStoredTokens();
+    res.json({ connected: !!tokens });
+  });
+
+  app.get("/api/reviews/google-business", async (req, res) => {
+    try {
+      const tokens = await getStoredTokens();
+      if (!tokens) {
+        return res.status(401).json({ error: "Not connected to Google Business" });
+      }
+
+      const oauth2Client = getOAuth2Client('http://localhost:3000');
+      oauth2Client.setCredentials(tokens);
+
+      // Refresh token if needed
+      oauth2Client.on('tokens', (newTokens) => {
+        saveTokens({ ...tokens, ...newTokens });
+      });
+
+      const mybusinessbusinessinformation = google.mybusinessbusinessinformation({ version: 'v1', auth: oauth2Client });
+      
+      // 1. Get Accounts
+      const accountsRes = await axios.get('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      
+      const accounts = accountsRes.data.accounts;
+      if (!accounts || accounts.length === 0) {
+        return res.json({ reviews: [], message: "No Google Business accounts found" });
+      }
+
+      // 2. Get Locations for the first account
+      const accountName = accounts[0].name;
+      const locationsRes = await mybusinessbusinessinformation.accounts.locations.list({
+        parent: accountName,
+        readMask: 'name,title,storeCode'
+      });
+
+      const locations = locationsRes.data.locations;
+      if (!locations || locations.length === 0) {
+        return res.json({ reviews: [], message: "No locations found for this account" });
+      }
+
+      // 3. Get Reviews for the first location
+      const locationName = locations[0].name;
+      // Note: Reviews are in mybusinessreviews v1
+      const reviewsRes = await axios.get(`https://mybusinessreviews.googleapis.com/v1/${locationName}/reviews`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+
+      const reviews = reviewsRes.data.reviews || [];
+      
+      // Map to a consistent format
+      const mappedReviews = reviews.map((r: any) => ({
+        id: r.reviewId,
+        authorName: r.reviewer?.displayName || "Anonymous",
+        rating: r.starRating === 'FIVE' ? 5 : (r.starRating === 'FOUR' ? 4 : (r.starRating === 'THREE' ? 3 : (r.starRating === 'TWO' ? 2 : 1))),
+        comment: r.comment || "",
+        date: r.createTime,
+        reply: r.reviewReply?.comment || null,
+        repliedAt: r.reviewReply?.updateTime || null,
+        source: 'Google Business'
+      }));
+
+      res.json({ reviews: mappedReviews });
+    } catch (error: any) {
+      console.error("[Google Business] Error fetching reviews:", error.response?.data || error.message);
+      res.status(500).json({ error: "Failed to fetch reviews from Google Business", details: error.response?.data || error.message });
+    }
+  });
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });

@@ -83,6 +83,7 @@ export interface Booking {
   isMaintenance?: boolean;
   maintenanceDescription?: string;
   paymentStatus?: 'paid' | 'pending';
+  createdAt?: any;
 }
 
 export interface Rental {

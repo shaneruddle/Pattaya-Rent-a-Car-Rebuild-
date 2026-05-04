@@ -377,7 +377,7 @@ export const WebsiteFleetManager: React.FC = () => {
   };
 
   const filteredCars = cars.filter(car => 
-    car.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (car.name || '').toLowerCase().includes((searchQuery || '').toLowerCase())
   );
 
   return (

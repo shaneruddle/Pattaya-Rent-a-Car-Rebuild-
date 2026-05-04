@@ -2,8 +2,8 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInDays, parseISO, isWithinInterval, startOfDay, endOfDay, isValid, isFuture } from 'date-fns';
 import { Car, Booking, Customer } from '../types';
-import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft } from 'lucide-react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -38,6 +38,7 @@ interface CarRowProps {
   getCarTypeStyles: (type: string) => any;
   onManageBooking: (booking: Booking) => void;
   onQuickNoteEdit: (booking: Booking, field: 'deliveryNotes' | 'returnNote', rect: DOMRect) => void;
+  isReorderMode?: boolean;
 }
 
 const ManageRentalModal: React.FC<{
@@ -337,7 +338,8 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
   handleBookingContextMenu,
   getCarTypeStyles,
   onManageBooking,
-  onQuickNoteEdit
+  onQuickNoteEdit,
+  isReorderMode
 }) => {
   const typeStyles = getCarTypeStyles(car.type || car.category || '');
   
@@ -358,6 +360,12 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
       <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-1 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
         <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
         
+        {isReorderMode && (
+          <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-black/5 rounded text-black/20 group-hover:text-black/40">
+            <GripVertical size={12} />
+          </div>
+        )}
+
         {brandSlug ? (
           <img 
             src={`https://cdn.simpleicons.org/${brandSlug}`}
@@ -691,6 +699,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     setIsScrolling(true);
@@ -711,7 +721,34 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       return orderA - orderB;
     });
     setSortedCars(sorted);
-  }, [cars]);
+  }, [cars, isReorderMode]); // Re-sort when reorder mode is toggled if we cancelled
+
+  const handleSaveOrder = async () => {
+    setIsSavingOrder(true);
+    try {
+      const batch = writeBatch(db);
+      sortedCars.forEach((car, index) => {
+        const carRef = doc(db, 'cars', car.id);
+        batch.update(carRef, { sortOrder: index });
+      });
+      await batch.commit();
+      
+      await logSystemActivity(
+        'Rearrange Fleet',
+        `Updated vehicle display order for ${title}`,
+        'Fleet'
+      );
+      
+      toast.success('Vehicle order saved');
+      setIsReorderMode(false);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Error saving car order:', error);
+      toast.error('Failed to save vehicle order');
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
   const [clipboard, setClipboard] = useState<{ booking: Booking } | null>(null);
@@ -1317,9 +1354,39 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
           <div className="flex flex-col sticky top-0 z-30 shadow-md">
             <div className="flex bg-white/40 backdrop-blur-xl">
               <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
-                <div className="flex flex-col">
-                  <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col">
+                    <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
+                  </div>
                 </div>
+                {!isReorderMode ? (
+                  <button
+                    onClick={() => setIsReorderMode(true)}
+                    className="p-1.5 hover:bg-black/5 rounded-lg text-black/40 hover:text-brand-orange transition-all group/btn"
+                    title="Rearrange Vehicles"
+                  >
+                    <ArrowUpDown size={14} className="group-hover/btn:scale-110 transition-transform" />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setIsReorderMode(false)}
+                      disabled={isSavingOrder}
+                      className="p-1 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors"
+                      title="Cancel"
+                    >
+                      <X size={12} />
+                    </button>
+                    <button
+                      onClick={handleSaveOrder}
+                      disabled={isSavingOrder}
+                      className="p-1 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
+                      title="Save Order"
+                    >
+                      {isSavingOrder ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex">
                 {monthsInView.map(({ month, days }) => (
@@ -1512,6 +1579,32 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                     </p>
                   </div>
                 </div>
+              ) : isReorderMode ? (
+                <Reorder.Group axis="y" values={sortedCars} onReorder={setSortedCars} as="div">
+                  {sortedCars.map(car => (
+                    <Reorder.Item key={car.id} value={car} as="div">
+                      <CarRow
+                        car={car}
+                        daysInMonth={visibleDays}
+                        bookings={bookings}
+                        handleRowClick={handleRowClick}
+                        handleRowContextMenu={handleRowContextMenu}
+                        getBookingStyle={getBookingStyle}
+                        handleBookingBarClick={handleBookingBarClick}
+                        handleBookingContextMenu={handleBookingContextMenu}
+                        getCarTypeStyles={getCarTypeStyles}
+                        onManageBooking={(booking) => {
+                          setManageBooking(booking);
+                          setIsManageModalOpen(true);
+                        }}
+                        onQuickNoteEdit={(booking, field, rect) => {
+                          setQuickNoteEdit({ booking, field, rect });
+                        }}
+                        isReorderMode={true}
+                      />
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
               ) : (
                 sortedCars.map(car => (
                   <CarRow
@@ -1532,6 +1625,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                     onQuickNoteEdit={(booking, field, rect) => {
                       setQuickNoteEdit({ booking, field, rect });
                     }}
+                    isReorderMode={false}
                   />
                 ))
               )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
@@ -31,6 +31,38 @@ import { safeLocalStorage } from '../lib/storage';
 
 const TOTAL_CUSTOMER_COUNT = 14854;
 
+const CountUp: React.FC<{ end: number; duration?: number }> = ({ end, duration = 2000 }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let startTimestamp: number | null = null;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      setCount(Math.floor(progress * end));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [end, duration]);
+
+  return <span>{count.toLocaleString()}</span>;
+};
+
+const CustomerSkeleton = () => (
+  <div className="w-full p-5 border-b border-white/5 animate-pulse">
+    <div className="flex items-center gap-4">
+      <div className="w-12 h-12 rounded-2xl bg-[#141414]/10" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 bg-[#141414]/10 rounded w-3/4" />
+        <div className="h-3 bg-[#141414]/10 rounded w-1/2" />
+      </div>
+      <div className="w-4 h-4 bg-[#141414]/10 rounded" />
+    </div>
+  </div>
+);
+
 export const CRM: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -41,6 +73,7 @@ export const CRM: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const [isRecentMode, setIsRecentMode] = useState(false);
   const [formLocation, setFormLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   // Debounce search
@@ -90,16 +123,12 @@ export const CRM: React.FC = () => {
         return;
       }
 
-      // ONLY fetch if we have a search query or a forced refresh
-      if (!force && localSearchQuery.length < 3 && customers.length === 0) {
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
 
       const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
       const isCacheValid = !force && (Date.now() - lastFetch < CACHE_DURATION);
 
-      if (customers.length === 0 && isCacheValid) {
+      if (customers.length === 0 && isCacheValid && localSearchQuery.length >= 3) {
         const cachedCustomers = safeLocalStorage.getItem('prac_cached_customers');
         const cachedCars = safeLocalStorage.getItem('prac_cached_crm_cars');
         if (cachedCustomers && cachedCars) {
@@ -115,20 +144,36 @@ export const CRM: React.FC = () => {
       }
 
       try {
-        const q = query(collection(db, 'customers'), orderBy('firstName', 'asc'));
+        // If searching, fetch filtered or fetch all for local search
+        // We fetch all for local search experience as the collection is manageable (< 15k)
+        // BUT if it grows, we should switch to server-side search.
+        const custRef = collection(db, 'customers');
+        let q;
+        
+        if (localSearchQuery.length < 3) {
+          // Default: 5 most recent
+          q = query(custRef, orderBy('creationDate', 'desc'), limit(5));
+          setIsRecentMode(true);
+        } else {
+          q = query(custRef, orderBy('firstName', 'asc'));
+          setIsRecentMode(false);
+        }
+
         const snapshot = await getDocs(q);
-        const customerData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+        const customerData = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Customer));
         setCustomers(customerData);
         
         const carsSnapshot = await getDocs(collection(db, 'cars'));
-        const carsData = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
+        const carsData = carsSnapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Car));
         setCars(carsData);
         
-        const now = Date.now();
-        setLastFetch(now);
-        safeLocalStorage.setItem('prac_crm_last_fetch', now.toString(), true);
-        safeLocalStorage.setItem('prac_cached_customers', JSON.stringify(customerData), true);
-        safeLocalStorage.setItem('prac_cached_crm_cars', JSON.stringify(carsData), true);
+        if (localSearchQuery.length >= 3) {
+          const now = Date.now();
+          setLastFetch(now);
+          safeLocalStorage.setItem('prac_crm_last_fetch', now.toString(), true);
+          safeLocalStorage.setItem('prac_cached_customers', JSON.stringify(customerData), true);
+          safeLocalStorage.setItem('prac_cached_crm_cars', JSON.stringify(carsData), true);
+        }
 
         setLoading(false);
       } catch (error: any) {
@@ -157,20 +202,12 @@ export const CRM: React.FC = () => {
     };
 
     const unsubscribe = auth.onAuthStateChanged(user => {
-      if (user && localSearchQuery.length >= 3) {
+      if (user) {
         fetchData();
-      } else if (!user) {
+      } else {
         setLoading(false);
       }
     });
-
-    // Also trigger fetch if searchQuery changes and we have no data
-    if (auth.currentUser && localSearchQuery.length >= 3 && customers.length === 0) {
-      fetchData();
-    } else if (auth.currentUser && localSearchQuery.length < 3) {
-      // Just clear loading if we are authenticated but not searching
-      setLoading(false);
-    }
 
     return () => unsubscribe();
   }, [localSearchQuery]);
@@ -394,7 +431,7 @@ export const CRM: React.FC = () => {
     try {
       if (isAdding) {
         // Check if email already exists
-        const existing = customers.find(c => c.email.toLowerCase() === customerData.email.toLowerCase());
+        const existing = customers.find(c => (c.email || '').toLowerCase() === (customerData.email || '').toLowerCase());
         if (existing) {
           toast.error('A customer with this email already exists');
           return;
@@ -450,18 +487,19 @@ export const CRM: React.FC = () => {
   };
 
   const filteredCustomers = useMemo(() => {
-    if (searchQuery.length < 3) return [];
+    // If no search query and we have customers, they are the "Recent" ones
+    if (searchQuery.length < 3) return customers;
     
-    const query = searchQuery.toLowerCase();
+    const queryStr = searchQuery.toLowerCase();
     const results = [];
     
     for (let i = 0; i < customers.length; i++) {
       const c = customers[i];
       if (
-        c.firstName.toLowerCase().includes(query) ||
-        c.lastName?.toLowerCase().includes(query) ||
-        c.email.toLowerCase().includes(query) ||
-        c.mobileNumber?.includes(query)
+        (c.firstName || '').toLowerCase().includes(queryStr) ||
+        (c.lastName || '').toLowerCase().includes(queryStr) ||
+        (c.email || '').toLowerCase().includes(queryStr) ||
+        (c.mobileNumber || '').includes(queryStr)
       ) {
         results.push(c);
         if (results.length >= 30) break; // Hard limit to top 30
@@ -487,7 +525,9 @@ export const CRM: React.FC = () => {
           <div className="flex items-center gap-2 mt-1">
             <p className="text-[#141414]/60 uppercase tracking-widest text-[10px]">Customer Relationship Management</p>
             <span className="w-1 h-1 rounded-full bg-[#141414]/20" />
-            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">{TOTAL_CUSTOMER_COUNT.toLocaleString()} Total Customers</p>
+            <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">
+              <CountUp end={TOTAL_CUSTOMER_COUNT} /> Total Customers
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -535,49 +575,91 @@ export const CRM: React.FC = () => {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Customer List */}
-        <div className="w-80 border-r border-white/10 bg-white/20 backdrop-blur-md overflow-y-auto custom-scrollbar">
-          {searchQuery.length < 3 ? (
-            <div className="p-12 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-white/40 border border-white/60 flex items-center justify-center mx-auto mb-4">
-                <Search className="text-[#141414]/20" size={32} />
-              </div>
-              <p className="text-[#141414]/60 font-bold uppercase tracking-widest text-[10px] leading-relaxed">
-                Showing 0 of {TOTAL_CUSTOMER_COUNT.toLocaleString()} customers.<br />Please search to view details.
-              </p>
+        <div className="w-80 border-r border-white/10 bg-white/20 backdrop-blur-md overflow-y-auto custom-scrollbar flex flex-col">
+          {loading ? (
+            <div className="flex-1">
+              {[...Array(8)].map((_, i) => (
+                <CustomerSkeleton key={i} />
+              ))}
             </div>
-          ) : filteredCustomers.length > 0 ? (
-            filteredCustomers.map(customer => (
-              <button
-                key={customer.id}
-                onClick={() => {
-                  setSelectedCustomer(customer);
-                  setIsEditing(false);
-                  setIsAdding(false);
-                  setFormLocation(customer.location || null);
-                }}
-                className={cn(
-                  "w-full p-5 text-left border-b border-white/5 transition-all hover:bg-white/40",
-                  selectedCustomer?.id === customer.id ? "bg-white/60 backdrop-blur-xl shadow-sm border-l-4 border-l-brand-orange" : ""
-                )}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
-                    <User size={22} className="text-brand-orange" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
-                    <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
-                  </div>
-                  <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="p-12 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-white/40 border border-white/60 flex items-center justify-center mx-auto mb-4">
-                <Users className="text-[#141414]/20" size={32} />
+          ) : isRecentMode && searchQuery.length < 3 ? (
+            <>
+              <div className="p-4 border-b border-white/5 bg-white/20">
+                <p className="text-[10px] font-bold text-[#141414]/40 uppercase tracking-widest flex items-center gap-2">
+                  <History size={12} /> Recently Added
+                </p>
               </div>
-              <p className="text-[#141414]/40 font-bold uppercase tracking-widest text-[10px]">No customers found</p>
+              <div className="flex-1">
+                {customers.map(customer => (
+                  <button
+                    key={customer.id}
+                    onClick={() => {
+                      setSelectedCustomer(customer);
+                      setIsEditing(false);
+                      setIsAdding(false);
+                      setFormLocation(customer.location || null);
+                    }}
+                    className={cn(
+                      "w-full p-5 text-left border-b border-white/5 transition-all hover:bg-white/40",
+                      selectedCustomer?.id === customer.id ? "bg-white/60 backdrop-blur-xl shadow-sm border-l-4 border-l-brand-orange" : ""
+                    )}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
+                        <User size={22} className="text-brand-orange" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
+                        <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                      </div>
+                      <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : filteredCustomers.length > 0 ? (
+            <div className="flex-1">
+              {filteredCustomers.map(customer => (
+                <button
+                  key={customer.id}
+                  onClick={() => {
+                    setSelectedCustomer(customer);
+                    setIsEditing(false);
+                    setIsAdding(false);
+                    setFormLocation(customer.location || null);
+                  }}
+                  className={cn(
+                    "w-full p-5 text-left border-b border-white/5 transition-all hover:bg-white/40",
+                    selectedCustomer?.id === customer.id ? "bg-white/60 backdrop-blur-xl shadow-sm border-l-4 border-l-brand-orange" : ""
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center border border-white/60 shadow-sm">
+                      <User size={22} className="text-brand-orange" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
+                      <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                    </div>
+                    <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center flex-1 flex flex-col items-center justify-center">
+              <motion.div 
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="w-24 h-24 rounded-full bg-white/40 border border-white/60 flex items-center justify-center mb-6 shadow-2xl"
+              >
+                <Search className="text-brand-orange/20" size={48} />
+              </motion.div>
+              <h3 className="font-serif italic text-xl text-[#141414] mb-2">No Customers Found</h3>
+              <p className="text-[#141414]/40 font-bold uppercase tracking-widest text-[10px] max-w-[200px]">
+                Try a different name, phone number or email address.
+              </p>
             </div>
           )}
         </div>

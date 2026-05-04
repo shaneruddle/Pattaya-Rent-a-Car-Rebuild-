@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck, Image as ImageIcon, X, FileText, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck, Image as ImageIcon, X, FileText, RefreshCw, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage } from '../firebase';
@@ -12,8 +12,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates' | 'reviews';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates' | 'reviews') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -29,7 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   }, [isMobile]);
 
   const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
-  const isMarketingView = ['marketing_faq', 'blog'].includes(currentView);
+  const isMarketingView = ['marketing_faq', 'blog', 'reviews'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
@@ -310,6 +310,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             </button>
                             <button
                               onClick={() => {
+                                onViewChange('reviews');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'reviews' 
+                                  ? "bg-brand-orange text-white shadow-md" 
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <Star size={14} /> Reviews
+                            </button>
+                            <button
+                              onClick={() => {
                                 onViewChange('blog');
                                 if (isMobile) setIsMobileMenuOpen(false);
                               }}
@@ -586,6 +600,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       title="FAQ's"
                     >
                       <Bot size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onViewChange('reviews')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'reviews' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="Reviews"
+                    >
+                      <Star size={16} />
                     </button>
                     <button 
                       onClick={() => onViewChange('blog')}

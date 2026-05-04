@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serve
 import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { processTemplate } from '../lib/emailUtils';
 import { Booking, Car } from '../types';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, formatDistanceToNow, isToday } from 'date-fns';
 import { 
   Search, 
   Filter, 
@@ -55,8 +55,39 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
           (b.mobileNumber && b.mobileNumber.includes(searchQuery));
         return matchesSearch;
       })
-      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+      .sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        
+        if (dateA && dateB) return dateB - dateA;
+        // Fallback to startDate if createdAt is missing for some reason
+        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+      });
   }, [bookings, searchQuery]);
+
+  const formatEnquiryTime = (createdAt: any) => {
+    if (!createdAt) return null;
+    
+    let date: Date;
+    try {
+      if (createdAt?.toDate) {
+        date = createdAt.toDate();
+      } else if (typeof createdAt === 'string') {
+        date = parseISO(createdAt);
+      } else {
+        date = new Date(createdAt);
+      }
+    } catch (e) {
+      return null;
+    }
+
+    if (!isValid(date)) return null;
+
+    if (isToday(date)) {
+      return `Received Today, ${format(date, 'HH:mm')} (${formatDistanceToNow(date, { addSuffix: true })})`;
+    }
+    return `Received: ${format(date, 'MMM d, HH:mm')}`;
+  };
 
   const handleEdit = (enquiry: Booking) => {
     setSelectedEnquiry(enquiry);
@@ -273,11 +304,16 @@ Do you wish to proceed with the booking ?`;
                 className="bg-white/40 backdrop-blur-xl border border-white/60 rounded-[32px] p-8 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
               >
                 {/* Status Badge */}
-                <div className="absolute top-8 right-8 flex items-center gap-2">
-                  <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[8px] font-bold uppercase tracking-widest rounded-full">
-                    Pending Enquiry
-                  </span>
-                  <div className="relative group/menu">
+                  <div className="absolute top-8 right-8 flex flex-col items-end gap-2">
+                    <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[8px] font-bold uppercase tracking-widest rounded-full">
+                      Pending Enquiry
+                    </span>
+                    {enquiry.createdAt && (
+                      <span className="text-[9px] font-bold text-black/40 uppercase tracking-widest">
+                        {formatEnquiryTime(enquiry.createdAt)}
+                      </span>
+                    )}
+                    <div className="relative group/menu">
                     <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
                       <MoreVertical size={16} className="text-black/40" />
                     </button>
