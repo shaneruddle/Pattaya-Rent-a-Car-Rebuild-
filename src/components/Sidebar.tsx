@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage } from '../firebase';
@@ -12,8 +12,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing' | 'image_management' | 'email_templates';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing' | 'image_management' | 'email_templates') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -169,6 +169,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <DollarSign size={18} /> Finance
+                    </button>
+                    <button
+                      onClick={() => {
+                        onViewChange('marketing');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'marketing' 
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <Megaphone size={18} /> Marketing
                     </button>
                     <button
                       onClick={() => {
@@ -456,6 +470,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
               title="Finance"
             >
               <DollarSign size={20} />
+            </button>
+            <button 
+              onClick={() => onViewChange('marketing')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'marketing' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
+              )}
+              title="Marketing"
+            >
+              <Megaphone size={20} />
             </button>
             <button 
               onClick={() => onViewChange('fleet')}

@@ -38,6 +38,7 @@ import { safeLocalStorage } from './lib/storage';
 
 import { NewRental } from './components/NewRental';
 import { BookingEngine } from './components/BookingEngine';
+import { Marketing } from './components/Marketing';
 import { LanguageProvider } from './LanguageContext';
 import { PricingProvider } from './contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
@@ -75,7 +76,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing' | 'image_management' | 'email_templates'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -640,6 +641,8 @@ function AppContent() {
                 <Logs logs={logs} />
               ) : currentView === 'new_rental' ? (
                 <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
+              ) : currentView === 'marketing' ? (
+                <Marketing />
               ) : currentView === 'image_management' ? (
                 <ImageManagement />
               ) : (
