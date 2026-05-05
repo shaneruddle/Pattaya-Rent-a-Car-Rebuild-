@@ -1807,16 +1807,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       {/* Booking Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-warm-bg/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md pointer-events-auto">
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="bg-white/60 backdrop-blur-xl border border-black/10 p-8 max-w-2xl w-full shadow-2xl rounded-[40px] overflow-y-auto max-h-[90vh]"
+              className="bg-white border border-black/10 max-w-2xl w-full shadow-2xl rounded-[40px] flex flex-col max-h-[90vh] overflow-y-auto relative"
+              onClick={e => e.stopPropagation()}
             >
-              <div className="flex justify-between items-start mb-8">
+              {/* Header */}
+              <div className="bg-white/80 backdrop-blur-xl border-b border-black/5 p-8 flex justify-between items-start shrink-0 relative">
                 <div>
-                  <h2 className="font-serif italic text-3xl text-gray-900">
+                  <h2 className="font-serif italic text-3xl text-gray-900 pr-12">
                     {showDeleteConfirm ? 'Confirm Deletion' : (modalMode === 'view' ? 'Booking Details' : (editingBooking ? 'Edit Booking' : 'New Booking'))}
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1 ml-1">
@@ -1840,13 +1842,15 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)} 
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-white/40 hover:bg-brand-orange hover:text-white transition-all shadow-sm"
+                  className="absolute top-8 right-8 w-10 h-10 flex items-center justify-center rounded-full bg-black/5 hover:bg-brand-orange hover:text-white transition-all shadow-sm shrink-0 z-[100]"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              {showDeleteConfirm ? (
+              {/* Content */}
+              <div className="grow p-8 flex flex-col">
+                {showDeleteConfirm ? (
                 <div className="space-y-8 py-4">
                   <div className="text-center space-y-4">
                     <div className="w-20 h-20 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
@@ -2099,477 +2103,421 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   )}
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="flex items-center gap-2 pb-4 border-b border-white/20">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, isMaintenance: !formData.isMaintenance })}
-                      className={cn(
-                        "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
-                        !formData.isMaintenance 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "bg-white/40 text-[#1A1A1A]/40 hover:bg-white/60"
-                      )}
-                    >
-                      <User size={14} /> Rental Booking
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, isMaintenance: !formData.isMaintenance })}
-                      className={cn(
-                        "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
-                        formData.isMaintenance 
-                          ? "bg-gray-600 text-white shadow-lg shadow-gray-600/20" 
-                          : "bg-white/40 text-[#1A1A1A]/40 hover:bg-white/60"
-                      )}
-                    >
-                      <Wrench size={14} /> Maintenance
-                    </button>
-                  </div>
+                <form onSubmit={handleSubmit} className="contents">
+                  <div className="space-y-8">
+                    <div className="flex items-center gap-2 pb-6 border-b border-black/5">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, isMaintenance: false })}
+                        className={cn(
+                          "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
+                          !formData.isMaintenance 
+                            ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
+                            : "bg-black/5 text-[#1A1A1A]/40 hover:bg-black/10"
+                        )}
+                      >
+                        <User size={14} /> Rental Booking
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, isMaintenance: true })}
+                        className={cn(
+                          "flex-1 h-12 flex items-center justify-center gap-2 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all",
+                          formData.isMaintenance 
+                            ? "bg-gray-600 text-white shadow-lg shadow-gray-600/20" 
+                            : "bg-black/5 text-[#1A1A1A]/40 hover:bg-black/10"
+                        )}
+                      >
+                        <Wrench size={14} /> Maintenance
+                      </button>
+                    </div>
 
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <DollarSign size={12} /> Payment Status
-                        </label>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, paymentStatus: 'paid' })}
-                            className={cn(
-                              "flex-1 h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all border",
-                              formData.paymentStatus === 'paid'
-                                ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20"
-                                : "bg-white/40 text-gray-400 border-white/60"
-                            )}
-                          >
-                            Paid
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, paymentStatus: 'pending' })}
-                            className={cn(
-                              "flex-1 h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all border",
-                              formData.paymentStatus === 'pending'
-                                ? "bg-yellow-400 text-black border-yellow-400 shadow-lg shadow-yellow-400/20"
-                                : "bg-white/40 text-gray-400 border-white/60"
-                            )}
-                          >
-                            Pending
-                          </button>
+                    <div className="space-y-8">
+                      {/* Section 1: Customer & Payment */}
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-brand-orange/10 flex items-center justify-center">
+                            <DollarSign size={16} className="text-brand-orange" />
+                          </div>
+                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Payment & Identity</h3>
                         </div>
-                      </div>
 
-                      {!formData.isMaintenance ? (
-                        <>
+                        <div className="grid grid-cols-1 gap-4">
                           <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-2"><FileText size={12} /> Customer Name</span>
-                              {formData.customerName && (
-                                <span className="text-[8px] text-emerald-500 font-bold">Search results below</span>
-                              )}
-                            </label>
-                            <div className="relative">
+                             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Payment Status</label>
+                             <div className="flex gap-2 p-1 bg-black/5 rounded-[20px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, paymentStatus: 'paid' })}
+                                  className={cn(
+                                    "flex-1 h-10 rounded-[16px] font-bold uppercase tracking-widest text-[9px] transition-all",
+                                    formData.paymentStatus === 'paid' ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" : "text-gray-400 hover:text-gray-600"
+                                  )}
+                                >
+                                  Paid
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, paymentStatus: 'pending' })}
+                                  className={cn(
+                                    "flex-1 h-10 rounded-[16px] font-bold uppercase tracking-widest text-[9px] transition-all",
+                                    formData.paymentStatus === 'pending' ? "bg-amber-400 text-black shadow-md shadow-amber-400/20" : "text-gray-400 hover:text-gray-600"
+                                  )}
+                                >
+                                  Pending
+                                </button>
+                             </div>
+                          </div>
+                        </div>
+
+                        {!formData.isMaintenance ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Customer Name</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all"
+                                  value={formData.customerName}
+                                  onChange={e => {
+                                    setFormData({ ...formData, customerName: e.target.value });
+                                    setShowCustomerSuggestions(true);
+                                  }}
+                                  onFocus={() => setShowCustomerSuggestions(true)}
+                                  placeholder="Full Name"
+                                  required={!formData.isMaintenance}
+                                />
+                                <AnimatePresence>
+                                  {showCustomerSuggestions && filteredCustomers.length > 0 && (
+                                    <motion.div
+                                      ref={suggestionsRef}
+                                      initial={{ opacity: 0, y: -10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -10 }}
+                                      className="absolute z-50 left-0 right-0 mt-2 bg-white border border-black/10 shadow-2xl rounded-2xl max-h-48 overflow-y-auto"
+                                    >
+                                      {filteredCustomers.map(customer => (
+                                        <button
+                                          key={customer.id}
+                                          type="button"
+                                          onClick={() => handleSelectCustomer(customer)}
+                                          className="w-full p-3 text-left hover:bg-brand-orange hover:text-white flex items-center justify-between border-b border-black/5 last:border-0 transition-colors"
+                                        >
+                                          <div>
+                                            <p className="text-xs font-bold">{customer.firstName} {customer.lastName}</p>
+                                            <p className="text-[10px] opacity-60">{customer.email}</p>
+                                          </div>
+                                          <ChevronRight size={14} className="opacity-40" />
+                                        </button>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Email Address</label>
+                              <input
+                                type="email"
+                                className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all"
+                                value={formData.email}
+                                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                placeholder="customer@email.com"
+                              />
+                            </div>
+                            <div className="col-span-1 md:col-span-2 space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Mobile Number</label>
                               <input
                                 type="text"
-                                className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                                value={formData.customerName}
-                                onChange={e => {
-                                  setFormData({ ...formData, customerName: e.target.value });
-                                  setShowCustomerSuggestions(true);
-                                }}
-                                onFocus={() => setShowCustomerSuggestions(true)}
-                                placeholder="Enter name or search existing..."
-                                required={!formData.isMaintenance}
+                                className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all"
+                                value={formData.mobileNumber}
+                                onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
+                                placeholder="+66 ..."
                               />
-                              <AnimatePresence>
-                                {showCustomerSuggestions && filteredCustomers.length > 0 && (
-                                  <motion.div
-                                    ref={suggestionsRef}
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    className="absolute z-50 left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl max-h-48 overflow-y-auto"
-                                  >
-                                    {filteredCustomers.map(customer => (
-                                      <button
-                                        key={customer.id}
-                                        type="button"
-                                        onClick={() => handleSelectCustomer(customer)}
-                                        className="w-full p-3 text-left hover:bg-brand-orange hover:text-white flex items-center justify-between border-b border-white/20 last:border-0 transition-colors"
-                                      >
-                                        <div>
-                                          <p className="text-xs font-bold">{customer.firstName} {customer.lastName}</p>
-                                          <p className="text-[10px] opacity-60">{customer.email}</p>
-                                        </div>
-                                        <ChevronRight size={14} className="opacity-40" />
-                                      </button>
-                                    ))}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                              <Mail size={12} /> Email Address
-                            </label>
-                            <input
-                              type="email"
-                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                              value={formData.email}
-                              onChange={e => setFormData({ ...formData, email: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                              <Phone size={12} /> Mobile Number
-                            </label>
-                            <input
-                              type="text"
-                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                              value={formData.mobileNumber}
-                              onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
-                            />
-                          </div>
+                        ) : (
                           <div className="space-y-4">
-                            <div className="p-4 bg-[#1A1A1A]/5 rounded-2xl">
-                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notice</p>
-                              <p className="text-[11px] text-gray-500 leading-relaxed italic">
-                                Use the floating command bar at the bottom to manage financial details and rental notes.
-                              </p>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Repair Description</label>
+                              <textarea
+                                className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-gray-400 outline-none transition-all min-h-[100px]"
+                                value={formData.maintenanceDescription}
+                                onChange={e => setFormData({ ...formData, maintenanceDescription: e.target.value })}
+                                placeholder="What needs fixing?"
+                                required={formData.isMaintenance}
+                              />
                             </div>
                           </div>
-                        </>
-                      ) : (
-                        <div className="space-y-6">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                              <Wrench size={12} /> Repair Detail
-                            </label>
-                            <textarea
-                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-gray-600 outline-none transition-all min-h-[120px]"
-                              value={formData.maintenanceDescription}
-                              onChange={e => setFormData({ ...formData, maintenanceDescription: e.target.value })}
-                              placeholder="Describe the repair or service needed..."
-                              required={formData.isMaintenance}
-                            />
-                          </div>
-                          <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Maintenance Note</p>
-                            <p className="text-[11px] text-gray-500 leading-relaxed italic">
-                              Switching to Maintenance Mode hides customer fields and marks this period as "Fleet Repair". The vehicle will be unavailable for rentals during this time.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                          <CarIconType size={12} /> Assigned Vehicle
-                        </label>
-                        <div className="relative" ref={vehicleSuggestionsRef}>
-                          <div 
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus-within:border-brand-orange outline-none transition-all cursor-pointer flex items-center justify-between"
-                            onClick={() => setIsVehicleDropdownOpen(!isVehicleDropdownOpen)}
-                          >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              {formData.carId ? (
-                                (() => {
-                                  const car = cars.find(c => c.id === formData.carId);
-                                  if (!car) return <span>Unassigned</span>;
-                                  const brandSlug = getBrandSlug(car.name);
-                                  const typeStyles = getCarTypeStyles(car.type || car.category || '');
-                                  const displayName = cleanCarName(car.make && car.model ? `${car.make} ${car.model}` : car.name);
-                                  return (
-                                    <>
-                                      {brandSlug ? (
-                                        <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4 shrink-0" alt="" />
-                                      ) : (
-                                        <typeStyles.icon size={12} className={cn("shrink-0", typeStyles.color)} />
-                                      )}
-                                      <span className="truncate">{car.make} {car.model} {car.yearOfManufacture} • {car.plateNumber}</span>
-                                    </>
-                                  );
-                                })()
-                              ) : (
-                                <span className="text-gray-400">Unassigned</span>
-                              )}
-                            </div>
-                            <ChevronRight className={cn("rotate-90 opacity-40 transition-transform", isVehicleDropdownOpen && "-rotate-90")} size={16} />
-                          </div>
+                        )}
+                      </div>
 
-                          <AnimatePresence>
-                            {isVehicleDropdownOpen && (
-                              <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="absolute z-50 left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl border border-white/60 shadow-2xl rounded-3xl overflow-hidden flex flex-col"
-                              >
-                                <div className="p-2 border-b border-white/20">
-                                  <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                                    <input 
-                                      autoFocus
-                                      type="text"
-                                      className="w-full bg-black/5 p-2 pl-9 rounded-xl text-xs outline-none border-0"
-                                      placeholder="Search model or plate..."
-                                      value={vehicleSearchQuery}
-                                      onChange={e => setVehicleSearchQuery(e.target.value)}
-                                      onClick={e => e.stopPropagation()}
-                                    />
+                      {/* Section 2: Vehicle & Scheduling */}
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                            <CarIconType size={16} className="text-blue-500" />
+                          </div>
+                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Vehicle & Scheduling</h3>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Assign Vehicle</label>
+                          <div className="relative" ref={vehicleSuggestionsRef}>
+                            <div 
+                              className="w-full bg-black/5 border border-black/5 p-4 rounded-2xl text-sm font-bold focus-within:ring-2 ring-brand-orange outline-none transition-all cursor-pointer flex items-center justify-between"
+                              onClick={() => setIsVehicleDropdownOpen(!isVehicleDropdownOpen)}
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                {formData.carId ? (
+                                  (() => {
+                                    const car = cars.find(c => c.id === formData.carId);
+                                    if (!car) return <span className="text-gray-400">Select Vehicle</span>;
+                                    const brandSlug = getBrandSlug(car.name);
+                                    return (
+                                      <>
+                                        {brandSlug ? (
+                                          <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4 shrink-0" alt="" />
+                                        ) : (
+                                          <CarIconType size={14} className="text-blue-500 shrink-0" />
+                                        )}
+                                        <span className="truncate">{car.make} {car.model} • {car.plateNumber}</span>
+                                      </>
+                                    );
+                                  })()
+                                ) : (
+                                  <span className="text-gray-400">Unassigned</span>
+                                )}
+                              </div>
+                              <ChevronRight className={cn("rotate-90 opacity-40 transition-transform", isVehicleDropdownOpen && "-rotate-90")} size={16} />
+                            </div>
+
+                            <AnimatePresence>
+                              {isVehicleDropdownOpen && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  className="absolute z-50 left-0 right-0 mt-2 bg-white border border-black/10 shadow-2xl rounded-3xl overflow-hidden flex flex-col"
+                                >
+                                  <div className="p-2 border-b border-black/5 bg-gray-50">
+                                    <div className="relative">
+                                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                      <input 
+                                        autoFocus
+                                        type="text"
+                                        className="w-full bg-white p-2 pl-9 rounded-xl text-xs outline-none border border-black/5"
+                                        placeholder="Search model or plate..."
+                                        value={vehicleSearchQuery}
+                                        onChange={e => setVehicleSearchQuery(e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto">
-                                  <button
-                                    type="button"
-                                    className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest border-b border-white/10"
-                                    onClick={() => {
-                                      setFormData({ ...formData, carId: '' });
-                                      setIsVehicleDropdownOpen(false);
-                                      setVehicleSearchQuery('');
-                                    }}
-                                  >
-                                    Unassigned
-                                  </button>
-                                  {filteredFleet.length > 0 ? (
-                                    filteredFleet.map(car => {
+                                  <div className="max-h-60 overflow-y-auto">
+                                    <button
+                                      type="button"
+                                      className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest border-b border-black/5"
+                                      onClick={() => {
+                                        setFormData({ ...formData, carId: '' });
+                                        setIsVehicleDropdownOpen(false);
+                                        setVehicleSearchQuery('');
+                                      }}
+                                    >
+                                      Unassigned
+                                    </button>
+                                    {filteredFleet.map(car => {
                                       const brandSlug = getBrandSlug(car.name);
-                                      const typeStyles = getCarTypeStyles(car.type || car.category || '');
                                       return (
                                         <button
                                           key={car.id}
                                           type="button"
-                                          className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors flex items-center gap-3 border-b border-white/10 last:border-0"
+                                          className="w-full p-3 text-left hover:bg-brand-orange hover:text-white transition-colors flex items-center justify-between border-b border-black/5 last:border-0"
                                           onClick={() => {
                                             setFormData({ ...formData, carId: car.id });
                                             setIsVehicleDropdownOpen(false);
                                             setVehicleSearchQuery('');
                                           }}
                                         >
-                                          {brandSlug ? (
-                                            <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4" alt="" />
-                                          ) : (
-                                            <typeStyles.icon size={12} className={typeStyles.color} />
-                                          )}
-                                          <div className="flex flex-col">
-                                            <span className="text-xs font-bold">{car.make} {car.model} {car.yearOfManufacture}</span>
-                                            <span className="text-[10px] opacity-60 font-mono">{car.plateNumber}</span>
+                                          <div className="flex items-center gap-3">
+                                            {brandSlug ? (
+                                              <img src={`https://cdn.simpleicons.org/${brandSlug}`} className="w-4 h-4" alt="" />
+                                            ) : (
+                                              <CarIconType size={14} />
+                                            )}
+                                            <div className="flex flex-col">
+                                              <span className="text-xs font-bold">{car.make} {car.model}</span>
+                                              <span className="text-[10px] opacity-60 font-mono">{car.plateNumber}</span>
+                                            </div>
                                           </div>
+                                          <ChevronRight size={14} className="opacity-20" />
                                         </button>
                                       );
-                                    })
-                                  ) : (
-                                    <div className="p-8 text-center">
-                                      <Search size={24} className="mx-auto text-gray-300 mb-2" />
-                                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">No vehicle found</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                                    })}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Status</label>
-                        <div className="flex gap-2">
-                          {['Paid', 'Pending'].map(s => (
+
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Select Dates & Times</label>
+                          <div className="relative group">
                             <button
-                              key={s}
                               type="button"
-                              onClick={() => setFormData({ ...formData, status: s as any })}
+                              onClick={() => setShowDatePicker(true)}
                               className={cn(
-                                "flex-1 h-10 text-[10px] font-bold uppercase tracking-widest border transition-all rounded-full",
-                                formData.status === s
-                                  ? "bg-brand-orange text-white border-brand-orange shadow-lg shadow-brand-orange/20"
-                                  : "bg-white/40 border-white/60 text-gray-400 hover:border-brand-orange/40"
+                                "w-full bg-black/5 border border-black/5 p-4 rounded-2xl text-left hover:bg-black/10 transition-all flex flex-col gap-4",
+                                (!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) ? "ring-2 ring-red-500" : ""
                               )}
                             >
-                              {s}
+                              <div className="flex justify-between items-center w-full">
+                                <div className="space-y-1">
+                                  <p className="text-[9px] font-bold uppercase tracking-widest text-brand-orange">Pick-up</p>
+                                  <p className="text-xs font-bold text-gray-900">
+                                    {dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date'} • {pickUpTime}
+                                  </p>
+                                </div>
+                                <Calendar size={16} className="text-gray-400 group-hover:text-brand-orange transition-colors" />
+                                <div className="space-y-1 text-right">
+                                  <p className="text-[9px] font-bold uppercase tracking-widest text-brand-orange">Drop-off</p>
+                                  <p className="text-xs font-bold text-gray-900">
+                                    {dateRange?.to ? format(dateRange.to, 'PPP') : (dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date')} • {dropOffTime}
+                                  </p>
+                                </div>
+                              </div>
+                              {(!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) && (
+                                <div className="flex items-center gap-2 text-[9px] text-red-500 font-bold bg-red-500/10 p-2 rounded-xl border border-red-500/20">
+                                  <AlertCircle size={12} />
+                                  Office hours: 09:00 - 17:30
+                                </div>
+                              )}
                             </button>
-                          ))}
+
+                            <AnimatePresence>
+                              {showDatePicker && (
+                                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm shadow-2xl">
+                                  <motion.div
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className="w-full max-w-[700px]"
+                                  >
+                                    <DatePickerCustom
+                                      selectedRange={{ 
+                                        from: dateRange?.from || new Date(), 
+                                        to: dateRange?.to || addDays(dateRange?.from || new Date(), 1) 
+                                      }}
+                                      onRangeChange={(range) => {
+                                        setDateRange({ from: range.from, to: range.to });
+                                      }}
+                                      pickUpTime={pickUpTime}
+                                      onPickUpTimeChange={setPickUpTime}
+                                      dropOffTime={dropOffTime}
+                                      onDropOffTimeChange={setDropOffTime}
+                                      onClose={() => setShowDatePicker(false)}
+                                      onApply={() => setShowDatePicker(false)}
+                                      isBikeMode={title?.toLowerCase()?.includes('bike') || false}
+                                      useFilteredTimes={true}
+                                    />
+                                  </motion.div>
+                                </div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                        <Calendar size={12} /> Select Dates & Times
-                      </label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowDatePicker(true)}
-                          className={cn(
-                            "w-full bg-white/40 border-b-2 p-4 rounded-t-2xl text-left hover:bg-white/60 transition-all shadow-sm",
-                            (!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) ? "border-red-500" : "border-white/60"
-                          )}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Pick-up</p>
-                              <p className="text-sm font-bold text-gray-900">
-                                {dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date'} at {pickUpTime}
-                              </p>
-                            </div>
-                            <div className="h-8 w-px bg-black/10 mx-4" />
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-orange mb-1">Drop-off</p>
-                              <p className="text-sm font-bold text-gray-900">
-                                {dateRange?.to ? format(dateRange.to, 'PPP') : (dateRange?.from ? format(dateRange.from, 'PPP') : 'Select date')} at {dropOffTime}
-                              </p>
-                            </div>
-                          </div>
-                          {(!isTimeValid(pickUpTime) || !isTimeValid(dropOffTime)) && (
-                            <p className="text-[10px] text-red-500 font-bold mt-2 animate-pulse">
-                              Office hours are 09:00 - 17:30
-                            </p>
-                          )}
-                        </button>
-
-                        <AnimatePresence>
-                          {showDatePicker && (
-                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
-                              <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="w-full max-w-[700px]"
-                              >
-                                <DatePickerCustom
-                                  selectedRange={{ 
-                                    from: dateRange?.from || new Date(), 
-                                    to: dateRange?.to || addDays(dateRange?.from || new Date(), 1) 
-                                  }}
-                                  onRangeChange={(range) => {
-                                    setDateRange({ from: range.from, to: range.to });
-                                  }}
-                                  pickUpTime={pickUpTime}
-                                  onPickUpTimeChange={setPickUpTime}
-                                  dropOffTime={dropOffTime}
-                                  onDropOffTimeChange={setDropOffTime}
-                                  onClose={() => setShowDatePicker(false)}
-                                  onApply={() => setShowDatePicker(false)}
-                                  isBikeMode={title?.toLowerCase()?.includes('bike') || false}
-                                  useFilteredTimes={true}
-                                />
-                              </motion.div>
-                            </div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-
-                      <div className="flex items-center justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setShowImportantInfo(true)}
-                          className="flex items-center gap-2 text-brand-orange hover:text-[#1A1A1A] transition-colors"
-                        >
-                          <AlertCircle size={12} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-brand-orange">Important Info</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6 pt-6 border-t border-white/20">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-brand-orange/10 flex items-center justify-center">
-                        <TruckIcon size={16} className="text-brand-orange" />
-                      </div>
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Delivery Details</h4>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Section 3: Delivery Details */}
                       <div className="space-y-6">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Delivery Address</label>
-                          <input
-                            type="text"
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-medium focus:border-brand-orange outline-none transition-all"
-                            value={formData.deliveryAddress}
-                            onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                            placeholder="Enter delivery address..."
-                          />
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                            <TruckIcon size={16} className="text-emerald-500" />
+                          </div>
+                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Delivery & Logistics</h3>
                         </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between ml-4">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Pin Location on Map</label>
-                          {editingBooking?.deliveryLocation && (
-                            <button
-                              type="button"
-                              onClick={() => setFormData({ ...formData, deliveryLocation: editingBooking.deliveryLocation })}
-                              className="text-[8px] font-bold uppercase tracking-widest text-brand-orange hover:underline"
-                            >
-                              Reset Location
-                            </button>
-                          )}
+
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Delivery Address</label>
+                            <input
+                              type="text"
+                              className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-emerald-500 outline-none transition-all"
+                              value={formData.deliveryAddress}
+                              onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                              placeholder="Hotel, Condo, or Villa name..."
+                            />
+                          </div>
+
+                          <div className="space-y-3">
+                             <div className="flex items-center justify-between ml-4">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Geographic Pin</label>
+                                {editingBooking?.deliveryLocation && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, deliveryLocation: editingBooking.deliveryLocation })}
+                                    className="text-[8px] font-bold uppercase tracking-widest text-brand-orange hover:underline px-2 py-1 bg-brand-orange/5 rounded-lg"
+                                  >
+                                    Reset to current
+                                  </button>
+                                )}
+                             </div>
+                             <div className="rounded-[32px] overflow-hidden border border-black/5 shadow-inner">
+                               <LocationPicker 
+                                 location={formData.deliveryLocation} 
+                                 onChange={(loc) => setFormData({ ...formData, deliveryLocation: loc })} 
+                               />
+                             </div>
+                             <p className="text-[8px] text-gray-400 font-bold uppercase tracking-wider ml-4 flex items-center gap-1.5">
+                               <Search size={10} /> Drag pin to precise drop spot
+                             </p>
+                          </div>
                         </div>
-                        <LocationPicker 
-                          location={formData.deliveryLocation} 
-                          onChange={(loc) => setFormData({ ...formData, deliveryLocation: loc })} 
-                        />
-                        <p className="text-[8px] text-gray-400 italic ml-4 mt-1">Click on the map or drag the pin to set delivery location</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Floating Action Bar / Sticky Footer */}
-                  <div className="sticky bottom-0 bg-white/80 backdrop-blur-2xl border-t border-black/5 p-6 -mx-8 -mb-8 mt-8 space-y-6 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] z-40 rounded-b-[40px]">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Footer Action Bar */}
+                  <div className="bg-white/90 backdrop-blur-2xl border-t border-black/5 p-8 -mx-8 mt-12 space-y-8 shadow-[0_-20px_60px_rgba(0,0,0,0.05)] z-[70] shrink-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between ml-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Rental Notes</label>
-                          <div className="flex gap-2">
-                             <div className="flex items-center gap-1">
-                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                               <span className="text-[8px] font-bold uppercase text-gray-400">Start</span>
-                             </div>
-                             <div className="flex items-center gap-1">
-                               <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                               <span className="text-[8px] font-bold uppercase text-gray-400">End</span>
-                             </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Logistics Notes</label>
+                        <div className="grid grid-cols-1 gap-3">
                           <textarea
                             rows={1}
-                            className="w-full bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-xl text-xs focus:ring-1 focus:ring-emerald-500 outline-none transition-all resize-none min-h-[44px]"
+                            className="w-full bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl text-xs font-medium focus:ring-2 ring-emerald-500 outline-none transition-all resize-none min-h-[52px]"
                             value={formData.deliveryNotes}
                             onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
-                            placeholder="Start/Delivery note..."
+                            placeholder="Pick-up/Delivery notes..."
                           />
                           <textarea
                             rows={1}
-                            className="w-full bg-amber-500/5 border border-amber-500/10 p-3 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 outline-none transition-all resize-none min-h-[44px]"
+                            className="w-full bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl text-xs font-medium focus:ring-2 ring-amber-500 outline-none transition-all resize-none min-h-[52px]"
                             value={formData.returnNote}
                             onChange={e => setFormData({ ...formData, returnNote: e.target.value })}
-                            placeholder="End/Return note..."
+                            placeholder="Return/Inspection notes..."
                           />
                         </div>
                       </div>
 
                       <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Rental Summary</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-black/5 p-3 rounded-2xl">
-                            <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Amount (THB)</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Financial Overview</label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-brand-orange/5 p-4 rounded-[24px] border border-brand-orange/10">
+                            <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Total Fee (THB)</label>
                             <input
                               type="number"
-                              className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none"
+                              className="w-full bg-transparent border-0 p-0 text-lg font-bold text-gray-900 focus:ring-0 outline-none"
                               value={formData.amount}
                               onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
                             />
                           </div>
-                          <div className="bg-black/5 p-3 rounded-2xl">
-                            <label className="text-[8px] font-bold uppercase text-gray-400 block mb-1">Deposit (THB)</label>
+                          <div className="bg-black/5 p-4 rounded-[24px] border border-black/5">
+                            <label className="text-[8px] font-bold uppercase text-gray-500 block mb-1">Deposit (THB)</label>
                             <input
                               type="number"
-                              className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none font-mono"
+                              className="w-full bg-transparent border-0 p-0 text-lg font-bold text-gray-900 focus:ring-0 outline-none"
                               value={formData.deposit}
                               onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
                             />
@@ -2583,25 +2531,26 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         <button
                           type="button"
                           onClick={() => setModalMode('view')}
-                          className="px-8 h-12 border border-black/10 bg-black/5 text-gray-600 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-black/10 transition-all font-mono"
+                          className="px-10 h-14 border border-black/10 bg-white/50 text-gray-600 font-bold uppercase tracking-widest text-[10px] rounded-[24px] hover:bg-black/5 transition-all shadow-sm"
                         >
                           Cancel
                         </button>
                       )}
                       <button
                         type="submit"
-                        className="flex-1 bg-[#1A1A1A] text-white h-12 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all shadow-lg active:translate-y-[2px] active:shadow-none"
+                        className="flex-1 bg-gray-900 text-white h-14 rounded-[24px] font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all shadow-xl shadow-gray-900/10 active:translate-y-1"
                       >
-                        {editingBooking ? 'Save Changes' : 'Create Booking'}
+                        {editingBooking ? 'Update Reservation' : 'Confirm New Booking'}
                       </button>
                     </div>
                   </div>
                 </form>
               )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
 
       <AnimatePresence>
         {contextMenu && (

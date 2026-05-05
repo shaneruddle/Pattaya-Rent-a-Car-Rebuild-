@@ -4,8 +4,13 @@ import { MarketingFAQ } from './MarketingFAQ';
 import { FileText, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export const Marketing: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'blog' | 'faq'>('blog');
+export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' }> = ({ defaultTab = 'blog' }) => {
+  const [activeTab, setActiveTab] = useState<'blog' | 'faq'>(defaultTab);
+
+  // Sync state if prop changes from sidebar navigation
+  React.useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   return (
     <div className="flex flex-col h-full bg-warm-bg overflow-hidden">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage } from '../firebase';
@@ -12,13 +12,14 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing' | 'image_management' | 'email_templates';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing' | 'image_management' | 'email_templates') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
+  const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -28,13 +29,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   }, [isMobile]);
 
   const isSettingsView = ['pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
+  const isMarketingView = ['marketing_blog', 'marketing_faq', 'marketing_reviews'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
     if (isSettingsView) {
       setIsSettingsExpanded(true);
     }
-  }, [isSettingsView]);
+    if (isMarketingView) {
+      setIsMarketingExpanded(true);
+    }
+  }, [isSettingsView, isMarketingView]);
 
   return (
     <>
@@ -170,20 +175,78 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <DollarSign size={18} /> Finance
                     </button>
-                    <button
-                      onClick={() => {
-                        onViewChange('marketing');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'marketing' 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <Megaphone size={18} /> Marketing
-                    </button>
+                    {/* Marketing Group */}
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setIsMarketingExpanded(!isMarketingExpanded)}
+                        className={cn(
+                          "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-between px-6 transition-all",
+                          isMarketingView
+                            ? "bg-brand-orange/10 text-brand-orange border border-brand-orange/20"
+                            : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Megaphone size={18} />
+                          Marketing
+                        </div>
+                        {isMarketingExpanded ? <ChevronLeft size={14} className="-rotate-90" /> : <ChevronRight size={14} className="rotate-90" />}
+                      </button>
+
+                      <AnimatePresence>
+                        {isMarketingExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden pl-4 space-y-1"
+                          >
+                            <button
+                              onClick={() => {
+                                onViewChange('marketing_blog');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'marketing_blog' 
+                                  ? "bg-brand-orange text-white shadow-md" 
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <FileText size={14} /> Blog Management
+                            </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('marketing_faq');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'marketing_faq' 
+                                  ? "bg-brand-orange text-white shadow-md" 
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <HelpCircle size={14} /> FAQ Management
+                            </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('marketing_reviews');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'marketing_reviews' 
+                                  ? "bg-brand-orange text-white shadow-md" 
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <Star size={14} /> Review Management
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                     <button
                       onClick={() => {
                         onViewChange('fleet');
@@ -471,16 +534,61 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
             >
               <DollarSign size={20} />
             </button>
-            <button 
-              onClick={() => onViewChange('marketing')}
-              className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                currentView === 'marketing' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
-              )}
-              title="Marketing"
-            >
-              <Megaphone size={20} />
-            </button>
+            {/* Collapsed Marketing */}
+            <div className="flex flex-col items-center gap-2">
+              <button 
+                onClick={() => setIsMarketingExpanded(!isMarketingExpanded)}
+                className={cn(
+                  "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                  isMarketingView ? "bg-brand-orange/10 text-brand-orange border border-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
+                )}
+                title="Marketing"
+              >
+                <Megaphone size={20} />
+              </button>
+              
+              <AnimatePresence>
+                {isMarketingExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="flex flex-col items-center gap-2 overflow-hidden"
+                  >
+                    <button 
+                      onClick={() => onViewChange('marketing_blog')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'marketing_blog' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="Blog Management"
+                    >
+                      <FileText size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onViewChange('marketing_faq')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'marketing_faq' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="FAQ Management"
+                    >
+                      <HelpCircle size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onViewChange('marketing_reviews')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'marketing_reviews' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="Review Management"
+                    >
+                      <Star size={16} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
             <button 
               onClick={() => onViewChange('fleet')}
               className={cn(

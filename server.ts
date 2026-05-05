@@ -284,7 +284,9 @@ async function startServer() {
         }
       });
 
-      res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+      const contentTypeRaw = response.headers['content-type'];
+      const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : 'application/octet-stream';
+      res.set('Content-Type', contentType);
       res.set('Access-Control-Allow-Origin', '*'); // Ensure client can read it
       res.send(response.data);
     } catch (error: any) {
@@ -406,10 +408,11 @@ async function startServer() {
         });
 
         const buffer = response.data;
-        const contentType = response.headers['content-type'] || '';
+        const contentTypeRaw = response.headers['content-type'];
+        const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
         console.log(`Successfully downloaded spreadsheet (${buffer.byteLength} bytes), Content-Type: ${contentType}`);
         
-        if (!contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel') && !contentType.includes('application/zip')) {
+        if (contentType && !contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel') && !contentType.includes('application/zip')) {
           // If we get HTML, it's likely a login page or error page
           if (contentType.includes('text/html')) {
             const html = Buffer.from(buffer).toString('utf8');
@@ -644,14 +647,26 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = fs.existsSync(path.join(process.cwd(), 'dist')) 
-      ? path.join(process.cwd(), 'dist')
-      : __dirname;
+    const distPath = path.join(process.cwd(), 'dist');
     
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send('Static files not found. Please run "npm run build".');
+        }
+      });
+    } else {
+      console.error(`ERROR: Production requested but dist directory not found at: ${distPath}`);
+      // Fallback to serving root if dist is missing (debugging)
+      app.use(express.static(process.cwd()));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(process.cwd(), 'index.html'));
+      });
+    }
   }
 }
 
