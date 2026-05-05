@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, where, writeBatch, getCountFromServer } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
@@ -29,27 +29,6 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
 
-const TOTAL_CUSTOMER_COUNT = 14854;
-
-const CountUp: React.FC<{ end: number; duration?: number }> = ({ end, duration = 2000 }) => {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    let startTimestamp: number | null = null;
-    const step = (timestamp: number) => {
-      if (!startTimestamp) startTimestamp = timestamp;
-      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-      setCount(Math.floor(progress * end));
-      if (progress < 1) {
-        window.requestAnimationFrame(step);
-      }
-    };
-    window.requestAnimationFrame(step);
-  }, [end, duration]);
-
-  return <span>{count.toLocaleString()}</span>;
-};
-
 const CustomerSkeleton = () => (
   <div className="w-full p-5 border-b border-white/5 animate-pulse">
     <div className="flex items-center gap-4">
@@ -65,6 +44,9 @@ const CustomerSkeleton = () => (
 
 export const CRM: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [hasLoadedAll, setHasLoadedAll] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerHistory, setCustomerHistory] = useState<Booking[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
@@ -73,16 +55,19 @@ export const CRM: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [localSearchQuery, setLocalSearchQuery] = useState('');
-  const [isRecentMode, setIsRecentMode] = useState(false);
+  // Default to recent mode
+  const [isRecentMode, setIsRecentMode] = useState(true);
   const [formLocation, setFormLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(localSearchQuery);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [localSearchQuery]);
+  const handleSearch = () => {
+    setSearchQuery(localSearchQuery.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   const safeFormat = (dateValue: any, formatStr: string, fallback: string = 'N/A') => {
     if (!dateValue) return fallback;
@@ -116,9 +101,28 @@ export const CRM: React.FC = () => {
   });
 
   useEffect(() => {
+    const fetchTotalCount = async () => {
+      try {
+        const countSnapshot = await getCountFromServer(collection(db, 'customers'));
+        setTotalCount(countSnapshot.data().count);
+      } catch (error) {
+        console.error("Error fetching total count:", error);
+      }
+    };
+    fetchTotalCount();
+  }, []);
+
+  useEffect(() => {
     const fetchData = async (force = false) => {
       // Guard against running before auth is ready or if user logged out
       if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
+
+      // If we've already loaded all customers and we are in search mode, 
+      // no need to re-fetch as useMemo handles filtering.
+      if (hasLoadedAll && searchQuery && !force) {
         setLoading(false);
         return;
       }
@@ -133,7 +137,8 @@ export const CRM: React.FC = () => {
         const cachedCars = safeLocalStorage.getItem('prac_cached_crm_cars');
         if (cachedCustomers && cachedCars) {
           try {
-            setCustomers(JSON.parse(cachedCustomers));
+            const parsedCustomers = JSON.parse(cachedCustomers);
+            setCustomers(parsedCustomers);
             setCars(JSON.parse(cachedCars));
             setLoading(false);
             return;
@@ -144,24 +149,28 @@ export const CRM: React.FC = () => {
       }
 
       try {
-        // If searching, fetch filtered or fetch all for local search
-        // We fetch all for local search experience as the collection is manageable (< 15k)
-        // BUT if it grows, we should switch to server-side search.
         const custRef = collection(db, 'customers');
         let q;
         
-        if (localSearchQuery.length < 3) {
+        if (!searchQuery) {
           // Default: 5 most recent
           q = query(custRef, orderBy('creationDate', 'desc'), limit(5));
+          const snapshot = await getDocs(q);
+          const customerData = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Customer));
+          setCustomers(customerData);
           setIsRecentMode(true);
+        } else if (!hasLoadedAll) {
+          // DATABASE SEARCH: Load ALL customers once on the first search to support 
+          // 'includes' and case-insensitive logic requested, as Firestore doesn't support 'contains' natively.
+          const snapshot = await getDocs(custRef);
+          const allData = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Customer));
+          setAllCustomers(allData);
+          setHasLoadedAll(true);
+          setIsRecentMode(false);
         } else {
-          q = query(custRef, orderBy('firstName', 'asc'));
+          // Already have all customers, just switch modes
           setIsRecentMode(false);
         }
-
-        const snapshot = await getDocs(q);
-        const customerData = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Customer));
-        setCustomers(customerData);
         
         const carsSnapshot = await getDocs(collection(db, 'cars'));
         const carsData = carsSnapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Car));
@@ -171,7 +180,7 @@ export const CRM: React.FC = () => {
           const now = Date.now();
           setLastFetch(now);
           safeLocalStorage.setItem('prac_crm_last_fetch', now.toString(), true);
-          safeLocalStorage.setItem('prac_cached_customers', JSON.stringify(customerData), true);
+          safeLocalStorage.setItem('prac_cached_customers', JSON.stringify(hasLoadedAll ? allCustomers : customers), true);
           safeLocalStorage.setItem('prac_cached_crm_cars', JSON.stringify(carsData), true);
         }
 
@@ -210,7 +219,7 @@ export const CRM: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [localSearchQuery]);
+  }, [searchQuery]);
 
   useEffect(() => {
     if (!selectedCustomer) {
@@ -487,14 +496,17 @@ export const CRM: React.FC = () => {
   };
 
   const filteredCustomers = useMemo(() => {
-    // If no search query and we have customers, they are the "Recent" ones
-    if (searchQuery.length < 3) return customers;
+    // If no search query, return the recent customers
+    if (!searchQuery) return customers;
     
     const queryStr = searchQuery.toLowerCase();
     const results = [];
     
-    for (let i = 0; i < customers.length; i++) {
-      const c = customers[i];
+    // If we've loaded all customers, search the entire set. Otherwise use what we have.
+    const searchTarget = hasLoadedAll ? allCustomers : customers;
+    
+    for (let i = 0; i < searchTarget.length; i++) {
+      const c = searchTarget[i];
       if (
         (c.firstName || '').toLowerCase().includes(queryStr) ||
         (c.lastName || '').toLowerCase().includes(queryStr) ||
@@ -502,11 +514,11 @@ export const CRM: React.FC = () => {
         (c.mobileNumber || '').includes(queryStr)
       ) {
         results.push(c);
-        if (results.length >= 30) break; // Hard limit to top 30
+        if (results.length >= 50) break; // Limit for performance
       }
     }
     return results;
-  }, [customers, searchQuery]);
+  }, [customers, allCustomers, searchQuery, hasLoadedAll]);
 
   if (loading) {
     return (
@@ -526,7 +538,7 @@ export const CRM: React.FC = () => {
             <p className="text-[#141414]/60 uppercase tracking-widest text-[10px]">Customer Relationship Management</p>
             <span className="w-1 h-1 rounded-full bg-[#141414]/20" />
             <p className="text-brand-orange font-bold uppercase tracking-widest text-[10px]">
-              <CountUp end={TOTAL_CUSTOMER_COUNT} /> Total Customers
+              <span id="total-customers-count">{totalCount !== null ? totalCount.toLocaleString() : '...'}</span> Total Customers
             </p>
           </div>
         </div>
@@ -535,11 +547,18 @@ export const CRM: React.FC = () => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#141414]/40" size={18} />
             <input 
               type="text" 
-              placeholder="Search customers..." 
-              className="pl-11 pr-6 py-2.5 bg-white/40 backdrop-blur-md border border-white/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all w-72"
+              placeholder="Search by first name..." 
+              className="pl-11 pr-14 py-2.5 bg-white/40 backdrop-blur-md border border-white/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all w-72"
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
             />
+            <button 
+              onClick={handleSearch}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-colors"
+            >
+              <Search size={14} />
+            </button>
           </div>
           <input 
             type="file" 
