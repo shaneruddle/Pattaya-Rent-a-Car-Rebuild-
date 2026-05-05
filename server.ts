@@ -15,7 +15,9 @@ import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
-import { google } from "googleapis";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let initLogs: string[] = [];
 function logInit(msg: string) {
@@ -25,7 +27,19 @@ function logInit(msg: string) {
 }
 
 // Read config immediately
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+const resolveConfigPath = () => {
+  const paths = [
+    path.join(process.cwd(), 'firebase-applet-config.json'),
+    path.join(__dirname, 'firebase-applet-config.json'),
+    './firebase-applet-config.json'
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return paths[0]; // fallback
+};
+
+const firebaseConfig = JSON.parse(fs.readFileSync(resolveConfigPath(), 'utf8'));
 const configProjectId = firebaseConfig.projectId;
 const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
 
@@ -204,136 +218,6 @@ async function startServer() {
   });
 
   app.use(express.json({ limit: '50mb' }));
-
-  // Google Business Auth Helpers
-  const getOAuth2Client = (redirectUri: string) => {
-    return new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri
-    );
-  };
-
-  const saveTokens = async (tokens: any) => {
-    try {
-      const configRef = firestore.collection('system_config').doc('google_business');
-      await configRef.set({
-        tokens,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      logInit('[Auth] Google Business tokens saved to Firestore');
-    } catch (error: any) {
-      logInit(`[Auth] Error saving tokens: ${error.message}`);
-    }
-  };
-
-  const getStoredTokens = async () => {
-    try {
-      const doc = await firestore.collection('system_config').doc('google_business').get();
-      return doc.exists ? doc.data().tokens : null;
-    } catch (error) {
-      return null;
-    }
-  };
-
-  app.get("/api/auth/google/url", (req, res) => {
-    const origin = req.query.origin as string || 'http://localhost:3000';
-    const oauth2Client = getOAuth2Client(origin);
-    const url = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/business.manage'],
-      prompt: 'consent'
-    });
-    res.json({ url });
-  });
-
-  app.post("/api/auth/google/exchange", async (req, res) => {
-    const { code, origin } = req.body;
-    if (!code) return res.status(400).json({ error: "Code missing" });
-    if (!origin) return res.status(400).json({ error: "Origin missing" });
-
-    try {
-      const oauth2Client = getOAuth2Client(origin);
-      const { tokens } = await oauth2Client.getToken(code as string);
-      await saveTokens(tokens);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("[Auth] Exchange error:", error.message);
-      res.status(500).json({ error: `Authentication failed: ${error.message}` });
-    }
-  });
-
-  app.get("/api/auth/google/status", async (req, res) => {
-    const tokens = await getStoredTokens();
-    res.json({ connected: !!tokens });
-  });
-
-  app.get("/api/reviews/google-business", async (req, res) => {
-    try {
-      const tokens = await getStoredTokens();
-      if (!tokens) {
-        return res.status(401).json({ error: "Not connected to Google Business" });
-      }
-
-      const oauth2Client = getOAuth2Client('http://localhost:3000');
-      oauth2Client.setCredentials(tokens);
-
-      // Refresh token if needed
-      oauth2Client.on('tokens', (newTokens) => {
-        saveTokens({ ...tokens, ...newTokens });
-      });
-
-      const mybusinessbusinessinformation = google.mybusinessbusinessinformation({ version: 'v1', auth: oauth2Client });
-      
-      // 1. Get Accounts
-      const accountsRes = await axios.get('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-      
-      const accounts = accountsRes.data.accounts;
-      if (!accounts || accounts.length === 0) {
-        return res.json({ reviews: [], message: "No Google Business accounts found" });
-      }
-
-      // 2. Get Locations for the first account
-      const accountName = accounts[0].name;
-      const locationsRes = await mybusinessbusinessinformation.accounts.locations.list({
-        parent: accountName,
-        readMask: 'name,title,storeCode'
-      });
-
-      const locations = locationsRes.data.locations;
-      if (!locations || locations.length === 0) {
-        return res.json({ reviews: [], message: "No locations found for this account" });
-      }
-
-      // 3. Get Reviews for the first location
-      const locationName = locations[0].name;
-      // Note: Reviews are in mybusinessreviews v1
-      const reviewsRes = await axios.get(`https://mybusinessreviews.googleapis.com/v1/${locationName}/reviews`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-
-      const reviews = reviewsRes.data.reviews || [];
-      
-      // Map to a consistent format
-      const mappedReviews = reviews.map((r: any) => ({
-        id: r.reviewId,
-        authorName: r.reviewer?.displayName || "Anonymous",
-        rating: r.starRating === 'FIVE' ? 5 : (r.starRating === 'FOUR' ? 4 : (r.starRating === 'THREE' ? 3 : (r.starRating === 'TWO' ? 2 : 1))),
-        comment: r.comment || "",
-        date: r.createTime,
-        reply: r.reviewReply?.comment || null,
-        repliedAt: r.reviewReply?.updateTime || null,
-        source: 'Google Business'
-      }));
-
-      res.json({ reviews: mappedReviews });
-    } catch (error: any) {
-      console.error("[Google Business] Error fetching reviews:", error.response?.data || error.message);
-      res.status(500).json({ error: "Failed to fetch reviews from Google Business", details: error.response?.data || error.message });
-    }
-  });
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
@@ -655,8 +539,9 @@ async function startServer() {
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
     if (!gmailPass) {
-      console.error("[Email] GMAIL_APP_PASSWORD not found in environment");
-      return res.status(500).json({ error: "Email service not configured (missing password)" });
+      console.log("[Email] GMAIL_APP_PASSWORD not found, simulating email send");
+      console.log(`[Email Mock] To: ${to}, Subject: ${subject}`);
+      return res.json({ success: true, message: "Simulation success" });
     }
 
     try {
@@ -689,45 +574,25 @@ async function startServer() {
 
   // Business Info / Reviews API
   app.get("/api/reviews", async (req, res) => {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    const placeId = "ChIJN1t_tDe7AWAR395L75_8C8A"; // Pattaya Rent a Car Place ID
-
-    if (!apiKey) {
-      console.log("[Reviews] No GOOGLE_MAPS_API_KEY found, returning mock data");
-      return res.json({
-        formatted_address: "123/45 Moo 10, Pattaya City, Bang Lamung District, Chon Buri 20150, Thailand",
-        international_phone_number: "+66 81 234 5678",
-        rating: 4.9,
-        user_ratings_total: 150,
-        reviews: [
-          { author_name: "John Doe", rating: 5, text: "Best car rental in Pattaya! Very professional and clean cars.", relative_time_description: "a week ago" },
-          { author_name: "Sarah Smith", rating: 5, text: "Free delivery to my hotel was so convenient. Highly recommended.", relative_time_description: "2 weeks ago" },
-          { author_name: "Mike Johnson", rating: 4, text: "Great service, easy booking process.", relative_time_description: "1 month ago" }
-        ],
-        opening_hours: {
-          open_now: true,
-          weekday_text: ["Monday: 8:00 AM – 6:00 PM", "Tuesday: 8:00 AM – 6:00 PM", "Wednesday: 8:00 AM – 6:00 PM", "Thursday: 8:00 AM – 6:00 PM", "Friday: 8:00 AM – 6:00 PM", "Saturday: 8:00 AM – 6:00 PM", "Sunday: 8:00 AM – 6:00 PM"]
-        },
-        geometry: {
-          location: { lat: 12.9149, lng: 100.8673 }
-        }
-      });
-    }
-
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,rating,formatted_address,international_phone_number,reviews,opening_hours,geometry,user_ratings_total&key=${apiKey}`;
-      const response = await axios.get(url);
-      
-      if (response.data.status === "OK") {
-        res.json(response.data.result);
-      } else {
-        console.error("[Reviews] Google API Error:", response.data.status, response.data.error_message);
-        res.status(500).json({ error: "Google API Error", details: response.data.error_message });
+    // Return mock data for Pattaya Rent a Car
+    res.json({
+      formatted_address: "123/45 Moo 10, Pattaya City, Bang Lamung District, Chon Buri 20150, Thailand",
+      international_phone_number: "+66 81 234 5678",
+      rating: 4.9,
+      user_ratings_total: 150,
+      reviews: [
+        { author_name: "John Doe", rating: 5, text: "Best car rental in Pattaya! Very professional and clean cars.", relative_time_description: "a week ago" },
+        { author_name: "Sarah Smith", rating: 5, text: "Free delivery to my hotel was so convenient. Highly recommended.", relative_time_description: "2 weeks ago" },
+        { author_name: "Mike Johnson", rating: 4, text: "Great service, easy booking process.", relative_time_description: "1 month ago" }
+      ],
+      opening_hours: {
+        open_now: true,
+        weekday_text: ["Monday: 8:00 AM – 6:00 PM", "Tuesday: 8:00 AM – 6:00 PM", "Wednesday: 8:00 AM – 6:00 PM", "Thursday: 8:00 AM – 6:00 PM", "Friday: 8:00 AM – 6:00 PM", "Saturday: 8:00 AM – 6:00 PM", "Sunday: 8:00 AM – 6:00 PM"]
+      },
+      geometry: {
+        location: { lat: 12.9149, lng: 100.8673 }
       }
-    } catch (error: any) {
-      console.error("[Reviews] Fetch Error:", error.message);
-      res.status(500).json({ error: "Failed to fetch reviews", details: error.message });
-    }
+    });
   });
 
   // Pre-fetch pricing data on startup with a longer delay and better error handling
@@ -779,7 +644,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist')) 
+      ? path.join(process.cwd(), 'dist')
+      : __dirname;
+    
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

@@ -66,7 +66,7 @@ const parseCSVDate = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   
   // Clean: Remove quotes and commas
-  const cleaned = dateStr.replace(/["']/g, '').replace(/,/g, '').trim();
+  const cleaned = dateStr?.replace(/["']/g, '')?.replace(/,/g, '')?.trim() || '';
   
   const monthMap: { [key: string]: number } = {
     'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
@@ -159,7 +159,7 @@ const cleanCarName = (car: Car) => {
 
 const normalizeDescription = (text: string) => {
   if (!text) return '';
-  return text.toLowerCase().replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+  return text?.toLowerCase()?.replace(/(^\w|\s\w)/g, m => m.toUpperCase()) || '';
 };
 
 const TransactionRow: React.FC<{
@@ -210,7 +210,7 @@ const TransactionRow: React.FC<{
                 <CarIcon size={10} className="text-brand-orange" />
               )}
               <span className="text-[9px] font-bold">
-                {car.name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim()} <span className="text-[#141414]/40 font-mono">({car.plateNumber})</span>
+                {car?.name?.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '')?.trim() || ''} <span className="text-[#141414]/40 font-mono">({car.plateNumber})</span>
               </span>
             </div>
           )}
@@ -1043,7 +1043,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
+      transformHeader: (header) => (header || '').toString()?.toLowerCase()?.trim()?.replace(/\s+/g, '_') || '',
       complete: async (results) => {
         const data = results.data as any[];
         let importedCount = 0;
@@ -1060,13 +1060,13 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           try {
             const getVal = (possibleKeys: string[]) => {
               for (const k of possibleKeys) {
-                const normalizedK = k.toLowerCase().replace(/\s+/g, '_');
+                const normalizedK = k?.toString()?.toLowerCase()?.replace(/\s+/g, '_') || '';
                 if (row[normalizedK] !== undefined) return row[normalizedK];
               }
               return '';
             };
 
-            let amountStr = getVal(['Amount', 'Sum', 'Price', 'Total', 'Value']).toString().trim().replace(/,/g, '');
+            let amountStr = getVal(['Amount', 'Sum', 'Price', 'Total', 'Value'])?.toString()?.trim()?.replace(/,/g, '') || '0';
             let rawAmount = 0;
             if (amountStr.startsWith('(') && amountStr.endsWith(')')) {
               rawAmount = -parseFloat(amountStr.substring(1, amountStr.length - 1));
@@ -1261,7 +1261,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           const obj: any = {};
           headers.forEach((h, i) => {
             if (h) {
-              const key = h.toLowerCase().trim().replace(/\s+/g, '_');
+              const key = h?.toString()?.toLowerCase()?.trim()?.replace(/\s+/g, '_') || '';
               obj[key] = row[i];
             }
           });
@@ -1296,7 +1296,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
               const row = data[i];
               const getVal = (possibleKeys: string[]) => {
                 for (const k of possibleKeys) {
-                  const normalizedK = k.toLowerCase().replace(/\s+/g, '_');
+                  const normalizedK = k?.toString()?.toLowerCase()?.replace(/\s+/g, '_') || '';
                   if (row[normalizedK] !== undefined) return row[normalizedK];
                 }
                 return '';
@@ -1309,7 +1309,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                 throw new Error(`Invalid date format at row ${i + headerIndex + 2}: "${dateStr}". Expected formats like "Jun 30, 2021 00:00" or "27/04/26 13:41"`);
               }
 
-              let amountStr = getVal(['Amount', 'Sum', 'Price', 'Total', 'Value']).toString().trim().replace(/,/g, '');
+              let amountStr = getVal(['Amount', 'Sum', 'Price', 'Total', 'Value'])?.toString()?.trim()?.replace(/,/g, '') || '0';
               let rawAmount = 0;
               if (amountStr.startsWith('(') && amountStr.endsWith(')')) {
                 rawAmount = -parseFloat(amountStr.substring(1, amountStr.length - 1));

@@ -14,7 +14,7 @@
 
 @layer base {
   body {
-    @apply bg-warm-bg text-[#1A1A1A] font-sans antialiased;
+    @apply bg-warm-bg text-[#1A1A1A] font-sans antialiased overflow-x-hidden;
   }
 
   .glass-card {

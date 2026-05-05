@@ -564,7 +564,7 @@ export const FleetManager: React.FC = () => {
       Papa.parse(event, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
+        transformHeader: (header) => (header || '').toString()?.toLowerCase()?.trim()?.replace(/\s+/g, '_') || '',
         complete: processData
       });
     } else {
@@ -573,7 +573,7 @@ export const FleetManager: React.FC = () => {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: (header) => (header || '').toString().toLowerCase().trim().replace(/\s+/g, '_'),
+        transformHeader: (header) => (header || '').toString()?.toLowerCase()?.trim()?.replace(/\s+/g, '_') || '',
         complete: processData
       });
       if (fileInputRef.current) fileInputRef.current.value = '';

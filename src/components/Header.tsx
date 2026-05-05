@@ -31,8 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   const hasActiveFilters = searchQuery;
 
   return (
-    <header className="bg-white/40 backdrop-blur-xl border-b border-black/10 sticky top-0 z-20">
-      <div className="h-12 px-8 flex items-center justify-between">
+    <header className="bg-white border-b border-black/10 sticky top-0 z-[100] h-16">
+      <div className="h-16 px-8 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4">
             <h1 className="font-serif italic text-xl text-[#1A1A1A] min-w-[150px]">

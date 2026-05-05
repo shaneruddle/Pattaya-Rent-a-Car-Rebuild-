@@ -673,44 +673,11 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                     </AnimatePresence>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Total Charge (THB)</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                        <input
-                          type="number"
-                          className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none"
-                          value={formData.totalCharge}
-                          onChange={(e) => setFormData({ ...formData, totalCharge: Number(e.target.value) })}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Total Paid (THB)</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500" size={14} />
-                        <input
-                          type="number"
-                          className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none"
-                          value={formData.totalPaid}
-                          onChange={(e) => setFormData({ ...formData, totalPaid: Number(e.target.value) })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Deposit (THB)</label>
-                    <div className="relative">
-                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                      <input
-                        type="number"
-                        className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-2xl focus:border-brand-orange outline-none"
-                        value={formData.depositAmount}
-                        onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
-                      />
-                    </div>
+                  <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-2xl flex gap-3">
+                    <AlertCircle className="text-blue-500 shrink-0" size={16} />
+                    <p className="text-[10px] text-blue-600 font-medium leading-relaxed italic">
+                      Financial summary and rental notes are now accessible via the floating command bar at the bottom.
+                    </p>
                   </div>
 
                   <div className="pt-4 border-t border-gray-50">
@@ -737,28 +704,54 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                         value={formData.customerPhone}
                         onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                       />
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Return Note</label>
-                        <textarea
-                          rows={2}
-                          value={formData.returnNote}
-                          onChange={(e) => setFormData({ ...formData, returnNote: e.target.value })}
-                          className="w-full p-4 bg-amber-50/50 border border-amber-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none transition-all"
-                          placeholder="e.g. Collect from house, Owes 2000 baht..."
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setStep('photos')}
-                  disabled={!formData.carId || !formData.customerName || !formData.customerEmail}
-                  className="w-full h-14 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue to Photos
-                  <ChevronRight size={18} />
-                </button>
+                {/* Floating Action Bar (New Rental Details) */}
+                <div className="sticky bottom-4 bg-white/80 backdrop-blur-2xl border border-black/5 p-6 mt-8 space-y-6 shadow-[0_20px_50px_rgba(0,0,0,0.1)] z-40 rounded-[32px]">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <label className="text-[8px] font-bold uppercase tracking-widest text-brand-orange ml-1">Return Note / End Note</label>
+                       <textarea
+                         rows={2}
+                         value={formData.returnNote}
+                         onChange={(e) => setFormData({ ...formData, returnNote: e.target.value })}
+                         className="w-full p-3 bg-amber-50/50 border border-amber-200 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 outline-none resize-none transition-all"
+                         placeholder="Condition of vehicle on return..."
+                       />
+                     </div>
+                     <div className="grid grid-cols-2 gap-2">
+                       <div className="bg-black/5 p-3 rounded-2xl">
+                         <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Total (THB)</label>
+                         <input
+                           type="number"
+                           className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none"
+                           value={formData.totalCharge}
+                           onChange={(e) => setFormData({ ...formData, totalCharge: Number(e.target.value) })}
+                         />
+                       </div>
+                       <div className="bg-black/5 p-3 rounded-2xl">
+                         <label className="text-[8px] font-bold uppercase text-gray-400 block mb-1">Deposit (THB)</label>
+                         <input
+                           type="number"
+                           className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none font-mono"
+                           value={formData.depositAmount}
+                           onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                         />
+                       </div>
+                     </div>
+                   </div>
+
+                   <button
+                     onClick={() => setStep('photos')}
+                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail}
+                     className="w-full h-14 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                   >
+                     Continue to Photos
+                     <ChevronRight size={18} />
+                   </button>
+                </div>
               </div>
             </motion.div>
           )}

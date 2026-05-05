@@ -283,7 +283,7 @@ export const CRM: React.FC = () => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.toLowerCase().trim().replace(/\s+/g, '_'),
+      transformHeader: (header) => (header || '').toString()?.toLowerCase()?.trim()?.replace(/\s+/g, '_') || '',
       complete: async (results) => {
         const data = results.data as any[];
         
@@ -297,7 +297,7 @@ export const CRM: React.FC = () => {
           // Normalize keys to find values regardless of exact header name
           const getVal = (keys: string[]) => {
             for (const k of keys) {
-              const normalizedK = k.toLowerCase().replace(/\s+/g, '_');
+              const normalizedK = k?.toString()?.toLowerCase()?.replace(/\s+/g, '_') || '';
               if (item[normalizedK] !== undefined) return item[normalizedK];
             }
             return null;

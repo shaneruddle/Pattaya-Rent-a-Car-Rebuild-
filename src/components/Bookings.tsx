@@ -796,47 +796,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Total Amount (฿)</label>
-                        <input
-                          type="number"
-                          value={editingBooking.amount || 0}
-                          onChange={(e) => setEditingBooking({ ...editingBooking, amount: Number(e.target.value) })}
-                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Deposit Held (฿)</label>
-                        <input
-                          type="number"
-                          value={editingBooking.deposit || 0}
-                          onChange={(e) => setEditingBooking({ ...editingBooking, deposit: Number(e.target.value) })}
-                          className="w-full h-12 px-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Notes</label>
-                      <textarea
-                        rows={3}
-                        value={editingBooking.notes || ''}
-                        onChange={(e) => setEditingBooking({ ...editingBooking, notes: e.target.value })}
-                        className="w-full p-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 resize-none"
-                        placeholder="Add any special requests or notes..."
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Return Note</label>
-                      <textarea
-                        rows={2}
-                        value={editingBooking.returnNote || ''}
-                        onChange={(e) => setEditingBooking({ ...editingBooking, returnNote: e.target.value })}
-                        className="w-full p-4 bg-amber-50/50 border border-amber-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none"
-                        placeholder="e.g. Collect from house, Owes 2000 baht..."
-                      />
+                    <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-2xl flex gap-3">
+                      <AlertCircle className="text-blue-500 shrink-0" size={16} />
+                      <p className="text-[10px] text-blue-600 font-medium leading-relaxed italic">
+                        Financial details and rental notes are now managed in the floating action bar at the bottom.
+                      </p>
                     </div>
 
                     {/* Delivery Section */}
@@ -853,15 +817,6 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Delivery Notes</label>
-                        <textarea
-                          value={editingBooking.deliveryNotes || ''}
-                          onChange={(e) => setEditingBooking({ ...editingBooking, deliveryNotes: e.target.value })}
-                          className="w-full h-20 p-4 bg-white border border-[#1A1A1A]/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 resize-none"
-                          placeholder="Delivery instructions..."
-                        />
-                      </div>
-                      <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-1">Pin Location</label>
                         <LocationPicker 
                           location={editingBooking.deliveryLocation} 
@@ -873,27 +828,75 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                   </div>
                 </div>
 
-                <div className="p-8 bg-[#1A1A1A]/5 flex gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setEditingBooking(null)}
-                    disabled={isSubmitting}
-                    className="flex-1 bg-white border border-[#1A1A1A]/10 text-[#1A1A1A] py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-[#1A1A1A]/5 transition-all disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <Clock className="animate-spin" size={14} />
-                    ) : (
-                      <CheckCircle2 size={14} />
-                    )}
-                    Save Changes
-                  </button>
+                {/* Floating Action Bar (Bookings Edit) */}
+                <div className="sticky bottom-0 bg-white/80 backdrop-blur-2xl border-t border-black/5 p-6 space-y-6 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] z-40 rounded-b-[40px]">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <label className="text-[8px] font-bold uppercase tracking-widest text-brand-orange ml-1">Delivery & Return Notes</label>
+                       <div className="grid grid-cols-1 gap-2">
+                         <textarea
+                           rows={1}
+                           value={editingBooking.deliveryNotes || ''}
+                           onChange={(e) => setEditingBooking({ ...editingBooking, deliveryNotes: e.target.value })}
+                           className="w-full p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-xs focus:ring-1 focus:ring-emerald-500 outline-none resize-none min-h-[40px] transition-all"
+                           placeholder="Start/Delivery note..."
+                         />
+                         <textarea
+                           rows={1}
+                           value={editingBooking.returnNote || ''}
+                           onChange={(e) => setEditingBooking({ ...editingBooking, returnNote: e.target.value })}
+                           className="w-full p-3 bg-amber-500/5 border border-amber-200 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 outline-none resize-none min-h-[40px] transition-all"
+                           placeholder="End/Return note..."
+                         />
+                       </div>
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-[8px] font-bold uppercase text-gray-400 ml-1">Summary</label>
+                       <div className="grid grid-cols-2 gap-2">
+                         <div className="bg-black/5 p-3 rounded-2xl">
+                           <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Amount</label>
+                           <input
+                             type="number"
+                             className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none"
+                             value={editingBooking.amount || 0}
+                             onChange={(e) => setEditingBooking({ ...editingBooking, amount: Number(e.target.value) })}
+                           />
+                         </div>
+                         <div className="bg-black/5 p-3 rounded-2xl">
+                           <label className="text-[8px] font-bold uppercase text-gray-400 block mb-1">Deposit</label>
+                           <input
+                             type="number"
+                             className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none font-mono"
+                             value={editingBooking.deposit || 0}
+                             onChange={(e) => setEditingBooking({ ...editingBooking, deposit: Number(e.target.value) })}
+                           />
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setEditingBooking(null)}
+                      disabled={isSubmitting}
+                      className="px-8 bg-black/5 border border-black/10 text-gray-600 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-black/10 transition-all disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="flex-1 bg-[#1A1A1A] text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all shadow-lg active:translate-y-[2px] active:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <Clock className="animate-spin" size={14} />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Save Changes
+                    </button>
+                  </div>
                 </div>
               </form>
             </motion.div>

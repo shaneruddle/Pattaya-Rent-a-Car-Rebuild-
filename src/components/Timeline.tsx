@@ -223,15 +223,6 @@ const ManageRentalModal: React.FC<{
                   placeholder="e.g. Fuel, Cleaning, Scratch"
                 />
               </div>
-              <div className="col-span-2 pt-2">
-                <button
-                  onClick={handleEndRental}
-                  disabled={loading}
-                  className="w-full h-14 bg-emerald-500 text-white rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Complete Return</>}
-                </button>
-              </div>
             </div>
           </section>
 
@@ -240,7 +231,7 @@ const ManageRentalModal: React.FC<{
           </div>
 
           {/* Feature 2: Extend Rental */}
-          <section className="space-y-6 pb-4">
+          <section className="space-y-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center shadow-inner">
                 <Zap size={20} className="text-blue-500" />
@@ -280,7 +271,7 @@ const ManageRentalModal: React.FC<{
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment Received (THB)</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment (THB)</label>
                 <div className="relative">
                   <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500" />
                   <input
@@ -292,18 +283,26 @@ const ManageRentalModal: React.FC<{
                   />
                 </div>
               </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={handleExtendRental}
-                  disabled={loading}
-                  className="w-full h-14 bg-blue-500 text-white rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <><Zap size={16} /> Confirm Extension</>}
-                </button>
-              </div>
             </div>
           </section>
+        </div>
+
+        {/* Floating Action Bar (Manage Rental) */}
+        <div className="p-6 bg-white/60 backdrop-blur-xl border-t border-black/5 flex gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+          <button
+            onClick={handleEndRental}
+            disabled={loading}
+            className="flex-1 h-14 bg-emerald-500 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Complete Return</>}
+          </button>
+          <button
+            onClick={handleExtendRental}
+            disabled={loading}
+            className="flex-1 h-14 bg-blue-500 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 active:translate-y-[2px] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <><Zap size={16} /> Confirm Extension</>}
+          </button>
         </div>
       </motion.div>
     </div>
@@ -324,7 +323,7 @@ const getBrandSlug = (name: string) => {
 
 const cleanCarName = (name: string) => {
   if (!name) return '';
-  return name.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '').trim();
+  return name?.replace(/Toyota|Honda|Ford|MG|Nissan/gi, '')?.trim() || '';
 };
 
 const CarRow: React.FC<CarRowProps> = React.memo(({
@@ -385,7 +384,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
             </span>
             {car.engineSize && (
               <span className="text-[8px] text-[#1A1A1A]/40 font-medium shrink-0">
-                {car.engineSize.toString().replace(/cc/gi, '')}
+                {car.engineSize?.toString()?.replace(/cc/gi, '') || ''}
               </span>
             )}
             {isMaintenanceToday && (
@@ -532,12 +531,15 @@ const QuickNotePopup: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose, value]);
 
+  const isBottomHalf = rect.bottom > window.innerHeight * 0.6;
+  
   return (
     <div 
-      className="fixed z-[100] quick-note-popup bg-white shadow-2xl rounded-xl border border-black/10 p-3 w-64 animate-in fade-in zoom-in duration-200"
+      className="fixed z-[1000000] quick-note-popup bg-white shadow-2xl rounded-xl border border-black/10 p-3 w-64 animate-in fade-in zoom-in duration-200"
       style={{ 
-        top: `${rect.bottom + 8}px`,
-        left: `${Math.min(window.innerWidth - 264, Math.max(8, rect.left - 110))}px`
+        top: isBottomHalf ? `${rect.top - 8}px` : `${rect.bottom + 8}px`,
+        left: `${Math.min(window.innerWidth - 264, Math.max(8, rect.left - 110))}px`,
+        transform: isBottomHalf ? 'translateY(-100%)' : 'translateY(0)'
       }}
     >
       <div className="flex items-center justify-between mb-2">
@@ -1193,24 +1195,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   };
 
   // Tooltip Logic
-  const [summaryBookingInfo, setSummaryBookingInfo] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [summaryBookingInfo, setSummaryBookingInfo] = useState<{ id: string; clientX: number; clientY: number } | null>(null);
   
   const summaryBooking = useMemo(() => {
     if (!summaryBookingInfo) return null;
     const b = bookings.find(x => x.id === summaryBookingInfo.id);
     if (!b) return null;
-    return { booking: b, x: summaryBookingInfo.x, y: summaryBookingInfo.y };
+    return { booking: b, clientX: summaryBookingInfo.clientX, clientY: summaryBookingInfo.clientY };
   }, [bookings, summaryBookingInfo]);
 
   const handleBookingBarClick = (booking: Booking, e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Capture state immediately
-    const rect = e.currentTarget.getBoundingClientRect();
     setSummaryBookingInfo({ 
       id: booking.id, 
-      x: rect.left, 
-      y: rect.bottom 
+      clientX: e.clientX, 
+      clientY: e.clientY
     });
   };
 
@@ -1340,20 +1340,20 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   }
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-warm-bg">
+    <div className="flex-1 flex flex-col bg-warm-bg overflow-hidden h-full">
       <div 
         ref={timelineContainerRef} 
         onScroll={handleScroll}
         className={cn(
-          "flex-1 overflow-auto custom-scrollbar relative will-change-transform",
+          "flex-1 overflow-auto custom-scrollbar relative",
           isScrolling && "is-scrolling"
         )}
       >
         <div className="inline-block min-w-full">
           {/* Timeline Header */}
-          <div className="flex flex-col sticky top-0 z-30 shadow-md">
-            <div className="flex bg-white/40 backdrop-blur-xl">
-              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/80 sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
+          <div className="flex flex-col sticky top-0 z-[90] bg-warm-bg border-b border-black/10">
+            <div className="flex bg-warm-bg">
+              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-warm-bg sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <div className="flex flex-col">
                     <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
@@ -1391,22 +1391,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
               <div className="flex">
                 {monthsInView.map(({ month, days }) => (
                   <div key={month.toISOString()} className="flex flex-col border-r border-black/10 last:border-r-0">
-                    <div className="sticky top-0 z-40 py-1.5 px-4 text-[10px] font-bold uppercase tracking-[0.3em] bg-white/90 backdrop-blur-sm text-[#1A1A1A]/80 border-b border-black/5 flex items-center gap-2">
+                    <div className="sticky top-0 z-50 py-1.5 px-4 text-[10px] font-bold uppercase tracking-[0.3em] bg-warm-bg text-[#1A1A1A]/80 border-b border-black/5 flex items-center gap-2">
                       <Calendar size={10} className="text-brand-orange" />
                       {format(month, 'MMMM yyyy')}
                     </div>
                     <div className="flex">
                       {days.map(day => (
-                        <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r last:border-r-0 border-black/5 bg-white/20">
+                        <div key={day.toISOString()} className="w-[72px] flex-shrink-0 border-r last:border-r-0 border-black/5 bg-warm-bg">
                           <div className={cn(
                             "text-center py-1 text-[9px] font-bold uppercase tracking-wider",
                             isSameDay(day, new Date()) ? "bg-brand-orange text-white" : "bg-brand-orange/5 text-brand-orange"
                           )}>
                             {format(day, 'EEE d')}
                           </div>
-                          <div className="flex text-[8px] font-bold text-center border-t border-white/20 text-[#1A1A1A]/60">
-                            <div className="w-1/2 py-1 border-r border-white/20">AM</div>
-                            <div className="w-1/2 py-1">PM</div>
+                          <div className="flex text-[8px] font-bold text-center border-t border-black/5 text-[#1A1A1A]/60">
+                            <div className="w-1/2 py-1 border-r border-black/5 font-mono">AM</div>
+                            <div className="w-1/2 py-1 font-mono">PM</div>
                           </div>
                         </div>
                       ))}
@@ -1417,22 +1417,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
             </div>
 
             {/* Availability Row */}
-            <div className="flex h-7 bg-green-50 border-b border-black/10">
-              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-black/10 bg-green-100 sticky left-0 z-50 px-3 flex items-center backdrop-blur-md">
-                <span className="text-[10px] font-bold text-green-800 uppercase tracking-widest whitespace-nowrap">Cars Available</span>
+            <div className="flex h-7 bg-green-50/50 border-b border-black/10">
+              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-black/10 bg-green-50 sticky left-0 z-50 px-3 flex items-center backdrop-blur-md">
+                <span className="text-[10px] font-bold text-green-700 uppercase tracking-widest whitespace-nowrap">Cars Available</span>
               </div>
-              <div className="flex timeline-grid-bg">
+              <div className="flex bg-warm-bg/50">
                 {availabilityData.map((data, idx) => (
-                  <div key={idx} className="w-[72px] flex-shrink-0 flex items-center">
+                  <div key={idx} className="w-[72px] flex-shrink-0 flex items-center border-r border-black/5 last:border-r-0">
                     <div className={cn(
                       "w-1/2 text-center text-[10px] leading-none",
-                      data.am < 5 ? "text-red-600 font-bold" : "text-green-800 font-medium"
+                      data.am < 5 ? "text-red-600 font-bold" : "text-green-700 font-medium"
                     )}>
                       {data.am}
                     </div>
                     <div className={cn(
                       "w-1/2 text-center text-[10px] leading-none",
-                      data.pm < 5 ? "text-red-600 font-bold" : "text-green-800 font-medium"
+                      data.pm < 5 ? "text-red-600 font-bold" : "text-green-700 font-medium"
                     )}>
                       {data.pm}
                     </div>
@@ -1566,7 +1566,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
               </div>
             </div>
 
-            <div className="relative">
+            <div className="relative overflow-visible">
               {cars.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
                   <div className="bg-white/40 backdrop-blur-md p-8 border border-white/60 rounded-[32px] flex flex-col items-center gap-4 shadow-xl max-w-sm text-center">
@@ -1643,155 +1643,165 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       </div>
 
       <AnimatePresence>
-        {summaryBooking && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="fixed z-[200] booking-summary-popover"
-            style={{
-              left: Math.min(window.innerWidth - 300, Math.max(16, summaryBooking.x)),
-              top: summaryBooking.y + 10,
-              transform: 'translateY(0)'
-            }}
-          >
-            <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h4 className="text-sm font-bold text-[#1A1A1A]">
+        {summaryBooking && (() => {
+          const isBottomHalf = summaryBooking.clientY > window.innerHeight - 300;
+          
+          return (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed z-[1000000] booking-summary-popover"
+              style={{
+                left: Math.min(window.innerWidth - 300, Math.max(16, summaryBooking.clientX)),
+                ...(isBottomHalf 
+                  ? { bottom: window.innerHeight - summaryBooking.clientY + 10 }
+                  : { top: summaryBooking.clientY + 10 }
+                ),
+              }}
+            >
+              <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1A1A1A]">
+                      {summaryBooking.booking.isMaintenance ? (
+                        <span className="flex items-center gap-2">
+                          <Wrench size={14} className="text-gray-600" /> Maintenance
+                        </span>
+                      ) : summaryBooking.booking.customerName}
+                    </h4>
                     {summaryBooking.booking.isMaintenance ? (
-                      <span className="flex items-center gap-2">
-                        <Wrench size={14} className="text-gray-600" /> Maintenance
-                      </span>
-                    ) : summaryBooking.booking.customerName}
-                  </h4>
-                  {summaryBooking.booking.isMaintenance ? (
-                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
-                      {summaryBooking.booking.maintenanceDescription}
+                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
+                        {summaryBooking.booking.maintenanceDescription}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{summaryBooking.booking.email || 'No email'}</p>
+                    )}
+                    <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
+                      {summaryBooking.booking.carId 
+                        ? cars.find(c => c.id === summaryBooking.booking.carId)?.name 
+                        : (summaryBooking.booking.requestedCarType || 'Unassigned')}
                     </p>
-                  ) : (
-                    <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{summaryBooking.booking.email || 'No email'}</p>
-                  )}
-                  <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
-                    {summaryBooking.booking.carId 
-                      ? cars.find(c => c.id === summaryBooking.booking.carId)?.name 
-                      : (summaryBooking.booking.requestedCarType || 'Unassigned')}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                    summaryBooking.booking.isMaintenance
-                      ? "bg-gray-100 text-gray-600"
-                      : (summaryBooking.booking.status === 'Paid' 
-                          ? "bg-green-100 text-green-600" 
-                          : (parseISO(summaryBooking.booking.startDate) < new Date()
-                              ? "bg-yellow-100 text-yellow-600"
-                              : (isFuture(parseISO(summaryBooking.booking.startDate)) 
-                                  ? "bg-red-100 text-red-600" 
-                                  : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
-                  )}>
-                    {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
-                  </span>
-                  <div className="flex gap-1.5 pointer-events-auto">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenManageModal(summaryBooking.booking);
-                        setSummaryBookingInfo(null);
-                      }}
-                      className="px-3 py-1.5 bg-brand-orange text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-orange/90 transition-all flex items-center gap-2 shadow-sm"
-                    >
-                      <Settings size={12} />
-                      Manage
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCutBooking(summaryBooking.booking);
-                        setSummaryBookingInfo(null);
-                      }}
-                      className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all"
-                      title="Cut Booking"
-                    >
-                      <Scissors size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingBooking(summaryBooking.booking);
-                        setShowDeleteConfirm(true);
-                        setSummaryBookingInfo(null);
-                      }}
-                      className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
-                      title="Delete Booking"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSummaryBookingInfo(null);
-                      }}
-                      className="p-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-200 transition-all"
-                      title="Close Summary"
-                    >
-                      <X size={12} />
-                    </button>
                   </div>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
-                  <Calendar size={12} className="text-brand-orange" />
-                  <span>
-                    {isValid(parseISO(summaryBooking.booking.startDate)) && isValid(parseISO(summaryBooking.booking.endDate)) ? (
-                      `${format(parseISO(summaryBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(summaryBooking.booking.endDate), 'MMM d, HH:mm')}`
-                    ) : 'Invalid dates'}
-                  </span>
-                </div>
-
-                {summaryBooking.booking.returnNote && (
-                  <div className="flex items-start gap-2 text-[10px] bg-brand-orange/10 p-2 rounded-lg border border-brand-orange/20 mt-1">
-                    <AlertTriangle size={12} className="text-brand-orange shrink-0 mt-0.5" />
-                    <div className="text-[#1A1A1A] font-medium leading-relaxed">
-                      <span className="font-bold uppercase text-[8px] block mb-0.5">End Note:</span>
-                      {summaryBooking.booking.returnNote}
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                      summaryBooking.booking.isMaintenance
+                        ? "bg-gray-100 text-gray-600"
+                        : (summaryBooking.booking.status === 'Paid' 
+                            ? "bg-green-100 text-green-600" 
+                            : (parseISO(summaryBooking.booking.startDate) < new Date()
+                                ? "bg-yellow-100 text-yellow-600"
+                                : (isFuture(parseISO(summaryBooking.booking.startDate)) 
+                                    ? "bg-red-100 text-red-600" 
+                                    : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
+                    )}>
+                      {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
+                    </span>
+                    <div className="flex gap-1.5 pointer-events-auto">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenManageModal(summaryBooking.booking);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="px-3 py-1.5 bg-brand-orange text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-orange/90 transition-all flex items-center gap-2 shadow-sm"
+                      >
+                        <Settings size={12} />
+                        Manage
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCutBooking(summaryBooking.booking);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all"
+                        title="Cut Booking"
+                      >
+                        <Scissors size={12} />
+                        </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingBooking(summaryBooking.booking);
+                          setShowDeleteConfirm(true);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                        title="Delete Booking"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-200 transition-all"
+                        title="Close Summary"
+                      >
+                        <X size={12} />
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
                 
-                {summaryBooking.booking.mobileNumber && (
+                <div className="space-y-2">
                   <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
-                    <Phone size={12} className="text-brand-orange" />
-                    <span>{summaryBooking.booking.mobileNumber}</span>
+                    <Calendar size={12} className="text-brand-orange" />
+                    <span>
+                      {isValid(parseISO(summaryBooking.booking.startDate)) && isValid(parseISO(summaryBooking.booking.endDate)) ? (
+                        `${format(parseISO(summaryBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(summaryBooking.booking.endDate), 'MMM d, HH:mm')}`
+                      ) : 'Invalid dates'}
+                    </span>
                   </div>
+
+                  {summaryBooking.booking.returnNote && (
+                    <div className="flex items-start gap-2 text-[10px] bg-brand-orange/10 p-2 rounded-lg border border-brand-orange/20 mt-1">
+                      <AlertTriangle size={12} className="text-brand-orange shrink-0 mt-0.5" />
+                      <div className="text-[#1A1A1A] font-medium leading-relaxed">
+                        <span className="font-bold uppercase text-[8px] block mb-0.5">End Note:</span>
+                        {summaryBooking.booking.returnNote}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {summaryBooking.booking.mobileNumber && (
+                    <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
+                      <Phone size={12} className="text-brand-orange" />
+                      <span>{summaryBooking.booking.mobileNumber}</span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-[#1A1A1A]/5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Amount</span>
+                    <span className="text-sm font-bold text-brand-orange">
+                      ฿{(summaryBooking.booking.amount || 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="pt-3 mt-1 border-t border-[#1A1A1A]/5">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
+                    <p className={cn(
+                      "text-[10px] leading-relaxed break-words",
+                      summaryBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
+                    )}>
+                      {summaryBooking.booking.notes || 'No notes added'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                {isBottomHalf ? (
+                  <div className="absolute bottom-0 left-4 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
+                ) : (
+                  <div className="absolute top-0 left-4 -translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/90" />
                 )}
-
-                <div className="pt-2 border-t border-[#1A1A1A]/5 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Amount</span>
-                  <span className="text-sm font-bold text-brand-orange">
-                    ฿{(summaryBooking.booking.amount || 0).toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="pt-3 mt-1 border-t border-[#1A1A1A]/5">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
-                  <p className={cn(
-                    "text-[10px] leading-relaxed break-words",
-                    summaryBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
-                  )}>
-                    {summaryBooking.booking.notes || 'No notes added'}
-                  </p>
-                </div>
               </div>
-
-              {/* Arrow */}
-              <div className="absolute top-0 left-4 -translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/90" />
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* Booking Modal */}
@@ -2223,27 +2233,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                               onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
                             />
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                              <DollarSign size={12} /> Amount (THB)
-                            </label>
-                            <input
-                              type="number"
-                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
-                              value={formData.amount}
-                              onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
-                              <ShieldCheck size={12} /> Deposit Held (THB)
-                            </label>
-                            <input
-                              type="number"
-                              className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm font-bold focus:border-brand-orange outline-none transition-all"
-                              value={formData.deposit}
-                              onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
-                            />
+                          <div className="space-y-4">
+                            <div className="p-4 bg-[#1A1A1A]/5 rounded-2xl">
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notice</p>
+                              <p className="text-[11px] text-gray-500 leading-relaxed italic">
+                                Use the floating command bar at the bottom to manage financial details and rental notes.
+                              </p>
+                            </div>
                           </div>
                         </>
                       ) : (
@@ -2465,16 +2461,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         </AnimatePresence>
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">End Note</label>
-                        <textarea
-                          className="w-full bg-amber-50/50 border-b-2 border-amber-200 p-3 rounded-t-2xl text-sm focus:border-amber-500 outline-none transition-all h-20 resize-none"
-                          value={formData.returnNote}
-                          onChange={e => setFormData({ ...formData, returnNote: e.target.value })}
-                          placeholder="Condition of vehicle on return..."
-                        />
-                      </div>
-
                       <div className="flex items-center justify-end">
                         <button
                           type="button"
@@ -2486,15 +2472,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Notes</label>
-                    <textarea
-                      className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm focus:border-brand-orange outline-none transition-all h-24 resize-none"
-                      value={formData.notes}
-                      onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                    />
                   </div>
 
                   <div className="space-y-6 pt-6 border-t border-white/20">
@@ -2515,15 +2492,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                             value={formData.deliveryAddress}
                             onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })}
                             placeholder="Enter delivery address..."
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Start Note</label>
-                          <textarea
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 rounded-t-2xl text-sm focus:border-brand-orange outline-none transition-all h-32 resize-none"
-                            value={formData.deliveryNotes}
-                            onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
-                            placeholder="Add internal notes for start of rental..."
                           />
                         </div>
                       </div>
@@ -2550,22 +2518,83 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                     </div>
                   </div>
 
-                  <div className="flex gap-4 pt-4">
-                    {editingBooking && (
+                  {/* Floating Action Bar / Sticky Footer */}
+                  <div className="sticky bottom-0 bg-white/80 backdrop-blur-2xl border-t border-black/5 p-6 -mx-8 -mb-8 mt-8 space-y-6 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] z-40 rounded-b-[40px]">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between ml-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Rental Notes</label>
+                          <div className="flex gap-2">
+                             <div className="flex items-center gap-1">
+                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                               <span className="text-[8px] font-bold uppercase text-gray-400">Start</span>
+                             </div>
+                             <div className="flex items-center gap-1">
+                               <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                               <span className="text-[8px] font-bold uppercase text-gray-400">End</span>
+                             </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          <textarea
+                            rows={1}
+                            className="w-full bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-xl text-xs focus:ring-1 focus:ring-emerald-500 outline-none transition-all resize-none min-h-[44px]"
+                            value={formData.deliveryNotes}
+                            onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
+                            placeholder="Start/Delivery note..."
+                          />
+                          <textarea
+                            rows={1}
+                            className="w-full bg-amber-500/5 border border-amber-500/10 p-3 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 outline-none transition-all resize-none min-h-[44px]"
+                            value={formData.returnNote}
+                            onChange={e => setFormData({ ...formData, returnNote: e.target.value })}
+                            placeholder="End/Return note..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Rental Summary</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-black/5 p-3 rounded-2xl">
+                            <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Amount (THB)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none"
+                              value={formData.amount}
+                              onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="bg-black/5 p-3 rounded-2xl">
+                            <label className="text-[8px] font-bold uppercase text-gray-400 block mb-1">Deposit (THB)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-transparent border-0 p-0 text-sm font-bold focus:ring-0 outline-none font-mono"
+                              value={formData.deposit}
+                              onChange={e => setFormData({ ...formData, deposit: Number(e.target.value) })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      {editingBooking && (
+                        <button
+                          type="button"
+                          onClick={() => setModalMode('view')}
+                          className="px-8 h-12 border border-black/10 bg-black/5 text-gray-600 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-black/10 transition-all font-mono"
+                        >
+                          Cancel
+                        </button>
+                      )}
                       <button
-                        type="button"
-                        onClick={() => setModalMode('view')}
-                        className="px-8 h-12 border border-white/60 bg-white/40 text-gray-600 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-white/60 transition-all"
+                        type="submit"
+                        className="flex-1 bg-[#1A1A1A] text-white h-12 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all shadow-lg active:translate-y-[2px] active:shadow-none"
                       >
-                        Cancel
+                        {editingBooking ? 'Save Changes' : 'Create Booking'}
                       </button>
-                    )}
-                    <button
-                      type="submit"
-                      className="flex-1 bg-brand-orange text-white h-12 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 active:translate-y-[2px] active:shadow-none"
-                    >
-                      {editingBooking ? 'Save Changes' : 'Create Booking'}
-                    </button>
+                    </div>
                   </div>
                 </form>
               )}

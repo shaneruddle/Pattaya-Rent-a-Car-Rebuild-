@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
-    "start": "node server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js && cp firebase-applet-config.json dist/",
+    "start": "node dist/server.js",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
@@ -23,11 +23,10 @@
     "date-fns": "^4.1.0",
     "dompurify": "^3.4.2",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.28.0",
     "express": "^4.21.2",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
-    "google-auth-library": "^10.6.2",
-    "googleapis": "^171.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.38.0",

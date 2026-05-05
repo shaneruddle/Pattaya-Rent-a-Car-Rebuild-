@@ -25,8 +25,6 @@ import { CRM } from './components/CRM';
 import { UserManagement } from './components/UserManagement';
 import { Logs } from './components/Logs';
 import { ImageManagement } from './components/ImageManagement';
-import { MarketingFAQ } from './components/MarketingFAQ';
-import { BlogManager } from './components/BlogManager';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { EmailTemplates } from './components/EmailTemplates';
 import { AIAssistant } from './components/AIAssistant';
@@ -77,7 +75,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -550,7 +548,7 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen bg-warm-bg font-sans text-[#1A1A1A] selection:bg-brand-orange selection:text-white">
+      <div className="flex h-screen bg-warm-bg font-sans text-[#1A1A1A] selection:bg-brand-orange selection:text-white overflow-hidden">
         <Sidebar 
           user={user} 
           isAdmin={isAdmin}
@@ -559,7 +557,7 @@ function AppContent() {
           currentView={currentView}
           onViewChange={setCurrentView}
         />
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
           {user && (
             <div className="fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
               {lastError && (
@@ -578,7 +576,7 @@ function AppContent() {
             </div>
           )}
           {currentView === 'timeline_cars' || currentView === 'timeline_bikes' ? (
-            <>
+            <div className="flex-1 grid grid-rows-[64px_1fr] overflow-hidden">
               <Header
                 currentDate={currentDate}
                 setCurrentDate={setCurrentDate}
@@ -610,45 +608,43 @@ function AppContent() {
                   setCurrentView('finance');
                 }}
               />
-            </>
-          ) : currentView === 'finance' ? (
-            <Finance 
-              cars={cars} 
-              bookings={bookings}
-              preFill={financePreFill} 
-              onClearPreFill={() => setFinancePreFill(null)} 
-            />
-          ) : currentView === 'pricing' ? (
-            <PricingManager />
-          ) : currentView === 'fleet' ? (
-            <FleetManager />
-          ) : currentView === 'bookings' ? (
-            <Bookings bookings={bookings} cars={cars.filter(c => c.isActive !== false)} onRefresh={() => fetchData(true)} />
-          ) : currentView === 'rentals' ? (
-            <Rentals cars={cars} />
-          ) : currentView === 'enquiries' ? (
-            <LiveEnquiries bookings={bookings} cars={cars} onRefresh={() => fetchData(true)} />
-          ) : currentView === 'website_fleet' ? (
-            <WebsiteFleetManager />
-          ) : currentView === 'crm' ? (
-            <CRM />
-          ) : currentView === 'user_management' ? (
-            <UserManagement />
-          ) : currentView === 'email_templates' ? (
-            <EmailTemplates />
-          ) : currentView === 'logs' ? (
-            <Logs logs={logs} />
-          ) : currentView === 'new_rental' ? (
-            <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
-          ) : currentView === 'image_management' ? (
-            <ImageManagement />
-          ) : currentView === 'marketing_faq' ? (
-            <MarketingFAQ />
-          ) : currentView === 'blog' ? (
-            <BlogManager />
+            </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
-              <BookingEngine onLoginClick={() => {}} />
+              {currentView === 'finance' ? (
+                <Finance 
+                  cars={cars} 
+                  bookings={bookings}
+                  preFill={financePreFill} 
+                  onClearPreFill={() => setFinancePreFill(null)} 
+                />
+              ) : currentView === 'pricing' ? (
+                <PricingManager />
+              ) : currentView === 'fleet' ? (
+                <FleetManager />
+              ) : currentView === 'bookings' ? (
+                <Bookings bookings={bookings} cars={cars.filter(c => c.isActive !== false)} onRefresh={() => fetchData(true)} />
+              ) : currentView === 'rentals' ? (
+                <Rentals cars={cars} />
+              ) : currentView === 'enquiries' ? (
+                <LiveEnquiries bookings={bookings} cars={cars} onRefresh={() => fetchData(true)} />
+              ) : currentView === 'website_fleet' ? (
+                <WebsiteFleetManager />
+              ) : currentView === 'crm' ? (
+                <CRM />
+              ) : currentView === 'user_management' ? (
+                <UserManagement />
+              ) : currentView === 'email_templates' ? (
+                <EmailTemplates />
+              ) : currentView === 'logs' ? (
+                <Logs logs={logs} />
+              ) : currentView === 'new_rental' ? (
+                <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
+              ) : currentView === 'image_management' ? (
+                <ImageManagement />
+              ) : (
+                <BookingEngine onLoginClick={() => {}} />
+              )}
             </div>
           )}
         </main>

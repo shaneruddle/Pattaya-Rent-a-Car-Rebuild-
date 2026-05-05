@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Bot, TrendingUp, Shield, Zap, ShieldCheck, Image as ImageIcon, X, FileText, RefreshCw, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage } from '../firebase';
@@ -12,14 +12,13 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates';
-  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'marketing_faq' | 'blog' | 'email_templates') => void;
+  currentView: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates';
+  onViewChange: (view: 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'image_management' | 'email_templates') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
-  const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
           x: isMobile && !isMobileMenuOpen ? -300 : 0
         }}
         className={cn(
-          "h-screen bg-white/40 backdrop-blur-xl text-[#1A1A1A] border-r border-black/10 flex flex-col relative z-[90] shadow-xl",
+          "h-screen bg-white/40 backdrop-blur-xl text-[#1A1A1A] border-r border-black/10 flex flex-col sticky top-0 left-0 z-40 shadow-xl",
           isMobile && "fixed inset-0 z-[110]"
         )}
       >
