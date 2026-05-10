@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { Helmet } from 'react-helmet-async';
 import { toast } from 'sonner';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 interface BlogPostViewProps {
   slug: string;
@@ -17,6 +18,7 @@ interface BlogPostViewProps {
 }
 
 export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBikeMode }) => {
+  const { config } = useCompanyConfig();
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -86,7 +88,7 @@ export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBike
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <Helmet>
-        <title>{post.title} | Pattaya Rent a Car Blog</title>
+        <title>{post.title} | {config.companyName} Blog</title>
         <meta name="description" content={post.excerpt} />
         <meta property="og:title" content={post.title} />
         <meta property="og:description" content={post.excerpt} />

@@ -361,6 +361,25 @@
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "totalIncome", "totalExpense", "netProfit", "lastUpdated"]
+    },
+    "CompanyConfig": {
+      "title": "CompanyConfig",
+      "description": "Global business information.",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "lineId": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "googlePlaceId": { "type": "string" },
+        "mapEmbedUrl": { "type": "string" },
+        "openingHours": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
     }
   },
   "firestore": {
@@ -447,6 +466,10 @@
     "/finance_summaries/{summaryId}": {
       "schema": "FinanceSummary",
       "description": "Aggregated financial summaries (monthly and all-time)."
+    },
+    "/app_settings/company": {
+      "schema": "CompanyConfig",
+      "description": "Global company information."
     }
   }
 }

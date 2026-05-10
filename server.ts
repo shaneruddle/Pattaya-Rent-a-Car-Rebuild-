@@ -537,8 +537,24 @@ async function startServer() {
 
   // Email API
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, replyTo } = req.body;
-    const gmailUser = "info@pattayarentacar.com";
+    const { to, subject, html, replyTo, fromName } = req.body;
+    
+    // Fetch company name and email from Firestore if not provided
+    let dynamicFromName = fromName;
+    let dynamicReplyTo = replyTo;
+    
+    try {
+      const configDoc = await firestore.collection('app_settings').doc('company').get();
+      if (configDoc.exists) {
+        const config = configDoc.data();
+        if (!dynamicFromName) dynamicFromName = config.companyName;
+        if (!dynamicReplyTo) dynamicReplyTo = config.email;
+      }
+    } catch (e) {
+      console.warn('[Email] Failed to fetch company config for send-email:', e);
+    }
+
+    const gmailUser = process.env.GMAIL_USER || "info@pattayarentacar.com";
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
     if (!gmailPass) {
@@ -546,6 +562,8 @@ async function startServer() {
       console.log(`[Email Mock] To: ${to}, Subject: ${subject}`);
       return res.json({ success: true, message: "Simulation success" });
     }
+
+    console.log("[Email] GMAIL_APP_PASSWORD found, attempting real send...");
 
     try {
       const transporter = nodemailer.createTransport({
@@ -557,34 +575,49 @@ async function startServer() {
       });
 
       const mailOptions = {
-        from: `"Pattaya Rent a Car" <${gmailUser}>`,
+        from: `"${dynamicFromName || 'Company'}" <${gmailUser}>`,
         to: to || gmailUser, // Default to info if no recipient
-        replyTo: replyTo || gmailUser,
+        replyTo: dynamicReplyTo || gmailUser,
         subject: subject || "New Message from Website",
         html: html
       };
 
       console.log(`[Email] Sending email to ${mailOptions.to} with subject: ${mailOptions.subject}`);
       const info = await transporter.sendMail(mailOptions);
-      console.log("[Email] Message sent: %s", info.messageId);
+      console.log("[Email] Message sent successfully: %s", info.messageId);
       
       res.json({ success: true, messageId: info.messageId });
     } catch (error: any) {
-      console.error("[Email] Send Error:", error.message);
+      console.error("[Email] Critical Send Error:", error);
+      console.error("[Email] Stack Trace:", error.stack);
       res.status(500).json({ error: "Failed to send email", details: error.message });
     }
   });
 
   // Business Info / Reviews API
   app.get("/api/reviews", async (req, res) => {
-    // Return mock data for Pattaya Rent a Car
+    // Fetch company settings for address and phone
+    let address = "123/45 Moo 10, Pattaya City, Bang Lamung District, Chon Buri 20150, Thailand";
+    let phone = "+66 83 077 6928";
+    
+    try {
+      const configDoc = await firestore.collection('app_settings').doc('company').get();
+      if (configDoc.exists) {
+        const config = configDoc.data();
+        address = config.address || address;
+        phone = config.phone || phone;
+      }
+    } catch (e) {
+      console.warn('[Reviews] Failed to fetch company config for reviews API:', e);
+    }
+
     res.json({
-      formatted_address: "123/45 Moo 10, Pattaya City, Bang Lamung District, Chon Buri 20150, Thailand",
-      international_phone_number: "+66 81 234 5678",
+      formatted_address: address,
+      international_phone_number: phone,
       rating: 4.9,
-      user_ratings_total: 150,
+      user_ratings_total: 1256,
       reviews: [
-        { author_name: "John Doe", rating: 5, text: "Best car rental in Pattaya! Very professional and clean cars.", relative_time_description: "a week ago" },
+        { author_name: "John Doe", rating: 5, text: "Best rental service in Pattaya! Very professional and clean vehicles.", relative_time_description: "a week ago" },
         { author_name: "Sarah Smith", rating: 5, text: "Free delivery to my hotel was so convenient. Highly recommended.", relative_time_description: "2 weeks ago" },
         { author_name: "Mike Johnson", rating: 4, text: "Great service, easy booking process.", relative_time_description: "1 month ago" }
       ],

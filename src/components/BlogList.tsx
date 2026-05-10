@@ -6,6 +6,7 @@ import { Search, Calendar, User, ChevronRight, Tag } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 interface BlogListProps {
   onPostClick: (slug: string) => void;
@@ -13,6 +14,7 @@ interface BlogListProps {
 }
 
 export const BlogList: React.FC<BlogListProps> = ({ onPostClick, isBikeMode }) => {
+  const { config } = useCompanyConfig();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +72,7 @@ export const BlogList: React.FC<BlogListProps> = ({ onPostClick, isBikeMode }) =
       <div className="text-center mb-16">
         <h1 className="font-serif italic text-5xl md:text-6xl text-[#1A1A1A] mb-6">Our Blog</h1>
         <p className="text-[#1A1A1A]/60 max-w-2xl mx-auto text-lg leading-relaxed">
-          Discover travel tips, local guides, and the latest news from Pattaya Rent a Car.
+          Discover travel tips, local guides, and the latest news from {config.companyName}.
         </p>
       </div>
 

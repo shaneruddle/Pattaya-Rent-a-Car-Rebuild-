@@ -1,4 +1,4 @@
-# Security Specification - Pattaya Rent a Car
+# Security Specification - Centralized Rental System
 
 ## Data Invariants
 1. Cars are publicly viewable but only staff can modify them.

@@ -3,6 +3,7 @@ import { Star, User, Calendar, AlertCircle, RefreshCw, Globe, MessageSquare, Rep
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import axios from 'axios';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 interface Review {
   id: string;
@@ -15,6 +16,7 @@ interface Review {
 
 export const ReviewManager: React.FC = () => {
   const [reviews, setReviews] = useState<Review[]>([]);
+  const { config } = useCompanyConfig();
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
@@ -110,7 +112,7 @@ export const ReviewManager: React.FC = () => {
       <header className="flex justify-between items-end border-b border-black/5 pb-8">
         <div>
           <h1 className="font-serif italic text-4xl">Reputation Management</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-orange mt-2">Pattaya Rent a Car • 1,256 Reviews</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-orange mt-2">{config.companyName} • 1,256 Reviews</p>
         </div>
         <button 
           onClick={handleSignIn}

@@ -7,9 +7,11 @@ import { collection, addDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useBusinessInfo } from '../hooks/useBusinessInfo';
 import { useLanguage } from '../LanguageContext';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 export const AboutUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
+  const { config } = useCompanyConfig();
   return (
     <div className="bg-warm-bg min-h-screen pt-32 pb-20">
       <div className="max-w-7xl mx-auto px-6">
@@ -42,7 +44,7 @@ export const AboutUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
           <div className="relative h-[600px] rounded-[40px] overflow-hidden shadow-2xl shadow-black/10">
             <img 
               src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/Team_cover_image.jpg?alt=media&token=0d338f08-cd9a-4ff4-a7b0-b609314e489d" 
-              alt="Our Team at Pattaya Rent a Car" 
+              alt={`Our Team at ${config.companyName}`} 
               className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
               referrerPolicy="no-referrer"
             />
@@ -102,8 +104,17 @@ export const AboutUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
 };
 
 export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
-  const { info } = useBusinessInfo();
+  const { config, loading } = useCompanyConfig();
   const { t } = useLanguage();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-20">
+        <Loader2 className="animate-spin text-brand-orange" size={32} />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-warm-bg min-h-screen pt-32 pb-20">
       <div className="max-w-7xl mx-auto px-6">
@@ -127,7 +138,7 @@ export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) =>
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.location')}</h3>
                 <p className="text-black/50 leading-relaxed font-medium text-sm">
-                  {info?.formatted_address || 'Pattaya Second Road, Pattaya City, Chonburi 20150, Thailand'}
+                  {config.address}
                 </p>
               </div>
 
@@ -137,7 +148,7 @@ export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) =>
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.phone')}</h3>
                 <p className="text-black/50 leading-relaxed font-medium text-sm">
-                  {info?.international_phone_number || '+66 83 077 6928'}
+                  {config.phone}
                 </p>
               </div>
 
@@ -147,7 +158,7 @@ export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) =>
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.email')}</h3>
                 <p className="text-black/50 leading-relaxed font-medium text-sm break-all">
-                  info@pattayarentacar.com
+                  {config.email}
                 </p>
               </div>
 
@@ -157,25 +168,26 @@ export const ContactUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) =>
                 </div>
                 <h3 className="text-xl font-bold tracking-tight mb-3">{t('contact.openingHours')}</h3>
                 <div className="text-black/50 leading-relaxed font-medium text-xs space-y-1">
-                  {info?.opening_hours?.weekday_text.slice(0, 3).map((day, idx) => (
-                    <p key={idx}>{day}</p>
+                  {Object.entries(config.openingHours).slice(0, 3).map(([day, hours]) => (
+                    <p key={day}>{day}: {hours}</p>
                   ))}
                   <p>...</p>
                 </div>
               </div>
             </div>
 
-            <div className="h-[450px] bg-white/40 backdrop-blur-xl border border-white/40 rounded-[40px] shadow-2xl shadow-black/5 overflow-hidden">
-              <iframe 
-                src={`https://www.google.com/maps?q=${encodeURIComponent(info?.formatted_address || 'Pattaya Rent a Car')}&output=embed`}
-                width="100%" 
-                height="100%" 
-                style={{ border: 0 }} 
-                allowFullScreen 
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              ></iframe>
-            </div>
+        <div className="h-[450px] bg-white/40 backdrop-blur-xl border border-white/40 rounded-[40px] shadow-2xl shadow-black/5 overflow-hidden">
+          <iframe 
+            src={config.mapEmbedUrl} 
+            width="100%" 
+            height="100%" 
+            style={{ border: 0 }} 
+            allowFullScreen 
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            title={`${config.companyName} Location`}
+          ></iframe>
+        </div>
           </div>
 
           <div className="bg-white/60 backdrop-blur-2xl p-12 rounded-[40px] border border-white/60 shadow-2xl shadow-black/5">

@@ -3,12 +3,14 @@ import { GoogleGenAI } from "@google/genai";
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useLanguage } from '../LanguageContext';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Loader2, Bot } from 'lucide-react';
 import { safeLocalStorage } from '../lib/storage';
 
 export const AIAssistant: React.FC = () => {
   const { t, language } = useLanguage();
+  const { config, loading: configLoading } = useCompanyConfig();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
   const [input, setInput] = useState('');
@@ -85,7 +87,7 @@ export const AIAssistant: React.FC = () => {
       model: "gemini-3.1-pro-preview",
       config: {
         tools: [{ googleSearch: {} }],
-        systemInstruction: `You are the Pattaya Rent a Car AI Assistant, an expert in car rentals in Pattaya, Thailand. 
+        systemInstruction: `You are the ${config.companyName} AI Assistant, an expert in car rentals in Pattaya, Thailand. 
         
         PRIMARY GOAL: Be helpful and informative while always guiding the user towards using our real-time booking engine at the top of the page to check live availability and exact pricing for their dates.
 
@@ -96,7 +98,9 @@ export const AIAssistant: React.FC = () => {
 
         BUSINESS FACTS:
         - Established: 2005 (Pattaya's most trusted and longest-running rental service).
-        - Location: Main office in Pattaya. We serve the entire Pattaya and Jomtien area.
+        - Location: ${config.address}. We serve the entire Pattaya and Jomtien area.
+        - Phone: ${config.phone}
+        - Email: ${config.email}
         - Delivery: FREE delivery and collection anywhere in Pattaya/Jomtien for rentals of 3 days or more. For shorter rentals, a small fee may apply or pick up at office.
         - Insurance: ALL rentals include comprehensive First Class Insurance (Commercial Rental Insurance). This covers the vehicle, passengers, and third parties.
         - Roadside Assistance: 24/7 Roadside Assistance included at no extra cost.
@@ -112,6 +116,9 @@ export const AIAssistant: React.FC = () => {
           * Minivans: Toyota Innova, Toyota Alphard (For large groups).
         - Long Term: Special discounted rates for rentals over 30 days. Contact us for a custom quote if not shown in the engine.
         - Fuel Policy: Level to Level (Return with the same amount of fuel as received).
+
+        OPENING HOURS:
+        ${Object.entries(config.openingHours).map(([day, hours]) => `${day}: ${hours}`).join('\n')}
 
         FAQ REFERENCE:
         - Documents: Thai or International Driving Permit, Passport, and Security Deposit.

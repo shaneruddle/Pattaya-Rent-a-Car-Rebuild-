@@ -25,7 +25,7 @@ export const translations = {
     },
     whyChoose: {
       title: "Why Rent From Us?",
-      subtitle: "The Pattaya Rent a Car Difference",
+      subtitle: "{company_name} Difference",
       insurance: "First Class Insurance",
       insuranceDesc: "All our rentals include comprehensive first-class insurance for your peace of mind.",
       delivery: "Free Delivery",
@@ -62,14 +62,14 @@ export const translations = {
       newsletterDesc: "Subscribe to get special offers and rental updates.",
       emailPlaceholder: "Email Address",
       join: "Join",
-      rights: "© 2026 Pattaya Rent a Car. All Rights Reserved.",
+      rights: "© 2026 {company_name}. All Rights Reserved.",
       privacy: "Privacy Policy",
       terms: "Terms of Service",
       cookies: "Cookie Policy"
     },
     aiAssistant: {
       title: "AI Rental Assistant",
-      greeting: "Hi! I'm your Pattaya Rent a Car assistant. How can I help you today?",
+      greeting: "Hi! I'm your {company_name} assistant. How can I help you today?",
       placeholder: "Type your question...",
       error: "Sorry, I'm having trouble connecting. Please try again later.",
       cta: "Chat with AI"
@@ -400,7 +400,7 @@ export const translations = {
     about: {
       established: "Established 2009",
       title: "Pattaya's Number 1 Car Hire Company",
-      p1: "Pattaya Rent a Car was established in 2009 with a simple mission: to provide the most reliable, transparent, and high-quality car rental service in Pattaya. Over the years, we have grown into the city's leading provider, trusted by thousands of locals and international visitors.",
+      p1: "{company_name} was established in 2009 with a simple mission: to provide the most reliable, transparent, and high-quality rental service. Over the years, we have grown into the city's leading provider, trusted by thousands of locals and international visitors.",
       p2: "Our fleet is meticulously maintained and features a wide range of vehicles to suit every need, from fuel-efficient economy cars and stylish saloons to spacious SUVs and versatile motorbikes. We pride ourselves on our \"no hidden fees\" policy and our commitment to customer satisfaction.",
       qualityFleet: "Quality Fleet",
       qualityFleetDesc: "Every vehicle in our fleet undergoes rigorous safety checks and regular maintenance to ensure your peace of mind.",
@@ -486,7 +486,7 @@ export const translations = {
     },
     whyChoose: {
       title: "ทำไมต้องเช่ากับเรา?",
-      subtitle: "ความแตกต่างของ Pattaya Rent a Car",
+      subtitle: "{company_name} Difference (TH)",
       insurance: "ประกันภัยชั้น 1",
       insuranceDesc: "การเช่าทั้งหมดของเรารวมประกันภัยชั้น 1 เพื่อความสบายใจของคุณ",
       delivery: "ส่งฟรี",
@@ -523,14 +523,14 @@ export const translations = {
       newsletterDesc: "สมัครสมาชิกเพื่อรับข้อเสนอพิเศษและอัปเดตการเช่ารถ",
       emailPlaceholder: "ที่อยู่อีเมล",
       join: "เข้าร่วม",
-      rights: "© 2026 Pattaya Rent a Car. สงวนลิขสิทธิ์",
+      rights: "© 2026 {company_name}. สงวนลิขสิทธิ์",
       privacy: "นโยบายความเป็นส่วนตัว",
       terms: "ข้อกำหนดการให้บริการ",
       cookies: "นโยบายคุกกี้"
     },
     aiAssistant: {
       title: "ผู้ช่วยเช่ารถ AI",
-      greeting: "สวัสดี! ฉันคือผู้ช่วยของ Pattaya Rent a Car วันนี้ให้ฉันช่วยอะไรคุณดี?",
+      greeting: "สวัสดี! ฉันคือผู้ช่วยของ {company_name} วันนี้ให้ฉันช่วยอะไรคุณดี?",
       placeholder: "พิมพ์คำถามของคุณ...",
       error: "ขออภัย ฉันมีปัญหาในการเชื่อมต่อ โปรดลองอีกครั้งในภายหลัง",
       cta: "คุยกับ AI"
@@ -630,7 +630,7 @@ export const translations = {
     about: {
       established: "ก่อตั้งเมื่อปี 2009",
       title: "บริษัทรถเช่าอันดับ 1 ของพัทยา",
-      p1: "Pattaya Rent a Car ก่อตั้งขึ้นในปี 2009 ด้วยภารกิจง่ายๆ: เพื่อให้บริการเช่ารถที่น่าเชื่อถือ โปร่งใส และมีคุณภาพสูงที่สุดในพัทยา ตลอดหลายปีที่ผ่านมา เราได้เติบโตขึ้นเป็นผู้ให้บริการชั้นนำของเมือง ซึ่งได้รับความไว้วางใจจากชาวท้องถิ่นและผู้มาเยือนจากต่างประเทศนับพันคน",
+      p1: "{company_name} ก่อตั้งขึ้นในปี 2009 ด้วยภารกิจง่ายๆ: เพื่อให้บริการเช่ารถที่น่าเชื่อถือ โปร่งใส และมีคุณภาพสูงที่สุดในพัทยา ตลอดหลายปีที่ผ่านมา เราได้เติบโตขึ้นเป็นผู้ให้บริการชั้นนำของเมือง ซึ่งได้รับความไว้วางใจจากชาวท้องถิ่นและผู้มาเยือนจากต่างประเทศนับพันคน",
       p2: "ฝูงรถของเราได้รับการบำรุงรักษาอย่างพิถีพิถันและมีรถยนต์หลากหลายประเภทเพื่อตอบสนองทุกความต้องการ ตั้งแต่รถประหยัดน้ำมันและรถเก๋งสไตล์หรู ไปจนถึงรถ SUV ที่กว้างขวางและรถจักรยานยนต์ที่ใช้งานได้หลากหลาย เราภูมิใจในนโยบาย \"ไม่มีค่าธรรมเนียมแอบแฝง\" และความมุ่งมั่นของเราต่อความพึงพอใจของลูกค้า",
       qualityFleet: "ฝูงรถคุณภาพ",
       qualityFleetDesc: "รถทุกคันในฝูงรถของเราผ่านการตรวจสอบความปลอดภัยอย่างเข้มงวดและการบำรุงรักษาตามปกติเพื่อให้คุณอุ่นใจ",
@@ -716,7 +716,7 @@ export const translations = {
     },
     whyChoose: {
       title: "Почему стоит арендовать у нас?",
-      subtitle: "Преимущества Pattaya Rent a Car",
+      subtitle: "Преимущества {company_name}",
       insurance: "Страховка первого класса",
       insuranceDesc: "Все наши аренды включают комплексную страховку первого класса для вашего спокойствия.",
       delivery: "Бесплатная доставка",
@@ -753,14 +753,14 @@ export const translations = {
       newsletterDesc: "Подпишитесь, чтобы получать специальные предложения и обновления.",
       emailPlaceholder: "Электронная почта",
       join: "Присоединиться",
-      rights: "© 2026 Pattaya Rent a Car. Все права защищены.",
+      rights: "© 2026 {company_name}. Все права защищены.",
       privacy: "Политика конфиденциальности",
       terms: "Условия использования",
       cookies: "Политика использования файлов cookie"
     },
     aiAssistant: {
       title: "AI Ассистент по прокату",
-      greeting: "Привет! Я ваш помощник в Pattaya Rent a Car. Чем я могу вам помочь сегодня?",
+      greeting: "Привет! Я ваш помощник в {company_name}. Чем я могу вам помочь сегодня?",
       placeholder: "Введите ваш вопрос...",
       error: "Извините, возникли проблемы с подключением. Пожалуйста, попробуйте позже.",
       cta: "Чат с AI"
@@ -860,7 +860,7 @@ export const translations = {
     about: {
       established: "Основано в 2009 году",
       title: "Компания №1 по прокату автомобилей в Паттайе",
-      p1: "Компания Pattaya Rent a Car была основана в 2009 году с простой миссией: предоставлять самые надежные, прозрачные и высококачественные услуги по прокату автомобилей в Паттайе. За прошедшие годы мы выросли в ведущего поставщика города, которому доверяют тысячи местных жителей и иностранных гостей.",
+      p1: "Компания {company_name} была основана в 2009 году с простой миссией: предоставлять самые надежные, прозрачные и высококачественные услуги по прокату автомобилей в Паттайе. За прошедшие годы мы выросли в ведущего поставщика города, которому доверяют тысячи местных жителей и иностранных гостей.",
       p2: "Наш автопарк тщательно обслуживается и включает в себя широкий спектр транспортных средств для любых нужд: от экономичных малолитражек и стильных седанов до просторных внедорожников и универсальных мотоциклов. Мы гордимся нашей политикой «никаких скрытых комиссий» и нашей приверженностью удовлетворению потребностей клиентов.",
       qualityFleet: "Качественный автопарк",
       qualityFleetDesc: "Каждое транспортное средство в нашем автопарке проходит строгую проверку безопасности и регулярное техническое обслуживание для вашего спокойствия.",
@@ -946,7 +946,7 @@ export const translations = {
     },
     whyChoose: {
       title: "Warum bei uns mieten?",
-      subtitle: "Der Pattaya Rent a Car Unterschied",
+      subtitle: "Der {company_name} Unterschied",
       insurance: "Erstklassige Versicherung",
       insuranceDesc: "Alle unsere Mietwagen beinhalten eine umfassende erstklassige Versicherung für Ihre Sicherheit.",
       delivery: "Kostenlose Lieferung",
@@ -983,14 +983,14 @@ export const translations = {
       newsletterDesc: "Abonnieren Sie, um Sonderangebote und Miet-Updates zu erhalten.",
       emailPlaceholder: "E-Mail-Adresse",
       join: "Beitreten",
-      rights: "© 2026 Pattaya Rent a Car. Alle Rechte vorbehalten.",
+      rights: "© 2026 {company_name}. Alle Rechte vorbehalten.",
       privacy: "Datenschutzrichtlinie",
       terms: "Nutzungsbedingungen",
       cookies: "Cookie-Richtlinie"
     },
     aiAssistant: {
       title: "AI Miet-Assistent",
-      greeting: "Hallo! Ich bin Ihr Pattaya Rent a Car Assistent. Wie kann ich Ihnen heute helfen?",
+      greeting: "Hallo! Ich bin Ihr {company_name} Assistent. Wie kann ich Ihnen heute helfen?",
       placeholder: "Schreiben Sie Ihre Frage...",
       error: "Entschuldigung, ich habe Verbindungsprobleme. Bitte versuchen Sie es später noch einmal.",
       cta: "Mit AI chatten"
@@ -1090,7 +1090,7 @@ export const translations = {
     about: {
       established: "Gegründet 2009",
       title: "Pattayas Nummer 1 Autovermietung",
-      p1: "Pattaya Rent a Car wurde 2009 mit einer einfachen Mission gegründet: den zuverlässigsten, transparentesten und qualitativ hochwertigsten Autovermietungsservice in Pattaya anzubieten. Im Laufe der Jahre sind wir zum führenden Anbieter der Stadt gewachsen, dem Tausende von Einheimischen und internationalen Besuchern vertrauen.",
+      p1: "{company_name} wurde 2009 mit einer einfachen Mission gegründet: den zuverlässigsten, transparentesten und qualitativ hochwertigsten Autovermietungsservice in Pattaya anzubieten. Im Laufe der Jahre sind wir zum führenden Anbieter der Stadt gewachsen, dem Tausende von Einheimischen und internationalen Besuchern vertrauen.",
       p2: "Unsere Flotte wird sorgfältig gewartet und umfasst eine breite Palette von Fahrzeugen für jeden Bedarf, von kraftstoffsparenden Kleinwagen und stilvollen Limousinen bis hin zu geräumigen SUVs und vielseitigen Motorrädern. Wir sind stolz auf unsere Richtlinie \"keine versteckten Gebühren\" und unser Engagement für die Kundenzufriedenheit.",
       qualityFleet: "Qualitätsflotte",
       qualityFleetDesc: "Jedes Fahrzeug in unserer Flotte wird strengen Sicherheitsprüfungen und regelmäßigen Wartungen unterzogen, um Ihre Sicherheit zu gewährleisten.",
@@ -1176,7 +1176,7 @@ export const translations = {
     },
     whyChoose: {
       title: "为什么选择我们？",
-      subtitle: "芭堤雅租车的与众不同之处",
+      subtitle: "芭堤雅{company_name}的与众不同之处",
       insurance: "顶级保险",
       insuranceDesc: "我们所有的租赁都包含全面的顶级保险，让您高枕无忧。",
       delivery: "免费送车",
@@ -1213,14 +1213,14 @@ export const translations = {
       newsletterDesc: "订阅以获取特别优惠和租赁更新。",
       emailPlaceholder: "电子邮件地址",
       join: "加入",
-      rights: "© 2026 Pattaya Rent a Car。保留所有权利。",
+      rights: "© 2026 {company_name}。保留所有权利。",
       privacy: "隐私政策",
       terms: "服务条款",
       cookies: "Cookie 政策"
     },
     aiAssistant: {
       title: "AI 租车助手",
-      greeting: "您好！我是您的 Pattaya Rent a Car 助手。今天有什么可以帮您的吗？",
+      greeting: "您好！我是您的 {company_name} 助手。今天有什么可以帮您的吗？",
       placeholder: "输入您的问题...",
       error: "抱歉，连接出现问题。请稍后再试。",
       cta: "与 AI 聊天"
@@ -1320,7 +1320,7 @@ export const translations = {
     about: {
       established: "成立于 2009 年",
       title: "芭堤雅排名第一的租车公司",
-      p1: "Pattaya Rent a Car 成立于 2009 年，其使命很简单：在芭堤雅提供最可靠、透明和高质量的租车服务。多年来，我们已成长为该市领先的供应商，深受成千上万当地居民和国际游客的信赖。",
+      p1: "{company_name} 成立于 2009 年，其使命很简单：在芭堤雅提供最可靠、透明和高质量的租车服务。多年来，我们已成长为该市领先的供应商，深受成千上万当地居民和国际游客的信赖。",
       p2: "我们的车队维护精良，拥有各种车型以满足各种需求，从省油的经济型轿车和时尚的轿车到宽敞的 SUV 和多功能摩托车。我们以“无隐藏费用”政策和对客户满意度的承诺而自豪。",
       qualityFleet: "优质车队",
       qualityFleetDesc: "我们车队中的每辆车都经过严格的安全检查和定期维护，以确保您的安心。",

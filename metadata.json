@@ -1,7 +1,8 @@
 {
-  "name": "Pattaya Rent a Car System Rebuild",
-  "description": "Professional car rental management dashboard for Pattaya Rent a Car (PRAC).",
+  "name": "Pattaya Rent a Car Rebuild ",
+  "description": "Professional rental management dashboard with centralized company settings and multi-language support.",
   "requestFramePermissions": [
     "camera"
-  ]
+  ],
+  "majorCapabilities": []
 }

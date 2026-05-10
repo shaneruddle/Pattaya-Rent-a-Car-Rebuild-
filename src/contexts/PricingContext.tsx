@@ -31,7 +31,6 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const fetchDbPricing = useCallback(async () => {
-    if (!auth.currentUser) return;
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -67,7 +66,6 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [dbPricing, lastFetch]);
 
   const fetchSettings = useCallback(async () => {
-    if (!auth.currentUser) return;
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -133,13 +131,17 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [sheetPricing, lastFetch]);
 
   useEffect(() => {
+    // Initial fetch always happens
+    fetchDbPricing();
+    fetchSettings();
+    fetchPricing();
+
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
+        // Re-fetch on login to ensure staff-only bits or fresh data
         fetchDbPricing();
         fetchSettings();
         fetchPricing();
-      } else {
-        setLoading(false);
       }
     });
     return () => unsubscribe();

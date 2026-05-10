@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { StorageImage } from './StorageImage';
 import { useBusinessInfo } from '../hooks/useBusinessInfo';
 import { useLanguage } from '../LanguageContext';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 export const WhyChooseUs: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
   const { t } = useLanguage();
@@ -92,7 +93,7 @@ export const GoogleReviews: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }
     {
       author_name: "Michael Schmidt",
       relative_time_description: "3 months ago",
-      text: "I've used Pattaya Rent a Car multiple times now. Always reliable, no hidden costs, and the cars are always well-maintained. 5 stars!",
+      text: "I've used this service multiple times now. Always reliable, no hidden costs, and the vehicles are always well-maintained. 5 stars!",
       rating: 5
     }
   ];
@@ -176,6 +177,7 @@ export const GoogleReviews: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }
 };
 
 export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
+  const { config, loading: configLoading } = useCompanyConfig();
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
@@ -195,23 +197,25 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
       const enquiryRef = await addDoc(collection(db, 'enquiries'), {
         ...formData,
         timestamp: new Date().toISOString(),
-        to: 'info@pattayarentacar.com'
+        to: config.email
       });
       console.log('EnquiryForm: Saved to enquiries, ID:', enquiryRef.id);
 
       console.log('EnquiryForm: Sending emails via helpers...');
+      let emailSuccess = true;
       try {
         // 1. Send Confirmation to Customer using template
-        await sendTemplatedEmail('website_enquiry', formData.email, {
+        const customerEmail = await sendTemplatedEmail('website_enquiry', formData.email, {
           '{{customer_name}}': formData.name,
         });
+        console.log('EnquiryForm: Customer confirmation triggered');
 
         // 2. Send Notification to Staff
         const emailResponse = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: 'info@pattayarentacar.com',
+            to: config.email,
             replyTo: formData.email,
             subject: `New Website Enquiry from ${formData.name}`,
             html: `
@@ -227,44 +231,52 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
         
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
-          console.error('EnquiryForm: Email API failed:', errorData);
+          console.error('EnquiryForm: Staff email API failed:', errorData);
+          emailSuccess = false;
         } else {
           console.log('EnquiryForm: Staff notification sent successfully');
         }
       } catch (emailErr) {
         console.error('EnquiryForm: Error handling emails:', emailErr);
+        emailSuccess = false;
       }
 
       // 3. Save to mail collection for logging
-      await addDoc(collection(db, 'mail'), {
-        to: formData.email,
-        message: {
-          subject: 'Message Received - Pattaya Rent a Car',
-          html: `<p>Thank you for your message, ${formData.name}. We will contact you soon.</p>`
-        },
-      });
+      try {
+        await addDoc(collection(db, 'mail'), {
+          to: formData.email,
+          message: {
+            subject: `Message Received - ${config.companyName}`,
+            html: `<p>Thank you for your message, ${formData.name}. We will contact you soon.</p>`
+          },
+        });
 
-      await addDoc(collection(db, 'mail'), {
-        to: 'info@pattayarentacar.com',
-        replyTo: formData.email,
-        message: {
-          subject: `New Website Enquiry from ${formData.name}`,
-          html: `Message from ${formData.name} received. Email: ${formData.email}. Phone: ${formData.phone}.`
-        },
-      });
-      console.log('EnquiryForm: Email document created');
+        await addDoc(collection(db, 'mail'), {
+          to: config.email,
+          replyTo: formData.email,
+          message: {
+            subject: `New Website Enquiry from ${formData.name}`,
+            html: `Message from ${formData.name} received. Email: ${formData.email}. Phone: ${formData.phone}.`
+          },
+        });
+        console.log('EnquiryForm: Email logs created in Firestore');
+      } catch (logErr) {
+        console.error('EnquiryForm: Error creating email logs:', logErr);
+      }
 
       // Log activity
-      console.log('EnquiryForm: Logging system activity...');
       await logSystemActivity(
         'Website Enquiry',
         `New general enquiry from ${formData.name}`,
         'Website',
         { customerName: formData.name, email: formData.email }
       );
-      console.log('EnquiryForm: Activity logged');
 
-      toast.success(t('enquiry.success'));
+      if (emailSuccess) {
+        toast.success(t('enquiry.success'));
+      } else {
+        toast.warning("Message saved, but we're having trouble sending notifications. We'll check the dashboard!");
+      }
       setFormData({ name: '', email: '', phone: '', message: '' });
     } catch (error: any) {
       console.error('EnquiryForm: Error during submission:', error);
@@ -304,7 +316,7 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
                 </div>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-black/30 mb-1">{t('enquiry.callUs')}</div>
-                  <div className="font-bold tracking-tight">{info?.international_phone_number || '+66 83 077 6928'}</div>
+                  <div className="font-bold tracking-tight">{configLoading ? '...' : config.phone}</div>
                 </div>
               </div>
               <div className="flex items-center gap-6 p-6 bg-white/40 backdrop-blur-xl border border-white/40 rounded-3xl shadow-sm min-w-0">
@@ -316,7 +328,7 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-black/30 mb-1">{t('enquiry.emailUs')}</div>
-                  <div className="font-bold tracking-tight break-all">info@pattayarentacar.com</div>
+                  <div className="font-bold tracking-tight break-all">{configLoading ? '...' : config.email}</div>
                 </div>
               </div>
             </div>
@@ -372,7 +384,7 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
                 disabled={isSubmitting}
                 type="submit"
                 className={cn(
-                  "w-full text-white py-5 rounded-2xl font-bold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg",
+                  "w-full text-white py-5 rounded-2xl font-bold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 hover:scale-[1.02] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg",
                   isBikeMode ? "bg-brand-blue shadow-brand-blue/25" : "bg-brand-orange shadow-brand-orange/25"
                 )}
               >
@@ -387,6 +399,7 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
 };
 
 export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMode?: boolean }> = ({ onPageChange, isBikeMode }) => {
+  const { config, loading: configLoading } = useCompanyConfig();
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
 
@@ -402,7 +415,7 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
             {isBikeMode ? (
               <StorageImage 
                 path="PRAB-Logo-1.png"
-                alt="Pattaya Rent A Bike"
+                alt={`${config.companyName} Logo`}
                 className="w-44 cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => onPageChange?.('landing')}
                 fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
@@ -410,7 +423,7 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
             ) : (
               <img 
                 src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
-                alt="PRAC Logo"
+                alt={`${config.companyName} Logo`}
                 className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity brightness-0 invert")}
                 onClick={() => onPageChange?.('landing')}
                 referrerPolicy="no-referrer"
@@ -464,15 +477,15 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
             <ul className="space-y-8 text-sm font-medium text-white/40">
               <li className="flex gap-5">
                 <MapPin size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
-                <span className="leading-relaxed">{info?.formatted_address || 'Pattaya Second Road, Pattaya City, Chonburi 20150, Thailand'}</span>
+                <span className="leading-relaxed">{configLoading ? '...' : config.address}</span>
               </li>
               <li className="flex gap-5">
                 <Phone size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
-                <span className="font-bold tracking-tight">{info?.international_phone_number || '+66 83 077 6928'}</span>
+                <span className="font-bold tracking-tight">{configLoading ? '...' : config.phone}</span>
               </li>
               <li className="flex gap-5 min-w-0">
                 <Mail size={20} className={cn("shrink-0", isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
-                <span className="font-bold tracking-tight break-all">info@pattayarentacar.com</span>
+                <span className="font-bold tracking-tight break-all">{configLoading ? '...' : config.email}</span>
               </li>
             </ul>
           </div>

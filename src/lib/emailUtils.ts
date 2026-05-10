@@ -150,6 +150,27 @@ export const processTemplate = (template: string, placeholders: Record<string, a
 };
 
 /**
+ * Default templates for fallback if Firestore templates are missing
+ */
+const DEFAULT_TEMPLATES: Record<string, { subject: string, body: string }> = {
+  'booking_enquiry': {
+    name: 'Booking Enquiry Confirmation',
+    subject: 'Thank you for your enquiry',
+    body: '<p>Dear {{customer_name}},</p><p>Thank you for your enquiry for a <strong>{{vehicle_model}}</strong>.</p><p><strong>Rental Period:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>We have received your request and will get back to you as soon as possible.</p><p>Best regards,</p>',
+  } as any,
+  'website_enquiry': {
+    name: 'Website Enquiry Confirmation',
+    subject: 'We have received your message',
+    body: '<p>Dear {{customer_name}},</p><p>Thank you for contacting us through our website.</p><p>We have received your message and our team will get back to you shortly.</p><p>Best regards,</p>',
+  } as any,
+  'rental_confirmation': {
+    name: 'Rental Confirmation',
+    subject: 'Rental Confirmation - {{vehicle_model}}',
+    body: '<p>Dear {{customer_name}},</p><p>Your booking for <strong>{{vehicle_model}}</strong> ({{plate_number}}) has been confirmed.</p><p><strong>Return Date:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>For your peace of mind, we have recorded the condition of the vehicle at the time of rental. Please see the photos below:</p>{{photos}}<p>Thank you for choosing us.</p>',
+  } as any
+};
+
+/**
  * Fetches and sends a templated email
  */
 export const sendTemplatedEmail = async (
@@ -159,13 +180,39 @@ export const sendTemplatedEmail = async (
   replyTo?: string
 ) => {
   try {
-    const templateDoc = await getDoc(doc(db, 'email_templates', templateId));
-    if (!templateDoc.exists()) {
-      throw new Error(`Template ${templateId} not found`);
+    let template;
+    
+    try {
+      const templateDoc = await getDoc(doc(db, 'email_templates', templateId));
+      if (templateDoc.exists()) {
+        template = templateDoc.data();
+      }
+    } catch (fsError) {
+      console.warn(`Firestore lookup failed for template ${templateId}, using fallback:`, fsError);
     }
 
-    const template = templateDoc.data();
+    if (!template) {
+      console.warn(`Template ${templateId} not found in Firestore, using hardcoded default.`);
+      template = DEFAULT_TEMPLATES[templateId];
+    }
+
+    if (!template) {
+      throw new Error(`Template ${templateId} not found and no default available.`);
+    }
+
     const subject = processTemplate(template.subject, placeholders);
+    
+    // Fetch company config for dynamic replyTo and signature if needed
+    let companyConfig;
+    try {
+      const configDoc = await getDoc(doc(db, 'app_settings', 'company'));
+      if (configDoc.exists()) {
+        companyConfig = configDoc.data();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch company config for email:', e);
+    }
+
     const bodyWithPlaceholders = processTemplate(template.body, placeholders);
     
     // In many emails, users just type "hello\n\nworld", so we format newlines
@@ -187,7 +234,7 @@ export const sendTemplatedEmail = async (
         to,
         subject,
         html: finalHtml,
-        replyTo: replyTo || 'info@pattayarentacar.com'
+        replyTo: replyTo || (companyConfig?.email ?? 'info@pattayarentacar.com')
       }),
     });
 

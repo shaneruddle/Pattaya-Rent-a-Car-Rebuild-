@@ -48,6 +48,8 @@ import { AIAssistant } from './AIAssistant';
 import { Language } from '../translations';
 import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
+import BikeRentalLanding from './BikeRentalLanding';
 
 const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
   const hour = i.toString().padStart(2, '0');
@@ -349,6 +351,7 @@ const Calendar: React.FC<CalendarProps> = ({
 export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) => {
   console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
+  const { config, loading: configLoading } = useCompanyConfig();
   const { sheetPricing, dbPricing, settings, loading: pricingLoading } = usePricing();
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
@@ -372,42 +375,42 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     switch (view) {
       case 'about':
         return {
-          title: "About Us | Pattaya Rent a Car",
-          description: "Learn about Pattaya's most trusted car rental service. Established in 2009, we provide quality vehicles and exceptional service."
+          title: `About Us | ${config.companyName}`,
+          description: `Learn about ${config.companyName}. Established since 2005, we provide quality vehicles and exceptional service.`
         };
       case 'contact':
         return {
-          title: "Contact Us | Pattaya Rent a Car",
-          description: "Get in touch with Pattaya Rent a Car. Find our location, phone number, and email for all your car rental enquiries."
+          title: `Contact Us | ${config.companyName}`,
+          description: `Get in touch with ${config.companyName}. Find our location, phone number, and email for all your car rental enquiries.`
         };
       case 'long-term':
         return {
-          title: "Long Term Car Hire | Pattaya Rent a Car",
+          title: `Long Term Car Hire | ${config.companyName}`,
           description: "Looking for a car for a month or longer? Our long-term hire solutions offer the best value in Pattaya with flexible terms."
         };
       case 'blog':
         return {
-          title: "Blog | Pattaya Rent a Car",
-          description: "Explore our blog for travel tips, local guides, and the latest news about car rentals in Pattaya."
+          title: `Blog | ${config.companyName}`,
+          description: `Explore our blog for travel tips, local guides, and the latest news about car rentals in Pattaya.`
         };
       case 'blog-post':
         return {
-          title: "Blog Post | Pattaya Rent a Car",
-          description: "Read our latest blog post on Pattaya Rent a Car."
+          title: `Blog Post | ${config.companyName}`,
+          description: `Read our latest blog post on ${config.companyName}.`
         };
       case 'results':
         return {
-          title: isBikeMode ? "Available Bikes | Pattaya Rent a Bike" : "Available Vehicles | Pattaya Rent a Car",
+          title: isBikeMode ? `Available Bikes | ${config.companyName}` : `Available Vehicles | ${config.companyName}`,
           description: isBikeMode ? "Browse our wide selection of available rental motorbikes in Pattaya." : "Browse our wide selection of available rental vehicles in Pattaya. Find the perfect car for your journey."
         };
       case 'rent-a-bike':
         return {
-          title: "Pattaya Rent a Bike | Trusted Motorbike Rental in Pattaya Since 2005",
+          title: `${config.companyName} | Trusted Motorbike Rental in Pattaya Since 2005`,
           description: "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today."
         };
       default:
         return {
-          title: isBikeMode ? "Pattaya Rent a Bike | Trusted Motorbike Rental in Pattaya Since 2005" : "Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005",
+          title: `${config.companyName} | Trusted Rental Service in Pattaya Since 2005`,
           description: isBikeMode ? "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today." : "Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today."
         };
     }
@@ -719,6 +722,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
       // Send emails via API
       console.log('BookingEngine: Sending emails via helpers...');
+      let emailSuccess = true;
       try {
         // 1. Send Confirmation to Customer using template
         await sendTemplatedEmail('booking_enquiry', formData.email, {
@@ -727,13 +731,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{return_date}}': `${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}`,
           '{{total_price}}': bookingData.amount.toLocaleString()
         });
+        console.log('BookingEngine: Customer confirmation triggered');
 
         // 2. Send Notification to Staff
         const emailResponse = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: 'info@pattayarentacar.com',
+            to: config.email,
             replyTo: formData.email,
             subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
             html: `
@@ -762,37 +767,48 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
-          console.error('BookingEngine: Email API failed:', errorData);
+          console.error('BookingEngine: Staff email API failed:', errorData);
+          emailSuccess = false;
         } else {
           console.log('BookingEngine: Staff notification sent successfully');
         }
       } catch (emailErr) {
         console.error('BookingEngine: Error handling emails:', emailErr);
+        emailSuccess = false;
       }
 
       // Save to mail collection for logging (Customer copy)
-      await addDoc(collection(db, 'mail'), {
-        to: formData.email,
-        message: {
-          subject: 'Booking Enquiry Received - Pattaya Rent a Car',
-          html: `<p>Thank you for your enquiry for ${selectedCar.name}. We will contact you soon.</p>`
-        },
-      });
+      try {
+        await addDoc(collection(db, 'mail'), {
+          to: formData.email,
+          message: {
+            subject: `Booking Enquiry Received - ${config.companyName}`,
+            html: `<p>Thank you for your enquiry for ${selectedCar.name}. We will contact you soon.</p>`
+          },
+        });
 
-      // Save to mail collection for logging (Staff copy)
-      await addDoc(collection(db, 'mail'), {
-        to: 'info@pattayarentacar.com',
-        replyTo: formData.email,
-        message: {
-          subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
-          html: `Enquiry received from ${bookingData.customerName} for ${selectedCar.name}. Check dashboard for details.`
-        },
-      });
-      console.log('BookingEngine: Email document created');
+        // Save to mail collection for logging (Staff copy)
+        await addDoc(collection(db, 'mail'), {
+          to: config.email,
+          replyTo: formData.email,
+          message: {
+            subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
+            html: `Enquiry received from ${bookingData.customerName} for ${selectedCar.name}. Check dashboard for details.`
+          },
+        });
+        console.log('BookingEngine: Email logs created in Firestore');
+      } catch (logErr) {
+        console.error('BookingEngine: Error creating email logs:', logErr);
+      }
 
       setIsSuccess(true);
       setShowEnquiryModal(false);
-      toast.success("Enquiry submitted successfully!");
+      
+      if (emailSuccess) {
+        toast.success("Enquiry submitted successfully!");
+      } else {
+        toast.warning("Booking recorded, but we had trouble sending confirmation emails. We'll check the dashboard!");
+      }
     } catch (error: any) {
       console.error("BookingEngine: Error submitting enquiry:", error);
       const errorMessage = error.message || 'Unknown error';
@@ -1130,123 +1146,127 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         ) : view === 'blog-post' && selectedBlogSlug ? (
           <BlogPostView isBikeMode={isBikeMode} slug={selectedBlogSlug} onBack={() => handlePageChange('blog')} />
         ) : view === 'landing' || view === 'rent-a-bike' ? (
-          <>
-            {/* Hero Section */}
-          <section className="pt-24 pb-40 px-4 text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-black mb-12 tracking-tight">
-              {isBikeMode ? "Let's find your perfect bike." : t('hero.title')} <br />
-              <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('hero.subtitle')}</span>
-            </h1>
+          isBikeMode ? (
+            <BikeRentalLanding />
+          ) : (
+            <>
+              {/* Hero Section */}
+              <section className="pt-24 pb-40 px-4 text-center">
+                <h1 className="text-4xl md:text-6xl font-bold text-black mb-12 tracking-tight">
+                  {isBikeMode ? "Let's find your perfect bike." : t('hero.title')} <br />
+                  <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('hero.subtitle')}</span>
+                </h1>
 
-            <div className="max-w-5xl mx-auto relative">
-              <div className="flex flex-col md:flex-row items-stretch glass-card rounded-[2.5rem] overflow-hidden">
-                <button 
-                  onClick={() => setShowCalendar(true)}
-                  className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
-                >
-                  <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
-                  <div>
-                    <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.pickupDate')}</p>
-                    <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.from, 'EEE dd MMM')}</p>
-                  </div>
-                </button>
-                <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
-                  <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
-                    <div className="relative">
-                      <select 
-                        value={pickUpTime}
-                        onChange={(e) => setPickUpTime(e.target.value)}
-                        className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
-                      >
-                        {timeOptions.map(time => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
+                <div className="max-w-5xl mx-auto relative">
+                  <div className="flex flex-col md:flex-row items-stretch glass-card rounded-[2.5rem] overflow-hidden">
+                    <button 
+                      onClick={() => setShowCalendar(true)}
+                      className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
+                    >
+                      <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
+                      <div>
+                        <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.pickupDate')}</p>
+                        <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.from, 'EEE dd MMM')}</p>
+                      </div>
+                    </button>
+                    <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
+                      <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
+                        <div className="relative">
+                          <select 
+                            value={pickUpTime}
+                            onChange={(e) => setPickUpTime(e.target.value)}
+                            className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
+                          >
+                            {timeOptions.map(time => (
+                              <option key={time} value={time}>{time}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
+                        </div>
+                      </div>
                     </div>
+                    <button 
+                      onClick={() => setShowCalendar(true)}
+                      className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
+                    >
+                      <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
+                      <div>
+                        <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.dropoffDate')}</p>
+                        <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.to, 'EEE dd MMM')}</p>
+                      </div>
+                    </button>
+                    <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
+                      <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
+                        <div className="relative">
+                          <select 
+                            value={dropOffTime}
+                            onChange={(e) => setDropOffTime(e.target.value)}
+                            className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
+                          >
+                            {timeOptions.map(time => (
+                              <option key={time} value={time}>{time}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handlePageChange('results')}
+                      className={cn(
+                        "text-white px-12 py-8 font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all flex items-center justify-center gap-3 active:scale-95 shadow-xl",
+                        isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+                      )}
+                    >
+                      {t('hero.search')} <ChevronRight size={20} />
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {showCalendar && (
+                      <>
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={() => setShowCalendar(false)}
+                          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] md:hidden"
+                        />
+                        <Calendar 
+                          selectedRange={selectedRange}
+                          setSelectedRange={setSelectedRange}
+                          setShowCalendar={setShowCalendar}
+                          calendarRef={calendarRef}
+                          setView={handlePageChange as any}
+                          pickUpTime={pickUpTime}
+                          setPickUpTime={setPickUpTime}
+                          dropOffTime={dropOffTime}
+                          setDropOffTime={setDropOffTime}
+                          isBikeMode={isBikeMode}
+                        />
+                      </>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="mt-16">
+                    <h2 className="text-xl font-bold text-black/40 uppercase tracking-[0.2em]">
+                      {t('hero.bookNow')} <span className="text-black/20">{t('hero.noCancellation')}</span>
+                    </h2>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowCalendar(true)}
-                  className="flex-[1.5] p-8 text-left hover:bg-white/20 transition-colors flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5"
-                >
-                  <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
-                  <div>
-                    <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.dropoffDate')}</p>
-                    <p className="text-black font-mono text-xl tracking-tight">{format(selectedRange.to, 'EEE dd MMM')}</p>
-                  </div>
-                </button>
-                <div className="p-8 text-left flex items-center gap-6 border-b md:border-b-0 md:border-r border-black/5 min-w-[180px]">
-                  <Clock className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-black/30 uppercase tracking-widest mb-1.5">{t('hero.time')}</p>
-                    <div className="relative">
-                      <select 
-                        value={dropOffTime}
-                        onChange={(e) => setDropOffTime(e.target.value)}
-                        className="bg-transparent text-black font-mono text-xl outline-none w-full appearance-none cursor-pointer pr-8"
-                      >
-                        {timeOptions.map(time => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-black/20 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => handlePageChange('results')}
-                  className={cn(
-                    "text-white px-12 py-8 font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all flex items-center justify-center gap-3 active:scale-95 shadow-xl",
-                    isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
-                  )}
-                >
-                  {t('hero.search')} <ChevronRight size={20} />
-                </button>
-              </div>
+              </section>
 
-              <AnimatePresence>
-                {showCalendar && (
-                  <>
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      onClick={() => setShowCalendar(false)}
-                      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] md:hidden"
-                    />
-                    <Calendar 
-                      selectedRange={selectedRange}
-                      setSelectedRange={setSelectedRange}
-                      setShowCalendar={setShowCalendar}
-                      calendarRef={calendarRef}
-                      setView={handlePageChange as any}
-                      pickUpTime={pickUpTime}
-                      setPickUpTime={setPickUpTime}
-                      dropOffTime={dropOffTime}
-                      setDropOffTime={setDropOffTime}
-                      isBikeMode={isBikeMode}
-                    />
-                  </>
-                )}
-              </AnimatePresence>
-
-              <div className="mt-16">
-                <h2 className="text-xl font-bold text-black/40 uppercase tracking-[0.2em]">
-                  {t('hero.bookNow')} <span className="text-black/20">{t('hero.noCancellation')}</span>
-                </h2>
-              </div>
-            </div>
-          </section>
-
-          <WhyChooseUs isBikeMode={isBikeMode} />
-          <GoogleReviews isBikeMode={isBikeMode} />
-          <FAQ isBikeMode={isBikeMode} />
-          <EnquiryForm isBikeMode={isBikeMode} />
-        </>
-      ) : (
+              <WhyChooseUs isBikeMode={isBikeMode} />
+              <GoogleReviews isBikeMode={isBikeMode} />
+              <FAQ isBikeMode={isBikeMode} />
+              <EnquiryForm isBikeMode={isBikeMode} />
+            </>
+          )
+        ) : (
         /* Results Page */
         <main className="max-w-7xl mx-auto px-4 py-12">
           {/* Summary Bar */}

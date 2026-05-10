@@ -216,5 +216,17 @@ service cloud.firestore {
     match /review_settings/{settingId} {
       allow get, list, write: if isStaff();
     }
+
+    // Email Templates: Publicly readable (to process on client), staff writable
+    match /email_templates/{templateId} {
+      allow get: if true;
+      allow list, write: if isStaff();
+    }
+
+    // App Settings: Publicly readable for global config, staff writable
+    match /app_settings/{settingId} {
+      allow get: if true;
+      allow write: if isStaff();
+    }
   }
 }

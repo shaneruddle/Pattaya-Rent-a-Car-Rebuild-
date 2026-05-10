@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Language, translations } from './translations';
+import { useCompanyConfig } from './hooks/useCompanyConfig';
 
 interface LanguageContextType {
   language: Language;
@@ -12,6 +13,7 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   console.log('LanguageProvider: Rendering');
   const [language, setLanguage] = useState<Language>('en');
+  const { config } = useCompanyConfig();
 
   const t = (path: string, params?: Record<string, any>): any => {
     const keys = path.split('.');
@@ -25,9 +27,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
     }
 
-    if (typeof result === 'string' && params) {
+    if (typeof result === 'string') {
       let formatted = result;
-      for (const [key, value] of Object.entries(params)) {
+      const allParams = { company_name: config.companyName, ...params };
+      
+      for (const [key, value] of Object.entries(allParams)) {
         formatted = formatted.replace(`{${key}}`, String(value));
       }
       return formatted;

@@ -25,6 +25,7 @@ import { CRM } from './components/CRM';
 import { UserManagement } from './components/UserManagement';
 import { Logs } from './components/Logs';
 import { ImageManagement } from './components/ImageManagement';
+import { CompanySettings } from './components/CompanySettings';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { EmailTemplates } from './components/EmailTemplates';
 import { AIAssistant } from './components/AIAssistant';
@@ -44,6 +45,7 @@ import { LanguageProvider } from './LanguageContext';
 import { PricingProvider } from './contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
 import { SystemLog } from './types';
+import { useCompanyConfig } from './hooks/useCompanyConfig';
 
 export default function App() {
   console.log('App: Rendering top-level component');
@@ -51,15 +53,7 @@ export default function App() {
     <ErrorBoundary>
       <LanguageProvider>
         <PricingProvider>
-          <Helmet>
-            <title>Pattaya Rent a Car | Trusted Car Rental in Pattaya Since 2005</title>
-            <meta name="description" content="Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today." />
-            <link rel="icon" type="image/jpeg" href="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=2bca69cd-f667-4ea4-9ff2-5ea04fce3c23" />
-            <meta property="og:title" content="Pattaya Rent a Car | Trusted Car Rental in Pattaya" />
-            <meta property="og:description" content="Pattaya's most trusted car rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
-            <meta property="og:url" content="https://pattayarentacar.com/" />
-            <meta property="og:image" content="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" />
-          </Helmet>
+          <AppHeader />
           <AppContent />
         </PricingProvider>
       </LanguageProvider>
@@ -67,8 +61,24 @@ export default function App() {
   );
 }
 
+function AppHeader() {
+  const { config } = useCompanyConfig();
+  return (
+    <Helmet>
+      <title>{config.companyName} | Trusted Rental Service in Pattaya Since 2005</title>
+      <meta name="description" content={`Rent with ${config.companyName} - Thailand's most trusted service in Pattaya. First-class insurance, free delivery, and 24/7 support.`} />
+      <link rel="icon" type="image/jpeg" href="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=2bca69cd-f667-4ea4-9ff2-5ea04fce3c23" />
+      <meta property="og:title" content={`${config.companyName} | Trusted Rental Service in Pattaya`} />
+      <meta property="og:description" content={`${config.companyName} - Pattaya's most trusted rental service since 2005. Quality vehicles, transparent pricing, and exceptional service.`} />
+      <meta property="og:url" content="https://pattayarentacar.com/" />
+      <meta property="og:image" content="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" />
+    </Helmet>
+  );
+}
+
 function AppContent() {
   console.log('AppContent: Initializing');
+  const { config } = useCompanyConfig();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
@@ -77,7 +87,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>('timeline_cars');
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -168,9 +178,6 @@ function AppContent() {
   }, []);
 
   const fetchData = React.useCallback(async (force = false) => {
-    // Only fetch if authenticated to avoid PERMISSION_DENIED
-    if (!auth.currentUser) return;
-
     // Cache for 10 minutes to save quota
     const CACHE_DURATION = 10 * 60 * 1000;
     
@@ -195,7 +202,7 @@ function AppContent() {
     try {
       console.log('AppContent: Fetching fresh data from Firestore...');
       const carsQuery = collection(db, 'cars');
-      const carsSnapshot = await safeGetDocs(carsQuery);
+      const carsSnapshot = await getDocs(carsQuery);
       
       const carsData = carsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Car));
       const sortedCars = carsData.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -216,6 +223,10 @@ function AppContent() {
       setLastError(`Data Fetch Error: ${errorMessage}`);
     }
   }, []); // Empty dependency array breaks the loop!
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   useEffect(() => {
     if (!user || !isStaff) {
@@ -527,7 +538,7 @@ function AppContent() {
           </div>
           <h1 className="font-serif italic text-3xl text-[#1A1A1A] mb-4">Access Denied</h1>
           <p className="text-[#1A1A1A]/60 mb-8 leading-relaxed">
-            Only authorized staff with a <span className="font-bold text-[#1A1A1A]">@pattayarentacar.com</span> email address can access the management dashboard.
+            Only authorized staff with a <span className="font-bold text-[#1A1A1A]">@{config.email.split('@')[1] || 'pattayarentacar.com'}</span> email address can access the management dashboard.
           </p>
           <div className="space-y-4">
             <button
@@ -620,6 +631,8 @@ function AppContent() {
                   preFill={financePreFill} 
                   onClearPreFill={() => setFinancePreFill(null)} 
                 />
+              ) : currentView === 'company_settings' ? (
+                <CompanySettings />
               ) : currentView === 'pricing' ? (
                 <PricingManager />
               ) : currentView === 'fleet' ? (

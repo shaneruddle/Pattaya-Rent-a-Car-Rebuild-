@@ -9,6 +9,7 @@ import { cn } from '../lib/utils';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { sanitizeEmailHtml, formatNewlines, processTemplate, sendTemplatedEmail, prepareHtmlForEmail } from '../lib/emailUtils';
+import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 const DYNAMIC_TAGS = [
   { tag: '{{customer_name}}', label: 'Customer Name' },
@@ -20,10 +21,11 @@ const DYNAMIC_TAGS = [
 ];
 
 export const EmailTemplates: React.FC = () => {
+  const { config } = useCompanyConfig();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     id: 'global',
-    bccEmail: 'info@pattayarentacar.com',
+    bccEmail: config.email || 'info@pattayarentacar.com',
     bankDetails: '',
   });
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,8 @@ export const EmailTemplates: React.FC = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const [showTestEmailModal, setShowTestEmailModal] = useState(false);
+  const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
+  const [newTemplateData, setNewTemplateData] = useState({ name: '', id: '' });
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [isMounted, setIsMounted] = useState(false);
 
@@ -106,8 +110,8 @@ export const EmailTemplates: React.FC = () => {
           {
             id: 'rental_confirmation',
             name: 'Rental Confirmation',
-            subject: 'Rental Confirmation - {{vehicle_model}} - Pattaya Rent a Car',
-            body: '<p>Dear {{customer_name}},</p><p>Your booking for <strong>{{vehicle_model}}</strong> ({{plate_number}}) has been confirmed.</p><p><strong>Return Date:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>For your peace of mind, we have recorded the condition of the vehicle at the time of rental. Please see the photos below:</p>{{photos}}<p>Thank you for choosing Pattaya Rent a Car.</p>',
+            subject: 'Rental Confirmation - {{vehicle_model}}',
+            body: '<p>Dear {{customer_name}},</p><p>Your booking for <strong>{{vehicle_model}}</strong> ({{plate_number}}) has been confirmed.</p><p><strong>Return Date:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>For your peace of mind, we have recorded the condition of the vehicle at the time of rental. Please see the photos below:</p>{{photos}}<p>Thank you for choosing us.</p>',
           },
           {
             id: 'extension_acknowledged',
@@ -124,19 +128,19 @@ export const EmailTemplates: React.FC = () => {
           {
             id: 'booking_enquiry',
             name: 'Booking Enquiry Confirmation',
-            subject: 'Thank you for your enquiry - Pattaya Rent a Car',
-            body: 'Dear {{customer_name}},\n\nThank you for your enquiry for a {{vehicle_model}}.\n\nRental Period: {{return_date}}\nTotal Price: {{total_price}} THB\n\nWe have received your request and will get back to you as soon as possible.\n\nBest regards,\nPattaya Rent a Car',
+            subject: 'Thank you for your enquiry',
+            body: 'Dear {{customer_name}},\n\nThank you for your enquiry for a {{vehicle_model}}.\n\nRental Period: {{return_date}}\nTotal Price: {{total_price}} THB\n\nWe have received your request and will get back to you as soon as possible.\n\nBest regards.',
           },
           {
             id: 'website_enquiry',
             name: 'Website Enquiry Confirmation',
-            subject: 'We have received your message - Pattaya Rent a Car',
-            body: 'Dear {{customer_name}},\n\nThank you for contacting us through our website.\n\nWe have received your message and our team will get back to you shortly.\n\nBest regards,\nPattaya Rent a Car',
+            subject: 'We have received your message',
+            body: 'Dear {{customer_name}},\n\nThank you for contacting us through our website.\n\nWe have received your message and our team will get back to you shortly.\n\nBest regards.',
           },
           {
             id: 'enquiry_reply',
             name: 'Enquiry Reply (Manual)',
-            subject: 'Re: Your rental enquiry - Pattaya Rent a Car',
+            subject: 'Re: Your rental enquiry',
             body: 'Hi {{customer_name}},\n\nThanks for your email. We can confirm availability of the {{vehicle_model}} (or similar) at a total rate of {{total_price}} THB\n\nIncluded in your rental:\n\n- First Class Rental Insurance\n- Unlimited kms\n- 24 hour breakdown cover for your piece of mind\n- Additional drivers\n- All taxes\n\nIn addition you can book now, pay later and cancel at anytime free of charge\n\nDo you wish to proceed with the booking ?',
           },
         ];
@@ -189,14 +193,52 @@ export const EmailTemplates: React.FC = () => {
 
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'email_templates', templateId), {
+      await setDoc(doc(db, 'email_templates', templateId), {
         ...template,
         lastUpdated: new Date().toISOString()
-      });
+      }, { merge: true });
       toast.success(`${template.name} updated successfully`);
     } catch (error) {
       console.error('Error saving template:', error);
       toast.error('Failed to save template');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!newTemplateData.name || !newTemplateData.id) {
+      toast.error('Please enter name and ID');
+      return;
+    }
+
+    // Sanitize ID
+    const sanitizedId = newTemplateData.id.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    
+    if (templates.some(t => t.id === sanitizedId)) {
+      toast.error('A template with this ID already exists');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const newTemplate: EmailTemplate = {
+        id: sanitizedId,
+        name: newTemplateData.name,
+        subject: `New Template: ${newTemplateData.name}`,
+        body: '<p>Hi {{customer_name}},</p><p>Start typing your message here...</p>',
+        lastUpdated: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'email_templates', sanitizedId), newTemplate);
+      setTemplates(prev => [...prev, newTemplate]);
+      setActiveTemplateId(sanitizedId);
+      setShowNewTemplateModal(false);
+      setNewTemplateData({ name: '', id: '' });
+      toast.success('Template created successfully');
+    } catch (error) {
+      console.error('Error creating template:', error);
+      toast.error('Failed to create template');
     } finally {
       setSaving(false);
     }
@@ -351,7 +393,16 @@ export const EmailTemplates: React.FC = () => {
         <div className="flex flex-col md:flex-row gap-6">
           {/* Template List */}
           <div className="w-full md:w-64 flex flex-col gap-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-2 px-4">Templates</p>
+            <div className="flex items-center justify-between px-4 mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Templates</p>
+              <button 
+                onClick={() => setShowNewTemplateModal(true)}
+                className="w-6 h-6 rounded-full bg-brand-orange text-white flex items-center justify-center hover:scale-110 transition-all shadow-sm"
+                title="Create New Template"
+              >
+                <Zap size={12} fill="currentColor" />
+              </button>
+            </div>
             {templates.map(t => (
               <button
                 key={t.id}
@@ -613,6 +664,77 @@ export const EmailTemplates: React.FC = () => {
                 margin-bottom: 4px !important;
               }
             `}</style>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* New Template Modal */}
+      <AnimatePresence>
+        {showNewTemplateModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowNewTemplateModal(false)}
+              className="absolute inset-0 bg-[#1A1A1A]/90 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-[32px] p-8 shadow-2xl space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif italic text-2xl text-[#1A1A1A]">Create New Template</h3>
+                <button onClick={() => setShowNewTemplateModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Template Name</label>
+                  <input
+                    type="text"
+                    value={newTemplateData.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      const id = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                      setNewTemplateData({ name, id });
+                    }}
+                    placeholder="e.g. Booking Confirmation"
+                    className="w-full bg-[#F9F7F2] border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">System ID (read-only)</label>
+                  <input
+                    type="text"
+                    value={newTemplateData.id}
+                    readOnly
+                    className="w-full bg-gray-50 border-0 p-4 rounded-2xl text-xs font-mono text-gray-400 cursor-not-allowed outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowNewTemplateModal(false)}
+                  className="flex-1 h-12 bg-gray-100 text-gray-500 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-gray-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateTemplate}
+                  disabled={saving || !newTemplateData.name}
+                  className="flex-1 h-12 bg-brand-orange text-white rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                  Create Template
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
