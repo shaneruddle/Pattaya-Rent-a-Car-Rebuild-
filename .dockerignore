@@ -1,8 +1,4 @@
 node_modules
 .npm
 .DS_Store
-dist
-.env
 .git
-.gitignore
-README.md

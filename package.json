@@ -2,6 +2,12 @@
   "name": "pattaya-rent-a-car-rebuild",
   "private": true,
   "version": "1.0.1",
+  "files": [
+    "dist",
+    "src",
+    "server.ts",
+    "Dockerfile"
+  ],
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx server.ts",
