@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { PricingRule, PricingGrid, WebsiteCar } from '../types';
-import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database, CloudDownload, Calendar, Check, Edit3 } from 'lucide-react';
+import { Save, RefreshCw, Plus, Trash2, Info, FileSpreadsheet, ExternalLink, Database, Calendar, Check, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parseISO, isAfter } from 'date-fns';
 import { cn } from '../lib/utils';

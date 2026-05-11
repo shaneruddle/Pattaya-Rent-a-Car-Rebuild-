@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
 import { sendTemplatedEmail } from '../lib/emailUtils';
-import { DayPicker, DateRange } from 'react-day-picker';
+import { DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
