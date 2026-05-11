@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, Calenda
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
-import { collection, getCountFromServer, onSnapshot } from 'firebase/firestore';
+import { collection, getCountFromServer, onSnapshot, query, where } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { cn } from '../lib/utils';
 import { StorageImage } from './StorageImage';
@@ -26,7 +26,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   const [counts, setCounts] = useState({
     bookings: 0,
     rentals: 0,
-    crm: 0
+    crm: 0,
+    enquiries: 0
   });
 
   useEffect(() => {
@@ -41,16 +42,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
 
     const fetchCounts = async () => {
       try {
-        const [bookingsSnap, rentalsSnap, crmSnap] = await Promise.all([
+        const [bookingsSnap, rentalsSnap, crmSnap, enquiriesSnap] = await Promise.all([
           getCountFromServer(collection(db, 'bookings')),
           getCountFromServer(collection(db, 'rentals')),
-          getCountFromServer(collection(db, 'customers'))
+          getCountFromServer(collection(db, 'customers')),
+          getCountFromServer(query(collection(db, 'bookings'), where('carId', '==', '')))
         ]);
 
         setCounts({
           bookings: bookingsSnap.data().count,
           rentals: rentalsSnap.data().count,
-          crm: crmSnap.data().count
+          crm: crmSnap.data().count,
+          enquiries: enquiriesSnap.data().count
         });
       } catch (error) {
         console.error('Sidebar: Error fetching counts:', error);
@@ -64,11 +67,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
       setBookingsCount(snapshot.size);
     });
 
+    // Real-time listener for enquiries count
+    const qEnquiries = query(collection(db, 'bookings'), where('carId', '==', ''));
+    const unsubscribeEnquiries = onSnapshot(qEnquiries, (snapshot) => {
+      setCounts(prev => ({ ...prev, enquiries: snapshot.size }));
+    });
+
     // Refresh every 5 minutes
     const interval = setInterval(fetchCounts, 5 * 60 * 1000);
     return () => {
       clearInterval(interval);
       unsubscribeBookings();
+      unsubscribeEnquiries();
     };
   }, [auth.currentUser]);
 
@@ -318,6 +328,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <Mail size={18} /> Live Enquiries
+                      {counts.enquiries > 0 && !isCollapsed && (
+                        <span className={cn(
+                          "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
+                          currentView === 'enquiries' 
+                            ? "bg-white/20 text-white" 
+                            : "bg-brand-orange/10 text-brand-orange"
+                        )}>
+                          {counts.enquiries}
+                        </span>
+                      )}
                     </button>
                     <button
                       onClick={() => {
@@ -358,14 +378,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                   )}
                 >
                   <ShieldCheck size={18} /> {isMobile ? "Live Enquiries" : "Rentals"}
-                  {counts.rentals > 0 && !isCollapsed && (
+                  {(isMobile ? counts.enquiries : counts.rentals) > 0 && !isCollapsed && (
                     <span className={cn(
                       "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
                       (isMobile ? currentView === 'enquiries' : currentView === 'rentals') 
                         ? "bg-white/20 text-white" 
                         : "bg-brand-orange/10 text-brand-orange"
                     )}>
-                      {counts.rentals}
+                      {isMobile ? counts.enquiries : counts.rentals}
                     </span>
                   )}
                 </button>
@@ -591,6 +611,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
               title="Live Enquiries"
             >
               <Mail size={20} />
+              {counts.enquiries > 0 && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-brand-orange text-white text-[8px] font-bold rounded-full flex items-center justify-center border-2 border-white pointer-events-none">
+                  {counts.enquiries}
+                </div>
+              )}
             </button>
             <button 
               onClick={() => onViewChange('bookings')}

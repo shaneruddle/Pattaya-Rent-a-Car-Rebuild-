@@ -3,7 +3,7 @@ import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore
 import { db, handleFirestoreError, OperationType, logSystemActivity, storage } from '../firebase';
 import { sendTemplatedEmail } from '../lib/emailUtils';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { Car, PricingRule, WebsiteCar } from '../types';
+import { Car, WebsiteCar } from '../types';
 import { format, addDays, differenceInDays, differenceInHours, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { 
   Calendar as CalendarIcon, 
@@ -352,9 +352,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
   const { config, loading: configLoading } = useCompanyConfig();
-  const { sheetPricing, dbPricing, settings, loading: pricingLoading } = usePricing();
+  const { sheetPricing, loading: pricingLoading, calculatePrice } = usePricing();
   const [cars, setCars] = useState<WebsiteCar[]>([]);
-  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post'>('landing');
@@ -466,12 +465,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
       if (cars.length === 0 && isCacheValid) {
         const cachedCars = safeLocalStorage.getItem('prac_be_cached_cars');
-        const cachedPricing = safeLocalStorage.getItem('prac_be_cached_pricing');
-        if (cachedCars && cachedPricing) {
+        if (cachedCars) {
           try {
             console.log('BookingEngine: Using cached data');
             setCars(JSON.parse(cachedCars));
-            setPricingRules(JSON.parse(cachedPricing));
             setLoading(false);
             return;
           } catch (e) {
@@ -490,15 +487,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         const sortedCars = carsData.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
         setCars(sortedCars);
         
-        const pricingSnapshot = await getDocs(collection(db, 'pricing'));
-        const pricingData = pricingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-        setPricingRules(pricingData);
-        
         const now = Date.now();
         setLastFetch(now);
         safeLocalStorage.setItem('prac_be_last_fetch', now.toString());
         safeLocalStorage.setItem('prac_be_cached_cars', JSON.stringify(sortedCars));
-        safeLocalStorage.setItem('prac_be_cached_pricing', JSON.stringify(pricingData));
 
         setLoading(false);
         setLoadingError(null);
@@ -509,11 +501,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         
         // Fallback to stale cache on error
         const cachedCars = safeLocalStorage.getItem('prac_be_cached_cars');
-        const cachedPricing = safeLocalStorage.getItem('prac_be_cached_pricing');
-        if (cachedCars && cachedPricing) {
+        if (cachedCars) {
           try {
             setCars(JSON.parse(cachedCars));
-            setPricingRules(JSON.parse(cachedPricing));
             toast.error("Using cached car data due to connection issues.");
             return;
           } catch (e) {}
@@ -572,111 +562,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
   const calculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
-    const carNameLower = (car.name || '').toLowerCase();
-    let searchName = (car.priceGridVehicle?.toLowerCase() || carNameLower);
-
-    if (!car.priceGridVehicle) {
-      if (carNameLower.includes('vios')) searchName = 'vios';
-      else if (carNameLower.includes('ativ')) searchName = 'ativ';
-      else if (carNameLower.includes('city')) searchName = 'city';
-      else if (carNameLower.includes('fortuner')) {
-        if (carNameLower.includes('new')) searchName = 'new fortuner';
-        else if (carNameLower.includes('old')) searchName = 'old fortuner';
-        else searchName = 'new fortuner';
-      }
-      else if (carNameLower.includes('yaris')) searchName = 'yaris';
-      else if (carNameLower.includes('veloz')) searchName = 'veloz';
-      else if (carNameLower.includes('everest')) searchName = 'everest';
-      else if (carNameLower.includes('benz')) searchName = 'benz';
-      else if (carNameLower.includes('revo')) searchName = 'revo';
-      else if (carNameLower.includes('extender')) searchName = 'extender';
-    }
-
-    const getPriceFromData = (pricingData: any) => {
-      if (!pricingData || !dateKey) return null;
-      
-      const tabName = Object.keys(pricingData).find(tab => {
-        const t = (tab || '').toLowerCase();
-        return searchName === t || t.includes(searchName) || searchName.includes(t);
-      });
-
-      if (tabName) {
-        const pricing = pricingData[tabName];
-        const rates = pricing.data ? pricing.data[dateKey] : (pricing.rates ? pricing.rates[dateKey] : null);
-        
-        if (rates) {
-          const duration = totalDays;
-          let total = 0;
-          let lastRate = 0;
-          
-          pricing.headers.forEach((h: number, index: number) => {
-            if (h <= duration) {
-              total += rates[index];
-              lastRate = rates[index];
-            }
-          });
-
-          const maxHeader = pricing.headers[pricing.headers.length - 1];
-          if (duration > maxHeader) {
-            const extraHalfDays = (duration - maxHeader) / 0.5;
-            total += extraHalfDays * lastRate;
-          }
-
-          return total;
-        }
-      }
-      return null;
-    };
-
-    // 1. Try Primary Source (Sheet or DB based on settings)
-    const useSheet = settings?.useSheetDirectly ?? false;
-    let total = null;
-
-    if (useSheet) {
-      total = getPriceFromData(sheetPricing);
-    } else {
-      total = getPriceFromData(dbPricing);
-    }
-
-    // 2. Fallback to Secondary Source if primary failed
-    if (total === null) {
-      if (useSheet) {
-        total = getPriceFromData(dbPricing);
-      } else {
-        total = getPriceFromData(sheetPricing);
-      }
-    }
-
-    if (total !== null) return total;
-
-    // 3. Fallback to Firestore pricing rules (Standard Tiers)
-    const rule = pricingRules.find(r => r.carType === (car.priceGridVehicle || car.name));
-    const baseRate = car.pricePerDay || 1200;
+    if (!dateKey) return 0;
     
-    if (!rule) return baseRate * totalDays;
+    // @ts-ignore - calculatePrice is in the context
+    const price = calculatePrice ? calculatePrice(car, dateKey, totalDays) : null;
+    if (price !== null) return price;
 
-    const days = totalDays;
-    let dailyRate = baseRate;
-    
-    // Find the highest tier that is <= days
-    const tiers = Object.keys(rule.rates)
-      .map(Number)
-      .filter(n => !isNaN(n))
-      .sort((a, b) => b - a);
-      
-    const matchingTier = tiers.find(t => days >= t);
-    if (matchingTier !== undefined) {
-      dailyRate = rule.rates[matchingTier.toString()] || baseRate;
-    } else {
-      // Fallback to old ranges if they exist (for backward compatibility)
-      if (days >= 30) dailyRate = rule.rates['30+'] || baseRate;
-      else if (days >= 15) dailyRate = rule.rates['15-29'] || baseRate;
-      else if (days >= 8) dailyRate = rule.rates['8-14'] || baseRate;
-      else if (days >= 4) dailyRate = rule.rates['4-7'] || baseRate;
-      else dailyRate = rule.rates['1-3'] || baseRate;
-    }
-
-    return dailyRate * totalDays;
+    return (car.pricePerDay || 1200) * totalDays;
   };
 
   const getDailyRate = (car: WebsiteCar) => {

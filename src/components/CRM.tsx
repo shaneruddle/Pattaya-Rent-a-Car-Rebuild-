@@ -550,17 +550,31 @@ export const CRM: React.FC = () => {
             <input 
               type="text" 
               placeholder="Search by first name..." 
-              className="pl-11 pr-14 py-2.5 bg-white/40 backdrop-blur-md border border-white/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all w-72"
+              className="pl-11 pr-24 py-2.5 bg-white/40 backdrop-blur-md border border-white/60 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all w-72"
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <button 
-              onClick={handleSearch}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-colors"
-            >
-              <Search size={14} />
-            </button>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {localSearchQuery && (
+                <button
+                  onClick={() => {
+                    setLocalSearchQuery('');
+                    setSearchQuery('');
+                  }}
+                  className="p-1.5 text-[#141414]/40 hover:text-brand-orange transition-colors"
+                  title="Reset"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <button 
+                onClick={handleSearch}
+                className="p-1.5 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-colors"
+              >
+                <Search size={14} />
+              </button>
+            </div>
           </div>
           <input 
             type="file" 

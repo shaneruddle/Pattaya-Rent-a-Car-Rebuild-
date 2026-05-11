@@ -103,13 +103,13 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
     return (
       <div className="flex-1 p-6">
         <div className="flex justify-between items-center mb-6 px-2 text-white">
-          <h3 className="font-bold text-lg tracking-tight">
+          <h3 className="font-bold text-lg tracking-tight text-[#1A1A1A] dark:text-white">
             {format(month, 'MMMM yyyy')}
           </h3>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} className="text-[10px] font-bold text-white/40 py-1 uppercase tracking-widest">{d}</div>
+            <div key={d} className="text-[10px] font-bold text-[#1A1A1A]/40 dark:text-white/40 py-1 uppercase tracking-widest">{d}</div>
           ))}
           {blanks.map((_, i) => <div key={`blank-${i}`} />)}
           {days.map(day => {
@@ -128,31 +128,44 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
                 onMouseLeave={() => setHoverDate(null)}
                 onClick={() => handleDayClick(day)}
                 className={cn(
-                  "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative",
-                  isStart && !tempRange.to ? "text-white rounded-full z-10 shadow-lg" :
-                  isStart ? "text-white rounded-l-full z-10" : 
-                  isEnd ? "text-white rounded-r-full z-10" : 
-                  inRange ? "text-white" : 
-                  isPast ? "text-white/10 cursor-not-allowed" : "text-white hover:bg-white/10 rounded-full"
+                  "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative z-10",
+                  isStart || isEnd ? "text-white shadow-lg" : 
+                  inRange ? "text-[#1A1A1A] dark:text-white" : 
+                  isPast ? "text-[#1A1A1A]/20 dark:text-white/20 cursor-not-allowed" : "text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-full"
                 )}
-                style={{
-                  backgroundColor: isStart || isEnd ? (isBikeMode ? '#0084ff' : '#FF6321') : inRange ? (isBikeMode ? 'rgba(0, 132, 255, 0.2)' : 'rgba(255, 99, 33, 0.2)') : undefined
-                }}
               >
+                {/* Connecting background for range */}
+                {inRange && (
+                  <div 
+                    className={cn(
+                      "absolute inset-y-0 -z-10",
+                      isStart && !isEnd ? "right-0 left-1/2" :
+                      isEnd && !isStart ? "left-0 right-1/2" :
+                      "inset-x-0"
+                    )}
+                    style={{ backgroundColor: isBikeMode ? 'rgba(0, 132, 255, 0.15)' : 'rgba(255, 99, 33, 0.15)' }}
+                  />
+                )}
+                
+                {/* Solid brand circle for start/end */}
+                {(isStart || isEnd) && (
+                  <div 
+                    className="absolute inset-x-0 inset-y-0 rounded-full -z-10"
+                    style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+                  />
+                )}
                 {format(day, 'd')}
                 {isStart && tempRange.to && (
                   <div 
-                    className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50"
-                    style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+                    className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50 bg-[#28a745]"
                   >
                     {calculateDays()} days
                     <div 
-                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45" 
-                      style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-[#28a745]" 
                     />
                   </div>
                 )}
-                {isToday && !(isStart || isEnd) && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                {isToday && !(isStart || isEnd) && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#1A1A1A] dark:bg-white rounded-full" />}
               </button>
             );
           })}
@@ -176,44 +189,41 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
     <div 
       className={cn(
         "rounded-[40px] overflow-hidden z-[100] shadow-2xl transition-all",
-        "w-full max-w-[700px] mx-auto",
+        "w-full max-w-[700px] mx-auto bg-white dark:bg-[#1A1A1A]",
       )}
-      style={{ 
-        backgroundColor: isBikeMode ? '#0084ff' : '#FF6321', 
-      }}
     >
-      <div className="flex flex-col md:flex-row relative border-b border-white/10 overflow-hidden">
+      <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 overflow-hidden">
         <button 
           type="button"
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="absolute left-6 top-8 p-2 text-white hover:bg-white/10 rounded-full z-20 transition-colors"
+          className="absolute left-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
         >
           <ChevronLeft size={24} />
         </button>
         {renderMonth(currentMonth)}
-        <div className="w-px bg-white/10 hidden md:block" />
+        <div className="w-px bg-black/10 dark:bg-white/10 hidden md:block" />
         {renderMonth(nextMonth)}
         <button 
           type="button"
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="absolute right-6 top-8 p-2 text-white hover:bg-white/10 rounded-full z-20 transition-colors"
+          className="absolute right-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
         >
           <ChevronRight size={24} />
         </button>
       </div>
 
       {/* Time Selection Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 border-b border-white/10">
-        <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-white/10">
+      <div className="grid grid-cols-1 md:grid-cols-2 border-b border-black/10 dark:border-white/10">
+        <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-black/10 dark:border-white/10">
           <div className="flex items-start gap-4">
-            <span className="text-4xl md:text-6xl font-bold text-white/40 leading-none">
+            <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
               {tempRange.from ? format(tempRange.from, 'd') : '--'}
             </span>
             <div>
-              <p className="text-white font-bold text-base md:text-lg leading-tight text-left">
+              <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
                 {tempRange.from ? format(tempRange.from, 'MMMM yyyy') : 'Select Date'}
               </p>
-              <p className="text-white/60 text-xs md:text-sm font-medium text-left">
+              <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
                 {tempRange.from ? format(tempRange.from, 'EEEE') : ''}
               </p>
             </div>
@@ -222,27 +232,27 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
             <select 
               value={pickUpTime}
               onChange={(e) => onPickUpTimeChange(e.target.value)}
-              className="w-full bg-transparent text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
+              className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {times.map(time => (
-                <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
+                <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
               ))}
             </select>
-            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none md:hidden" />
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none hidden md:block" />
+            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
+            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
           </div>
         </div>
 
         <div className="p-6 md:p-8">
           <div className="flex items-start gap-4">
-            <span className="text-4xl md:text-6xl font-bold text-white/40 leading-none">
+            <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
               {tempRange.to ? format(tempRange.to, 'd') : '--'}
             </span>
             <div>
-              <p className="text-white font-bold text-base md:text-lg leading-tight text-left">
+              <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
                 {tempRange.to ? format(tempRange.to, 'MMMM yyyy') : 'Select Date'}
               </p>
-              <p className="text-white/60 text-xs md:text-sm font-medium text-left">
+              <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
                 {tempRange.to ? format(tempRange.to, 'EEEE') : ''}
               </p>
             </div>
@@ -251,40 +261,43 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
             <select 
               value={dropOffTime}
               onChange={(e) => onDropOffTimeChange(e.target.value)}
-              className="w-full bg-transparent text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
+              className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
             >
               {times.map(time => (
-                <option key={time} value={time} className="text-white text-base" style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}>{time}</option>
+                <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
               ))}
             </select>
-            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none md:hidden" />
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-white pointer-events-none hidden md:block" />
+            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
+            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
           </div>
         </div>
       </div>
 
-      {/* Bottom Bar */}
-      <div className="bg-black/20 py-4 text-center">
-        <span className="text-white font-bold text-lg uppercase tracking-widest">
-          {calculateDays()} days
-        </span>
-      </div>
-
-      <div className="p-6 md:p-8 flex items-center justify-end gap-4 bg-black/10">
-        <button 
-          type="button"
-          onClick={onClose}
-          className="flex-1 md:flex-none px-6 md:px-10 py-4 bg-[#ff3b30] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] md:text-sm hover:opacity-90 transition-all shadow-lg"
-        >
-          Cancel
-        </button>
-        <button 
-          type="button"
-          onClick={handleApply}
-          className="flex-1 md:flex-none px-6 md:px-10 py-4 bg-[#4cd964] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] md:text-sm hover:opacity-90 transition-all shadow-lg"
-        >
-          Apply
-        </button>
+      {/* Bottom Bar Container */}
+      <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222]">
+        <div className="flex items-center gap-3">
+          <span className="text-[#1A1A1A]/60 dark:text-white/60 font-medium text-sm">Duration:</span>
+          <span className="bg-[#28a745] text-white font-bold text-lg px-4 py-1.5 rounded-full shadow-sm">
+            {calculateDays()} days
+          </span>
+        </div>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="flex-1 md:flex-none px-6 py-3 border-2 border-black/10 dark:border-white/10 text-[#1A1A1A] dark:text-white rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button"
+            onClick={handleApply}
+            className="flex-1 md:flex-none px-6 py-3 text-white rounded-xl font-bold uppercase tracking-widest text-sm hover:opacity-90 transition-all shadow-md"
+            style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
+          >
+            Apply
+          </button>
+        </div>
       </div>
     </div>
   );

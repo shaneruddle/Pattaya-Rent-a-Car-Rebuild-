@@ -16,21 +16,28 @@ import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const getDirname = () => {
+  if (typeof __dirname !== 'undefined') return __dirname;
+  return path.dirname(fileURLToPath((import.meta as any).url));
+};
+const __dirname_resolved = getDirname();
 
 let initLogs: string[] = [];
 function logInit(msg: string) {
   console.log(msg);
   initLogs.push(`${new Date().toISOString()}: ${msg}`);
-  fs.appendFileSync('./debug_logs.txt', `${new Date().toISOString()}: ${msg}\n`);
+  try {
+    fs.appendFileSync('./debug_logs.txt', `${new Date().toISOString()}: ${msg}\n`);
+  } catch (e) {
+    // Ignore
+  }
 }
 
 // Read config immediately
 const resolveConfigPath = () => {
   const paths = [
     path.join(process.cwd(), 'firebase-applet-config.json'),
-    path.join(__dirname, 'firebase-applet-config.json'),
+    path.join(__dirname_resolved, 'firebase-applet-config.json'),
     './firebase-applet-config.json'
   ];
   for (const p of paths) {
@@ -46,17 +53,19 @@ const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
 let effectiveProjectId = configProjectId;
 let metadataProjectId: string | null = null;
 
-// Log metadata server info immediately
-try {
-  const metadataUrl = "http://metadata.google.internal/computeMetadata/v1/project/project-id";
-  const fetchResponse = await fetch(metadataUrl, { headers: { "Metadata-Flavor": "Google" }, timeout: 2000 } as any);
-  if (fetchResponse.ok) {
-    metadataProjectId = await fetchResponse.text();
-    logInit(`[Init] Metadata Server Project ID: ${metadataProjectId}`);
+async function fetchMetadata() {
+  try {
+    const metadataUrl = "http://metadata.google.internal/computeMetadata/v1/project/project-id";
+    const fetchResponse = await fetch(metadataUrl, { headers: { "Metadata-Flavor": "Google" }, timeout: 2000 } as any);
+    if (fetchResponse.ok) {
+      metadataProjectId = await fetchResponse.text();
+      logInit(`[Init] Metadata Server Project ID: ${metadataProjectId}`);
+    }
+  } catch (e) {
+    // Ignore metadata fetch errors
   }
-} catch (e) {
-  // Ignore metadata fetch errors
 }
+fetchMetadata(); // run in background
 
 // Initial initialization with config ID
 logInit(`[Init] Primary Project ID: ${effectiveProjectId}`);
@@ -81,12 +90,26 @@ function initializeAdmin(pid: string) {
     
     logInit(`[Init] Initializing Admin SDK for: ${pid}`);
     
-    const options: any = {
+    let options: admin.AppOptions = {
       projectId: pid,
       storageBucket: firebaseConfig.storageBucket
     };
 
-    // Log what we are using
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        options.credential = admin.credential.cert(serviceAccount);
+        logInit(`[Init] Using provided FIREBASE_SERVICE_ACCOUNT_KEY.`);
+      } catch (err: any) {
+        logInit(`[Init] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY: ${err.message}`);
+      }
+    } else {
+      logInit(`[Init] Using default application credentials.`);
+      // Explicitly set the credential to application default to ensure it doesn't try to inherit anything weird, 
+      // although it does this by default.
+      options.credential = admin.credential.applicationDefault();
+    }
+
     logInit(`[Init] Using storage bucket: ${options.storageBucket}`);
 
     admin.initializeApp(options);
@@ -447,7 +470,7 @@ async function startServer() {
               // Excel date to JS date
               parsedDate = new Date((dateVal - 25569) * 86400 * 1000);
             } else if (typeof dateVal === 'string') {
-              const formats = ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd", "dd/MM/yyyy"];
+              const formats = ["dd/MM/yyyy", "d/M/yyyy", "MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd"];
               for (const fmt of formats) {
                 const d = parse(dateVal.trim(), fmt, new Date());
                 if (isValid(d)) {
