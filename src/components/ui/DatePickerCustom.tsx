@@ -130,10 +130,10 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
                   onClick={() => handleDayClick(day)}
                   className={cn(
                     "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative z-10",
-                    isStart && !isEnd ? (isBikeMode ? "bg-blue-500 text-white rounded-l-full" : "bg-orange-500 text-white rounded-l-full") : "",
-                    isEnd && !isStart ? (isBikeMode ? "bg-blue-500 text-white rounded-r-full" : "bg-orange-500 text-white rounded-r-full") : "",
-                    isStart && isEnd ? (isBikeMode ? "bg-blue-500 text-white rounded-full" : "bg-orange-500 text-white rounded-full") : "",
-                    inRange && !isStart && !isEnd ? (isBikeMode ? "bg-blue-100 text-blue-900" : "bg-orange-100 text-orange-900") : "",
+                    isStart && !isEnd ? "custom-day-start" : "",
+                    isEnd && !isStart ? "custom-day-end" : "",
+                    isStart && isEnd ? "custom-day-start rounded-full" : "",
+                    inRange && !isStart && !isEnd ? "custom-day-range" : "",
                     !inRange && isPast ? "text-[#1A1A1A]/20 dark:text-white/20 cursor-not-allowed" : "",
                     !inRange && !isPast ? "text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-full" : ""
                   )}
@@ -145,11 +145,11 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
                   <motion.div 
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50 bg-[#28a745]"
+                    className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-[110] bg-[#28a745]"
                   >
                     {Math.max(1, Math.ceil(calculateDays()))} Days
                     <div 
-                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-[#28a745]" 
+                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-[#28a745] z-[110]" 
                     />
                   </motion.div>
                 )}
@@ -175,11 +175,12 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
   return (
     <div 
       className={cn(
-        "rounded-[40px] overflow-hidden z-[100] shadow-2xl transition-all",
+        "rounded-[40px] overflow-visible z-[100] shadow-2xl transition-all",
         "w-full max-w-[700px] mx-auto bg-white dark:bg-[#1A1A1A]",
+        isBikeMode ? "bike-mode" : "car-mode"
       )}
     >
-      <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 overflow-hidden">
+      <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 overflow-visible rounded-t-[40px]">
         <button 
           type="button"
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -261,7 +262,7 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
       </div>
 
       {/* Bottom Bar Container */}
-      <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222]">
+      <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222] rounded-b-[40px]">
         <div className="flex items-center gap-3">
           <span className="text-[#1A1A1A]/60 dark:text-white/60 font-medium text-sm">Duration:</span>
           <span className="bg-[#28a745] text-white font-bold text-lg px-4 py-1.5 rounded-full shadow-sm">

@@ -232,12 +232,7 @@ process.on('uncaughtException', (error) => {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
-
-  // Start listening immediately to satisfy platform health checks
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -707,6 +702,10 @@ async function startServer() {
       });
     }
   }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
 startServer().catch(err => {

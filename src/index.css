@@ -97,5 +97,19 @@
   .blog-content strong { @apply text-[#1A1A1A] font-bold; }
 }
 
-.rdp-day_selected { @apply !bg-orange-500; color: white !important; }
-.rdp-day_range_middle { @apply !bg-orange-100; color: #7c2d12 !important; }
+@layer components {
+  .rdp-day_selected { @apply !bg-orange-500; color: white !important; }
+  .rdp-day_range_middle { @apply !bg-orange-100; color: #7c2d12 !important; }
+
+  /* Custom DatePicker Highlights */
+  .custom-day-start { @apply bg-orange-500 text-white rounded-l-full; }
+  .custom-day-end { @apply bg-orange-500 text-white rounded-r-full; }
+  .custom-day-range { @apply bg-orange-100 text-orange-900; }
+  
+  /* Bike Mode variants */
+  .bike-mode .custom-day-start { @apply bg-blue-500; }
+  .bike-mode .custom-day-end { @apply bg-blue-500; }
+  .bike-mode .custom-day-range { @apply bg-blue-100 text-blue-900; }
+
+  .rdp { margin-top: 0 !important; }
+}
