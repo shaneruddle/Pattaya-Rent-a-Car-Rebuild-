@@ -43,14 +43,6 @@ export const useCompanyConfig = () => {
   const [loading, setLoading] = useState(!cachedConfig);
 
   useEffect(() => {
-    // Auth guard for real-time config updates if staff/admin
-    // If no user, we stick with DEFAULT_CONFIG and stop loading
-    if (!auth.currentUser) {
-      console.log('useCompanyConfig: No user, skipping subscription');
-      setLoading(false);
-      return;
-    }
-
     console.log('useCompanyConfig: Subscribing to company config...');
     const unsub = onSnapshot(doc(db, 'app_settings', 'company'), (snapshot) => {
       if (snapshot.exists()) {
@@ -68,7 +60,7 @@ export const useCompanyConfig = () => {
     });
 
     return () => unsub();
-  }, [auth.currentUser]);
+  }, []);
 
   return { config, loading };
 };

@@ -96,3 +96,6 @@
   .blog-content img { @apply rounded-[32px] shadow-xl my-8 mx-auto; }
   .blog-content strong { @apply text-[#1A1A1A] font-bold; }
 }
+
+.rdp-day_selected { @apply !bg-orange-500; color: white !important; }
+.rdp-day_range_middle { @apply !bg-orange-100; color: #7c2d12 !important; }

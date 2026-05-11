@@ -194,6 +194,10 @@ service cloud.firestore {
       allow get, list: if true;
       allow write: if isStaff();
     }
+    match /company_config/{docId} {
+      allow get, list: if true;
+      allow write: if isStaff();
+    }
     
     // Test document
     match /test/connection {

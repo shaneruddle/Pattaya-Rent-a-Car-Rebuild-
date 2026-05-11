@@ -186,11 +186,11 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
     phone: '',
     message: ''
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    setStatus('loading');
     console.log('EnquiryForm: Starting submission...', formData);
     try {
       console.log('EnquiryForm: Saving to enquiries collection...');
@@ -278,22 +278,23 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
 
       if (emailSuccess) {
         toast.success(t('enquiry.success'));
+        setStatus('success');
       } else {
         toast.warning("Message saved, but we're having trouble sending notifications. We'll check the dashboard!");
+        setStatus('success'); // Still show success as the data is saved in Firestore
       }
       setFormData({ name: '', email: '', phone: '', message: '' });
     } catch (error: any) {
       console.error('EnquiryForm: Error during submission:', error);
       const errorMessage = error.message || 'Unknown error';
       toast.error(`${t('enquiry.error')}: ${errorMessage}`);
+      setStatus('error');
       
       try {
         handleFirestoreError(error, OperationType.WRITE, 'enquiries');
       } catch (e) {
         // Already logged by handleFirestoreError
       }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -337,65 +338,94 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
               </div>
             </div>
           </div>
-            <form onSubmit={handleSubmit} className="bg-white/80 backdrop-blur-xl p-8 md:p-12 rounded-[32px] border border-white/40 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.fullName')}</label>
-                  <input
-                    required
-                    type="text"
-                    value={formData.name}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
-                    placeholder="John Doe"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.email')}</label>
-                  <input
-                    required
-                    type="email"
-                    value={formData.email}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
-                    placeholder="john@example.com"
-                  />
-                </div>
-              </div>
-              <div className="mb-6 space-y-2">
-                <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.phone')}</label>
-                <input
-                  required
-                  type="tel"
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
-                  placeholder="+66 81 234 5678"
-                />
-              </div>
-              <div className="mb-8 space-y-2">
-                <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.message')}</label>
-                <textarea
-                  required
-                  rows={4}
-                  value={formData.message}
-                  onChange={e => setFormData({ ...formData, message: e.target.value })}
-                  className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80 resize-none"
-                  placeholder="How can we help you?"
-                />
-              </div>
-              <button
-                disabled={isSubmitting}
-                type="submit"
-                className={cn(
-                  "w-full text-white py-5 rounded-2xl font-bold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 hover:scale-[1.02] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg",
-                  isBikeMode ? "bg-brand-blue shadow-brand-blue/25" : "bg-brand-orange shadow-brand-orange/25"
-                )}
+            {status === 'success' ? (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white/80 backdrop-blur-xl p-8 md:p-12 rounded-[32px] border border-white/40 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] text-center py-20"
               >
-                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                {t('enquiry.send')}
-              </button>
-            </form>
+                <div className="mb-8 flex justify-center">
+                  <div className={cn(
+                    "w-24 h-24 rounded-full flex items-center justify-center",
+                    isBikeMode ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-orange/10 text-brand-orange"
+                  )}>
+                    <CheckCircle2 size={56} />
+                  </div>
+                </div>
+                <h3 className="text-4xl font-bold text-green-600 mb-6 tracking-tight">Thank You!</h3>
+                <p className="text-black/60 font-medium text-lg leading-relaxed">
+                  Your message has been received successfully. Our team will review your enquiry and contact you shortly.
+                </p>
+                <button 
+                  onClick={() => setStatus('idle')}
+                  className={cn(
+                    "mt-10 text-[10px] font-bold uppercase tracking-[0.2em] text-black/30 hover:text-black transition-colors"
+                  )}
+                >
+                  Send another message
+                </button>
+              </motion.div>
+            ) : (
+              <form onSubmit={handleSubmit} className="bg-white/80 backdrop-blur-xl p-8 md:p-12 rounded-[32px] border border-white/40 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.fullName')}</label>
+                    <input
+                      required
+                      type="text"
+                      value={formData.name}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.email')}</label>
+                    <input
+                      required
+                      type="email"
+                      value={formData.email}
+                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
+                      placeholder="john@example.com"
+                    />
+                  </div>
+                </div>
+                <div className="mb-6 space-y-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.phone')}</label>
+                  <input
+                    required
+                    type="tel"
+                    value={formData.phone}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80"
+                    placeholder="+66 81 234 5678"
+                  />
+                </div>
+                <div className="mb-8 space-y-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-[0.15em] text-black/40 ml-1">{t('enquiry.message')}</label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={formData.message}
+                    onChange={e => setFormData({ ...formData, message: e.target.value })}
+                    className="w-full bg-black/[0.03] border border-transparent rounded-2xl p-4 outline-none focus:bg-white focus:border-brand-orange/20 focus:ring-4 focus:ring-brand-orange/5 transition-all font-medium text-black/80 resize-none"
+                    placeholder="How can we help you?"
+                  />
+                </div>
+                <button
+                  disabled={status === 'loading'}
+                  type="submit"
+                  className={cn(
+                    "w-full text-white py-5 rounded-2xl font-bold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 hover:scale-[1.02] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg",
+                    isBikeMode ? "bg-brand-blue shadow-brand-blue/25" : "bg-brand-orange shadow-brand-orange/25"
+                  )}
+                >
+                  {status === 'loading' ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                  {t('enquiry.send')}
+                </button>
+              </form>
+            )}
         </div>
       </div>
     </section>

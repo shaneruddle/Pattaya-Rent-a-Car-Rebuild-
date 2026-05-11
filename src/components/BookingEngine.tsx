@@ -50,6 +50,7 @@ import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
 import { useCompanyConfig } from '../hooks/useCompanyConfig';
 import BikeRentalLanding from './BikeRentalLanding';
+import { DatePickerCustom } from './ui/DatePickerCustom';
 
 const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
   const hour = i.toString().padStart(2, '0');
@@ -1131,18 +1132,23 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           onClick={() => setShowCalendar(false)}
                           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] md:hidden"
                         />
-                        <Calendar 
-                          selectedRange={selectedRange}
-                          setSelectedRange={setSelectedRange}
-                          setShowCalendar={setShowCalendar}
-                          calendarRef={calendarRef}
-                          setView={handlePageChange as any}
-                          pickUpTime={pickUpTime}
-                          setPickUpTime={setPickUpTime}
-                          dropOffTime={dropOffTime}
-                          setDropOffTime={setDropOffTime}
-                          isBikeMode={isBikeMode}
-                        />
+                        <div 
+                          ref={calendarRef}
+                          className="fixed inset-x-4 top-[5%] bottom-[5%] md:absolute md:top-full md:right-0 md:left-auto md:translate-x-0 md:mt-4 md:w-[700px] md:max-w-[95vw] md:bottom-auto z-[100]"
+                        >
+                          <DatePickerCustom 
+                            selectedRange={selectedRange}
+                            onRangeChange={setSelectedRange}
+                            pickUpTime={pickUpTime}
+                            onPickUpTimeChange={setPickUpTime}
+                            dropOffTime={dropOffTime}
+                            onDropOffTimeChange={setDropOffTime}
+                            isBikeMode={isBikeMode}
+                            onClose={() => setShowCalendar(false)}
+                            onApply={() => { setShowCalendar(false); handlePageChange('results'); }}
+                            useFilteredTimes={true}
+                          />
+                        </div>
                       </>
                     )}
                   </AnimatePresence>

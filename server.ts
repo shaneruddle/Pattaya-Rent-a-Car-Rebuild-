@@ -596,9 +596,12 @@ async function startServer() {
         }
       });
 
+      // Force enquiry emails and default emails to info@pattayarentacar.com
+      const finalTo = (subject?.toLowerCase().includes('enquiry') || !to) ? "info@pattayarentacar.com" : to;
+
       const mailOptions = {
         from: `"${dynamicFromName || 'Company'}" <${gmailUser}>`,
-        to: to || gmailUser, // Default to info if no recipient
+        to: finalTo,
         replyTo: dynamicReplyTo || gmailUser,
         subject: subject || "New Message from Website",
         html: html

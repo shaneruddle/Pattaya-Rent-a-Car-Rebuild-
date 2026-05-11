@@ -53,6 +53,7 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
   
   const nextMonth = addMonths(currentMonth, 1);
   const times = useFilteredTimes ? filteredTimeOptions : timeOptions;
+  console.log('DatePicker Rendered');
 
   const calculateDays = () => {
     if (!tempRange.from || !tempRange.to) return 0;
@@ -120,53 +121,39 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
             const isPast = day < new Date() && !isToday;
 
             return (
-              <button
-                key={day.toString()}
-                type="button"
-                disabled={isPast}
-                onMouseEnter={() => setHoverDate(day)}
-                onMouseLeave={() => setHoverDate(null)}
-                onClick={() => handleDayClick(day)}
-                className={cn(
-                  "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative z-10",
-                  isStart || isEnd ? "text-white shadow-lg" : 
-                  inRange ? "text-[#1A1A1A] dark:text-white" : 
-                  isPast ? "text-[#1A1A1A]/20 dark:text-white/20 cursor-not-allowed" : "text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-full"
-                )}
-              >
-                {/* Connecting background for range */}
-                {inRange && (
-                  <div 
-                    className={cn(
-                      "absolute inset-y-0 -z-10",
-                      isStart && !isEnd ? "right-0 left-1/2" :
-                      isEnd && !isStart ? "left-0 right-1/2" :
-                      "inset-x-0"
-                    )}
-                    style={{ backgroundColor: isBikeMode ? 'rgba(0, 132, 255, 0.15)' : 'rgba(255, 99, 33, 0.15)' }}
-                  />
-                )}
-                
-                {/* Solid brand circle for start/end */}
-                {(isStart || isEnd) && (
-                  <div 
-                    className="absolute inset-x-0 inset-y-0 rounded-full -z-10"
-                    style={{ backgroundColor: isBikeMode ? '#0084ff' : '#FF6321' }}
-                  />
-                )}
-                {format(day, 'd')}
-                {isStart && tempRange.to && (
-                  <div 
+              <div key={day.toString()} className="relative flex justify-center">
+                <button
+                  type="button"
+                  disabled={isPast}
+                  onMouseEnter={() => setHoverDate(day)}
+                  onMouseLeave={() => setHoverDate(null)}
+                  onClick={() => handleDayClick(day)}
+                  className={cn(
+                    "h-10 w-10 flex items-center justify-center text-xs font-bold transition-all relative z-10",
+                    isStart && !isEnd ? (isBikeMode ? "bg-blue-500 text-white rounded-l-full" : "bg-orange-500 text-white rounded-l-full") : "",
+                    isEnd && !isStart ? (isBikeMode ? "bg-blue-500 text-white rounded-r-full" : "bg-orange-500 text-white rounded-r-full") : "",
+                    isStart && isEnd ? (isBikeMode ? "bg-blue-500 text-white rounded-full" : "bg-orange-500 text-white rounded-full") : "",
+                    inRange && !isStart && !isEnd ? (isBikeMode ? "bg-blue-100 text-blue-900" : "bg-orange-100 text-orange-900") : "",
+                    !inRange && isPast ? "text-[#1A1A1A]/20 dark:text-white/20 cursor-not-allowed" : "",
+                    !inRange && !isPast ? "text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-full" : ""
+                  )}
+                >
+                  {format(day, 'd')}
+                  {isToday && !(isStart || isEnd) && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#1A1A1A] dark:bg-white rounded-full" />}
+                </button>
+                {isEnd && tempRange.from && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
                     className="absolute -top-10 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-xl whitespace-nowrap z-50 bg-[#28a745]"
                   >
-                    {calculateDays()} days
+                    {Math.max(1, Math.ceil(calculateDays()))} Days
                     <div 
                       className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-[#28a745]" 
                     />
-                  </div>
+                  </motion.div>
                 )}
-                {isToday && !(isStart || isEnd) && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#1A1A1A] dark:bg-white rounded-full" />}
-              </button>
+              </div>
             );
           })}
         </div>
