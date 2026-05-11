@@ -232,7 +232,7 @@ process.on('uncaughtException', (error) => {
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || '3000', 10);
+  const PORT = 3000;
 
   app.use(express.json({ limit: '50mb' }));
 

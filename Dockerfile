@@ -27,6 +27,7 @@ RUN npm ci --omit=dev
 
 # Copy the built artifacts from the builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server.ts ./server.ts
 
 # Ensure the server port is set for Cloud Run
 ENV PORT=8080
