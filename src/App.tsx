@@ -68,7 +68,7 @@ function AppHeader() {
     <Helmet>
       <title>{config.companyName} | Trusted Rental Service in Pattaya Since 2005</title>
       <meta name="description" content={`Rent with ${config.companyName} - Thailand's most trusted service in Pattaya. First-class insurance, free delivery, and 24/7 support.`} />
-      <link rel="icon" type="image/jpeg" href="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=2bca69cd-f667-4ea4-9ff2-5ea04fce3c23" />
+      <link rel="icon" type="image/jpeg" href="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=f5935b90-df97-4241-bb73-149a8ea1b939" />
       <meta property="og:title" content={`${config.companyName} | Trusted Rental Service in Pattaya`} />
       <meta property="og:description" content={`${config.companyName} - Pattaya's most trusted rental service since 2005. Quality vehicles, transparent pricing, and exceptional service.`} />
       <meta property="og:url" content="https://pattayarentacar.com/" />

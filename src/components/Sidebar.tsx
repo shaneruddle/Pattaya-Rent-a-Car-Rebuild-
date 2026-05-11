@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, Calenda
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
-import { collection, getCountFromServer } from 'firebase/firestore';
+import { collection, getCountFromServer, onSnapshot } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { cn } from '../lib/utils';
 import { StorageImage } from './StorageImage';
@@ -22,6 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [bookingsCount, setBookingsCount] = useState(0);
   const [counts, setCounts] = useState({
     bookings: 0,
     rentals: 0,
@@ -57,9 +58,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     };
 
     fetchCounts();
+
+    // Real-time listener for bookings count
+    const unsubscribeBookings = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+      setBookingsCount(snapshot.size);
+    });
+
     // Refresh every 5 minutes
     const interval = setInterval(fetchCounts, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      unsubscribeBookings();
+    };
   }, [auth.currentUser]);
 
   const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
@@ -322,9 +332,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <Calendar size={18} /> Bookings
-                      {counts.bookings > 0 && !isCollapsed && (
-                        <span className="ml-auto bg-white/20 text-white px-2 py-0.5 rounded-full text-[8px] font-bold">
-                          {counts.bookings}
+                      {bookingsCount > 0 && !isCollapsed && (
+                        <span className={cn(
+                          "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
+                          currentView === 'bookings' 
+                            ? "bg-white/20 text-white" 
+                            : "bg-brand-orange/10 text-brand-orange"
+                        )}>
+                          {bookingsCount}
                         </span>
                       )}
                     </button>

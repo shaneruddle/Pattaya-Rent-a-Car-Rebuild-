@@ -787,7 +787,7 @@ export const WebsiteFleetManager: React.FC = () => {
                       <div className="bg-white/40 backdrop-blur-md p-6 rounded-3xl border border-white/60 flex flex-col items-center text-center">
                         <Settings className="text-brand-orange mb-2" size={24} />
                         <div className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">Transmission</div>
-                        <div className="text-lg font-bold text-[#1A1A1A]">{selectedCar.transmission}</div>
+                        <div className="text-lg font-bold text-[#1A1A1A]">{selectedCar.transmission || 'Auto'}</div>
                       </div>
                       <div className="bg-white/40 backdrop-blur-md p-6 rounded-3xl border border-white/60 flex flex-col items-center text-center">
                         <Wind className="text-brand-orange mb-2" size={24} />
