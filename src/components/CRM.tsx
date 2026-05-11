@@ -101,6 +101,7 @@ export const CRM: React.FC = () => {
   });
 
   useEffect(() => {
+    if (!auth.currentUser) return;
     const fetchTotalCount = async () => {
       try {
         const countSnapshot = await getCountFromServer(collection(db, 'customers'));
@@ -222,12 +223,13 @@ export const CRM: React.FC = () => {
   }, [searchQuery]);
 
   useEffect(() => {
-    if (!selectedCustomer) {
+    if (!auth.currentUser || !selectedCustomer) {
       setCustomerHistory([]);
       return;
     }
 
     const fetchHistory = async () => {
+      if (!auth.currentUser) return;
       try {
         const q = query(
           collection(db, 'bookings'),

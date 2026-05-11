@@ -6,6 +6,7 @@ import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
@@ -356,7 +357,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
 
   return (
     <div className="flex group h-8 virtual-row">
-      <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-1 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
+      <div className="w-[120px] md:w-[200px] min-w-[120px] md:min-w-[200px] max-w-[120px] md:max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-2 py-0.5 flex items-center gap-1 backdrop-blur-md group-hover:bg-brand-orange/5 transition-colors overflow-hidden">
         <div className={cn("w-1 h-full absolute left-0", typeStyles.bg)} />
         
         {isReorderMode && (
@@ -825,7 +826,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     }
   };
 
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Auth observer to handle reactive updates and loading state
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
     const fetchCustomers = async (force = false) => {
       if (!auth.currentUser) return;
       const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -1326,6 +1338,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     handleSlotContextMenu(e, carId, day, slot);
   }, [visibleDays, clipboard, handleSlotContextMenu]);
 
+  if (isAuthLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Loader2 className="w-12 h-12 text-brand-orange animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-serif italic mb-2">Loading Timeline...</h2>
+          <p className="text-xs text-black/40">Synchronizing your fleet data...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (!auth.currentUser) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg text-center">
@@ -1353,7 +1377,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
           {/* Timeline Header */}
           <div className="flex flex-col sticky top-0 z-[90] bg-warm-bg border-b border-black/10">
             <div className="flex bg-warm-bg">
-              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-warm-bg sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
+              <div className="w-[120px] md:w-[200px] min-w-[120px] md:min-w-[200px] max-w-[120px] md:max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-warm-bg sticky left-0 z-50 p-2 flex items-center justify-between backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <div className="flex flex-col">
                     <span className="font-serif italic text-sm text-[#1A1A1A]">{title}</span>
@@ -1418,7 +1442,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
             {/* Availability Row */}
             <div className="flex h-7 bg-green-50/50 border-b border-black/10">
-              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-black/10 bg-green-50 sticky left-0 z-50 px-3 flex items-center backdrop-blur-md">
+              <div className="w-[120px] md:w-[200px] min-w-[120px] md:min-w-[200px] max-w-[120px] md:max-w-[200px] flex-shrink-0 border-r border-black/10 bg-green-50 sticky left-0 z-50 px-3 flex items-center backdrop-blur-md">
                 <span className="text-[10px] font-bold text-green-700 uppercase tracking-widest whitespace-nowrap">Cars Available</span>
               </div>
               <div className="flex bg-warm-bg/50">
@@ -1470,7 +1494,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
             {/* Unassigned Row */}
             <div className="flex group h-8 bg-brand-orange/5 virtual-row">
-              <div className="w-[200px] min-w-[200px] max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
+              <div className="w-[120px] md:w-[200px] min-w-[120px] md:min-w-[200px] max-w-[120px] md:max-w-[200px] flex-shrink-0 border-r border-b border-black/10 bg-white/60 sticky left-0 z-20 px-3 py-0 flex items-center gap-2 backdrop-blur-md group-hover:bg-brand-orange/10 transition-colors">
                 <div className="w-1 h-full absolute left-0 bg-brand-orange" />
                 <AlertCircle size={10} className="shrink-0 text-brand-orange" />
                 <span className="text-[10px] font-bold text-brand-orange truncate leading-tight uppercase tracking-widest">Unassigned</span>

@@ -20,6 +20,31 @@ const DYNAMIC_TAGS = [
   { tag: '{{photos}}', label: 'Damage Photos Grid' },
 ];
 
+/**
+ * Quill configuration moved outside component to prevent re-registration errors
+ */
+const QUILL_MODULES = {
+  toolbar: [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+    ['link', 'clean'],
+  ],
+  clipboard: {
+    matchVisual: false, // Prevents extra line breaks on paste
+  }
+};
+
+const QUILL_FORMATS = [
+  'header',
+  'bold', 'italic', 'underline', 'strike',
+  'color', 'background',
+  'list', 'bullet',
+  'link',
+  'break' 
+];
+
 export const EmailTemplates: React.FC = () => {
   const { config } = useCompanyConfig();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -51,55 +76,15 @@ export const EmailTemplates: React.FC = () => {
     [templates, activeTemplateId]
   );
 
-  // Quill Toolbar and Module configuration
-  const modules = useMemo(() => ({
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      ['link', 'clean'],
-    ],
-    clipboard: {
-      matchVisual: false, // Prevents extra line breaks on paste
-    },
-    keyboard: {
-      bindings: {
-        // Standard Enter inserts a <br> (Single Spacer)
-        enter: {
-          key: 13,
-          handler: function(range: any) {
-            this.quill.clipboard.dangerouslyPasteHTML(range.index, '<br>');
-            this.quill.setSelection(range.index + 1);
-            return false;
-          }
-        },
-        // Shift+Enter inserts a new paragraph (or standard block behavior)
-        linebreak: {
-          key: 13,
-          shiftKey: true,
-          handler: function() {
-            return true; // Let standard behavior handle it (usually creates new block)
-          }
-        }
-      }
-    }
-  }), []);
-
-  const formats = [
-    'header',
-    'bold', 'italic', 'underline', 'strike',
-    'color', 'background',
-    'list', 'bullet',
-    'link',
-    'break' // Ensure 'break' is in formats
-  ];
-
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
+    if (!auth.currentUser) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // Fetch templates
@@ -474,8 +459,8 @@ export const EmailTemplates: React.FC = () => {
                           theme="snow"
                           value={activeTemplate.body}
                           onChange={value => updateTemplateField(activeTemplate.id, 'body', value)}
-                          modules={modules}
-                          formats={formats}
+                          modules={QUILL_MODULES}
+                          formats={QUILL_FORMATS}
                           className="h-[400px] border-none"
                           placeholder="Start typing your email message here..."
                         />

@@ -31,6 +31,8 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const fetchDbPricing = useCallback(async () => {
+    if (!auth.currentUser) return;
+
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -61,11 +63,14 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       safeLocalStorage.setItem('prac_pricing_last_fetch', now.toString());
       safeLocalStorage.setItem('prac_cached_pricing', JSON.stringify(pricingMap));
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'pricing_grid');
+      console.warn('PricingContext: Failed to fetch DB pricing, using cache if available:', error);
+      // Don't throw here to avoid breaking context
     }
   }, [dbPricing, lastFetch]);
 
   const fetchSettings = useCallback(async () => {
+    if (!auth.currentUser) return;
+
     // Cache for 10 minutes
     const CACHE_DURATION = 10 * 60 * 1000;
     const isCacheValid = Date.now() - lastFetch < CACHE_DURATION;
@@ -100,41 +105,77 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [settings, lastFetch]);
 
   const fetchPricing = useCallback(async (force = false) => {
+    // Auth guard - only staff should trigger sheet fetches to save quota
+    if (!auth.currentUser) return;
+
     // Avoid fetching sheet too often if not needed
     if (!force && sheetPricing && Date.now() - lastFetch < 5 * 60 * 1000) {
       return;
     }
 
+    // Check for rate limit from previous attempt
+    const last429 = Number(safeLocalStorage.getItem('pricing_last_429') || 0);
+    if (Date.now() - last429 < 60000) { // Wait 1 minute after a 429
+      console.warn('PricingContext: Skipping fetch due to recent rate limit');
+      setLoading(false);
+      return;
+    }
+
     setError(null);
 
-    const performFetch = async (retries = 3, delay = 2000): Promise<void> => {
+    const performFetch = async (): Promise<void> => {
       try {
+        console.log('PricingContext: Fetching pricing from sheet API...');
         const response = await fetchWithRetry('/api/pricing/sheet');
         
         if (response.ok) {
           const contentType = response.headers.get("content-type");
           if (contentType && contentType.indexOf("application/json") !== -1) {
             const data = await response.json();
+            console.log('PricingContext: Received sheet pricing data');
             setSheetPricing(data);
             setLastFetch(Date.now());
           } else {
-            throw new Error('Invalid response format from server');
+            throw new Error('Invalid response format from server (not JSON)');
           }
+        } else {
+          if (response.status === 429) {
+            console.warn('PricingContext: Rate limit hit (429)');
+            safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
+            setError('Pricing server too busy (rate limited). Using existing data.');
+            setLoading(false);
+            return;
+          }
+          const text = await response.text();
+          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
         }
       } catch (err: any) {
-        console.error('Sheet fetch error:', err);
+        if (err.message?.includes('429')) {
+          console.warn('PricingContext: Rate limit hit (429 in catch)');
+          safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
+          setError('Pricing server too busy. Using existing data.');
+        } else {
+          console.error('PricingContext: Sheet fetch error:', err);
+          setError(`Pricing server error: ${err.message}`);
+        }
+      } finally {
+        setLoading(false);
       }
     };
 
     await performFetch();
-    setLoading(false);
   }, [sheetPricing, lastFetch]);
 
   useEffect(() => {
-    // Initial fetch always happens
-    fetchDbPricing();
-    fetchSettings();
-    fetchPricing();
+    // Auth guard for initial fetches
+    if (!auth.currentUser) {
+      console.log('PricingContext: No user authenticated yet, waiting for auth state change');
+      setLoading(false); // Stop loading if no user, onAuthStateChanged will handle it later
+    } else {
+      fetchDbPricing();
+      fetchSettings();
+      fetchPricing();
+    }
 
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {

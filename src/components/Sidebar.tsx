@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Star, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
-import { logOut, storage } from '../firebase';
+import { logOut, storage, db, auth } from '../firebase';
+import { collection, getCountFromServer } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { cn } from '../lib/utils';
 import { StorageImage } from './StorageImage';
@@ -21,12 +22,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [counts, setCounts] = useState({
+    bookings: 0,
+    rentals: 0,
+    crm: 0
+  });
 
   useEffect(() => {
     if (isMobile) {
       setIsCollapsed(true);
     }
   }, [isMobile]);
+
+  // Fetch counts for badges
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchCounts = async () => {
+      try {
+        const [bookingsSnap, rentalsSnap, crmSnap] = await Promise.all([
+          getCountFromServer(collection(db, 'bookings')),
+          getCountFromServer(collection(db, 'rentals')),
+          getCountFromServer(collection(db, 'customers'))
+        ]);
+
+        setCounts({
+          bookings: bookingsSnap.data().count,
+          rentals: rentalsSnap.data().count,
+          crm: crmSnap.data().count
+        });
+      } catch (error) {
+        console.error('Sidebar: Error fetching counts:', error);
+      }
+    };
+
+    fetchCounts();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchCounts, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [auth.currentUser]);
 
   const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
   const isMarketingView = ['marketing_blog', 'marketing_faq', 'marketing_reviews'].includes(currentView);
@@ -288,22 +322,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <Calendar size={18} /> Bookings
+                      {counts.bookings > 0 && !isCollapsed && (
+                        <span className="ml-auto bg-white/20 text-white px-2 py-0.5 rounded-full text-[8px] font-bold">
+                          {counts.bookings}
+                        </span>
+                      )}
                     </button>
                   </>
                 )}
                 <button
                   onClick={() => {
-                    onViewChange('rentals');
+                    onViewChange(isMobile ? 'enquiries' : 'rentals');
                     if (isMobile) setIsMobileMenuOpen(false);
                   }}
                   className={cn(
                     "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                    currentView === 'rentals' 
+                    (isMobile ? currentView === 'enquiries' : currentView === 'rentals') 
                       ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
                       : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
                   )}
                 >
-                  <ShieldCheck size={18} /> {isMobile ? "Live Bookings" : "Rentals"}
+                  <ShieldCheck size={18} /> {isMobile ? "Live Enquiries" : "Rentals"}
+                  {counts.rentals > 0 && !isCollapsed && (
+                    <span className={cn(
+                      "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
+                      (isMobile ? currentView === 'enquiries' : currentView === 'rentals') 
+                        ? "bg-white/20 text-white" 
+                        : "bg-brand-orange/10 text-brand-orange"
+                    )}>
+                      {counts.rentals}
+                    </span>
+                  )}
                 </button>
                 {(!isMobile || isAdmin) && (
                   <>
@@ -320,6 +369,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <Users size={18} /> CRM
+                      {counts.crm > 0 && !isCollapsed && (
+                        <span className={cn(
+                          "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
+                          currentView === 'crm' 
+                            ? "bg-white/20 text-white" 
+                            : "bg-brand-orange/10 text-brand-orange"
+                        )}>
+                          {counts.crm}
+                        </span>
+                      )}
                     </button>
                     <button
                       onClick={() => {

@@ -33,7 +33,8 @@ import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogIn, Loader2 } from 'lucide-react';
+import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck } from 'lucide-react';
+import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
 import { safeLocalStorage } from './lib/storage';
 
@@ -87,9 +88,11 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>('timeline_cars');
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>(
+    (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
+  );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // Connection check removed from early mount to avoid Permission Denied on first turn
@@ -133,13 +136,19 @@ function AppContent() {
 
   // Redirect mobile employees to allowed sections
   useEffect(() => {
-    if (isMobile && !isAdmin && user && isStaff) {
-      const allowedViews = ['new_rental', 'rentals'];
-      if (!allowedViews.includes(currentView)) {
-        setCurrentView('new_rental');
+    if (isMobile && user && isStaff) {
+      const allowedViews = ['timeline_cars', 'timeline_bikes', 'rentals'];
+      if (!allowedViews.includes(currentView) && !isAdmin) {
+        setCurrentView('timeline_cars');
       }
     }
   }, [isMobile, isAdmin, user, isStaff, currentView]);
+
+  useEffect(() => {
+    if (currentView) {
+      safeLocalStorage.setItem('prac_current_view', currentView);
+    }
+  }, [currentView]);
 
   useEffect(() => {
     console.log('AppContent: Setting up auth listener');
@@ -178,6 +187,12 @@ function AppContent() {
   }, []);
 
   const fetchData = React.useCallback(async (force = false) => {
+    // Auth guard to prevent PERMISSION_DENIED on mount
+    if (!auth.currentUser) {
+      console.log('App: No user authenticated, skipping fetchData');
+      return;
+    }
+
     // Cache for 10 minutes to save quota
     const CACHE_DURATION = 10 * 60 * 1000;
     
@@ -188,11 +203,15 @@ function AppContent() {
     if (isCacheValid) {
       const cachedCars = safeLocalStorage.getItem('prac_cached_cars');
       if (cachedCars) {
-        console.log('AppContent: Using cached data to save reads');
         try {
           const parsedCars = JSON.parse(cachedCars);
-          setCars(parsedCars);
-          return;
+          if (Array.isArray(parsedCars) && parsedCars.length > 0) {
+            console.log('AppContent: Using cached data to save reads');
+            setCars(parsedCars);
+            return;
+          } else {
+            console.log('AppContent: Cached list is empty or invalid, fetching fresh...');
+          }
         } catch (e) {
           console.error('Error parsing cached data:', e);
         }
@@ -226,11 +245,11 @@ function AppContent() {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [user, fetchData]);
 
   useEffect(() => {
-    if (!user || !isStaff) {
-      console.log('Not attaching listeners: user=', !!user, 'isStaff=', isStaff);
+    if (loading || !user || !isStaff) {
+      console.log('Not attaching listeners: user=', !!user, 'loading=', loading, 'isStaff=', isStaff);
       return;
     }
 
@@ -277,6 +296,8 @@ function AppContent() {
     ensureUserDoc();
 
     console.log('Fetching cars and setting up bookings listener for user:', user.email);
+    if (!auth.currentUser) return;
+    
     fetchData();
 
     // Set up real-time bookings listener
@@ -562,17 +583,25 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <div className="flex h-screen bg-warm-bg font-sans text-[#1A1A1A] selection:bg-brand-orange selection:text-white overflow-hidden">
-        <Sidebar 
-          user={user} 
-          isAdmin={isAdmin}
-          isMobile={isMobile}
-          onNewBooking={() => setNewBookingTrigger(prev => prev + 1)} 
-          currentView={currentView}
-          onViewChange={setCurrentView}
-        />
-        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+        {!isMobile && (
+          <Sidebar 
+            user={user} 
+            isAdmin={isAdmin}
+            isMobile={isMobile}
+            onNewBooking={() => setNewBookingTrigger(prev => prev + 1)} 
+            currentView={currentView}
+            onViewChange={setCurrentView}
+          />
+        )}
+        <main className={cn(
+          "flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative",
+          isMobile && "pb-16" // Space for bottom nav
+        )}>
           {user && (
-            <div className="fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none">
+            <div className={cn(
+              "fixed bottom-4 right-4 z-[100] bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-xl text-[10px] font-mono pointer-events-none",
+              isMobile && "bottom-20" // Move up to avoid bottom nav
+            )}>
               {lastError && (
                 <div className="bg-red-50 border border-red-200 p-4 rounded-2xl mb-6 flex items-center justify-between">
                   <p className="text-red-500 font-bold text-xs">
@@ -600,9 +629,14 @@ function AppContent() {
               />
               <Timeline
                 cars={cars.filter(c => {
-                  const cat = (c.category || 'Car').toLowerCase() || '';
-                  const targetCat = (currentView === 'timeline_cars' ? 'car' : 'motorbike').toLowerCase() || '';
-                  return cat === targetCat && c.isActive !== false;
+                  const cat = (c.category || 'Car').toLowerCase().trim();
+                  const type = (c.type || '').toLowerCase().trim();
+                  const isBikeView = currentView === 'timeline_bikes';
+                  const isBike = cat.includes('bike') || cat.includes('scooter') || type.includes('bike') || type.includes('scooter');
+                  
+                  // Filter out based on view
+                  if (isBikeView) return isBike && c.isActive !== false;
+                  return !isBike && c.isActive !== false;
                 })}
                 bookings={filteredBookings}
                 currentDate={currentDate}
@@ -669,6 +703,48 @@ function AppContent() {
             </div>
           )}
         </main>
+        
+        {isMobile && (
+          <div className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-xl border-t border-black/10 flex items-center justify-around z-[200] px-6">
+            <button
+              onClick={() => setCurrentView('timeline_cars')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                currentView === 'timeline_cars' ? "text-brand-orange" : "text-[#1A1A1A]/40"
+              )}
+            >
+              <motion.div animate={currentView === 'timeline_cars' ? { scale: 1.2 } : { scale: 1 }}>
+                <CarIcon size={20} />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Cars</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('timeline_bikes')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                currentView === 'timeline_bikes' ? "text-brand-orange" : "text-[#1A1A1A]/40"
+              )}
+            >
+              <motion.div animate={currentView === 'timeline_bikes' ? { scale: 1.2 } : { scale: 1 }}>
+                <Bike className="w-5 h-5" />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Bikes</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('enquiries')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                currentView === 'enquiries' ? "text-brand-orange" : "text-[#1A1A1A]/40"
+              )}
+            >
+              <motion.div animate={currentView === 'enquiries' ? { scale: 1.2 } : { scale: 1 }}>
+                <ShieldCheck size={20} />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Live</span>
+            </button>
+          </div>
+        )}
+
         <Toaster position="bottom-right" toastOptions={{
           style: {
             background: 'rgba(255, 255, 255, 0.8)',

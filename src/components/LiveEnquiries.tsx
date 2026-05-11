@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
+import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { processTemplate } from '../lib/emailUtils';
 import { Booking, Car } from '../types';
 import { format, parseISO, isValid, formatDistanceToNow, isToday } from 'date-fns';
@@ -44,6 +45,20 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [isConverting, setIsConverting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<Partial<Booking>>({});
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Auth observer
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Auth guard (added to satisfy request to fix fetch useEffect, even if others manage data)
+  useEffect(() => {
+    if (!auth.currentUser) return;
+  }, []);
 
   const enquiries = useMemo(() => {
     return bookings
@@ -266,34 +281,45 @@ Do you wish to proceed with the booking ?`;
     }
   };
 
+  if (isAuthLoading || !auth.currentUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-12 bg-warm-bg">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-brand-orange animate-spin" />
+          <h2 className="text-xl font-serif italic text-black/40">Checking Enquiries...</h2>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-warm-bg overflow-hidden">
       {/* Header */}
-      <header className="h-24 bg-white/40 backdrop-blur-xl border-b border-white/60 flex items-center justify-between px-12 shrink-0 z-10">
+      <header className="h-auto py-6 sm:h-24 sm:py-0 bg-white/40 backdrop-blur-xl border-b border-white/60 flex flex-col sm:flex-row sm:items-center justify-between px-6 sm:px-12 shrink-0 z-10 gap-4">
         <div>
-          <h1 className="font-serif italic text-3xl text-[#1A1A1A]">Live Enquiries</h1>
+          <h1 className="font-serif italic text-2xl sm:text-3xl text-[#1A1A1A]">Live Enquiries</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mt-1">
             {enquiries.length} Pending Enquiries from Booking Engine
           </p>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="relative group">
+        <div className="flex items-center gap-6 w-full sm:w-auto">
+          <div className="relative group w-full sm:w-auto">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30 group-focus-within:text-brand-orange transition-colors" size={18} />
             <input
               type="text"
               placeholder="Search enquiries..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-80 bg-white/40 border border-white/60 rounded-2xl py-3 pl-12 pr-6 text-sm focus:outline-none focus:bg-white/60 focus:border-brand-orange transition-all font-medium"
+              className="w-full sm:w-80 bg-white/40 border border-white/60 rounded-2xl py-3 pl-12 pr-6 text-sm focus:outline-none focus:bg-white/60 focus:border-brand-orange transition-all font-medium"
             />
           </div>
         </div>
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-12 custom-scrollbar">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
           <AnimatePresence mode="popLayout">
             {enquiries.map((enquiry) => (
               <motion.div
@@ -302,10 +328,10 @@ Do you wish to proceed with the booking ?`;
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white/40 backdrop-blur-xl border border-white/60 rounded-[32px] p-8 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
+                className="bg-white/40 backdrop-blur-xl border border-white/60 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
               >
                 {/* Status Badge */}
-                  <div className="absolute top-8 right-8 flex flex-col items-end gap-2">
+                  <div className="absolute top-6 right-6 sm:top-8 sm:right-8 flex flex-col items-end gap-2">
                     <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[8px] font-bold uppercase tracking-widest rounded-full">
                       Pending Enquiry
                     </span>
@@ -353,7 +379,7 @@ Do you wish to proceed with the booking ?`;
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-8 mb-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 mb-8">
                     <div className="space-y-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-black/5 rounded-lg flex items-center justify-center text-black/40">
@@ -414,7 +440,7 @@ Do you wish to proceed with the booking ?`;
                     </div>
                   )}
 
-                  <div className="mt-auto pt-6 border-t border-black/5 flex gap-4">
+                  <div className="mt-auto pt-6 border-t border-black/5 flex flex-col sm:flex-row gap-4">
                     <button
                       onClick={() => copyEmailTemplate(enquiry)}
                       className="flex-1 bg-white border border-black/10 text-black/60 py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all"

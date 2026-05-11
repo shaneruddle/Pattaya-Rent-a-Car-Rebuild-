@@ -42,6 +42,27 @@ import { parse, unparse } from 'papaparse';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
+/**
+ * Quill configuration moved outside component to prevent re-registration errors
+ */
+const QUILL_MODULES = {
+  toolbar: [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+    [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
+    ['link', 'image'],
+    ['clean']
+  ],
+};
+
+const QUILL_FORMATS = [
+  'header',
+  'bold', 'italic', 'underline', 'strike', 'blockquote',
+  'list', 'bullet', 'indent',
+  'link', 'image',
+  'color', 'background'
+];
+
 export const BlogManager: React.FC = () => {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
@@ -642,15 +663,8 @@ export const BlogManager: React.FC = () => {
                           value={selectedPost.content}
                           onChange={(content) => setSelectedPost({...selectedPost, content})}
                           placeholder="Write your post content here..."
-                          modules={{
-                            toolbar: [
-                              [{ 'header': [1, 2, 3, false] }],
-                              ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                              [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
-                              ['link', 'image'],
-                              ['clean']
-                            ],
-                          }}
+                          modules={QUILL_MODULES}
+                          formats={QUILL_FORMATS}
                         />
                       </div>
 

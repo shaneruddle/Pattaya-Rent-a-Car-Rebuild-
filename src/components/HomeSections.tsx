@@ -3,7 +3,7 @@ import { ShieldCheck, Clock, MapPin, CheckCircle2, Star, Send, Phone, Mail, Face
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, addDoc } from 'firebase/firestore';
-import { db, storage, logSystemActivity, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, storage, logSystemActivity, handleFirestoreError, OperationType } from '../firebase';
 import { sendTemplatedEmail } from '../lib/emailUtils';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { toast } from 'sonner';
@@ -194,10 +194,14 @@ export const EnquiryForm: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) 
     console.log('EnquiryForm: Starting submission...', formData);
     try {
       console.log('EnquiryForm: Saving to enquiries collection...');
+      // Log current auth state for debugging
+      console.log('EnquiryForm: Auth User:', db.app.options.projectId, auth.currentUser?.uid || 'Anonymous');
+      
       const enquiryRef = await addDoc(collection(db, 'enquiries'), {
         ...formData,
         timestamp: new Date().toISOString(),
-        to: config.email
+        to: config.email,
+        source_domain: window.location.hostname
       });
       console.log('EnquiryForm: Saved to enquiries, ID:', enquiryRef.id);
 

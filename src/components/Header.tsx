@@ -32,13 +32,13 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-white border-b border-black/10 sticky top-0 z-[100] h-16">
-      <div className="h-16 px-8 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4">
-            <h1 className="font-serif italic text-xl text-[#1A1A1A] min-w-[150px]">
+      <div className="h-16 px-4 md:px-8 flex items-center justify-between">
+        <div className="flex items-center gap-2 md:gap-6">
+          <div className="flex items-center gap-2 md:gap-4">
+            <h1 className="font-serif italic text-lg md:text-xl text-[#1A1A1A] min-w-[120px] md:min-w-[150px]">
               {format(currentDate, 'MMMM yyyy')}
             </h1>
-            <div className="flex items-center gap-1 bg-white/40 border border-black/20 p-1 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1 bg-white/40 border border-black/20 p-1 rounded-full backdrop-blur-md scale-90 md:scale-100">
               <button
                 onClick={handlePrevMonth}
                 className="p-1.5 hover:bg-brand-orange hover:text-white rounded-full transition-all text-[#1A1A1A]"
@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
             <input
               type="text"
               placeholder="Search..."
-              className="bg-white/40 border border-black/20 focus:border-brand-orange focus:bg-white outline-none rounded-full h-10 pl-10 pr-4 text-xs w-48 transition-all font-medium backdrop-blur-md"
+              className="bg-white/40 border border-black/20 focus:border-brand-orange focus:bg-white outline-none rounded-full h-10 pl-10 pr-4 text-xs w-24 md:w-48 transition-all font-medium backdrop-blur-md"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -76,10 +76,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onNewBooking}
-            className="bg-brand-orange text-white h-10 px-6 rounded-full flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20"
+            className="bg-brand-orange text-white h-10 px-4 md:px-6 rounded-full flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20"
           >
             <Plus size={16} />
-            New Booking
+            <span className="hidden md:inline">New Booking</span>
           </button>
         </div>
       </div>

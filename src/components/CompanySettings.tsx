@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Building2, Phone, Mail, Clock, MapPin, Globe, Save, Loader2, MessageCircle, Smartphone } from 'lucide-react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 
@@ -44,6 +44,10 @@ export const CompanySettings: React.FC = () => {
 
   useEffect(() => {
     const fetchConfig = async () => {
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
       try {
         const docRef = doc(db, 'app_settings', 'company');
         const docSnap = await getDoc(docRef);

@@ -36,6 +36,7 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
   };
 
   useEffect(() => {
+    if (!auth.currentUser) return;
     if (initialLogs.length === 0) {
       fetchLogs();
     }

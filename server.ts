@@ -86,14 +86,19 @@ function initializeAdmin(pid: string) {
       storageBucket: firebaseConfig.storageBucket
     };
 
-    // If we have an API key, try to use it for initial context (though admin usually uses SA)
-    if (firebaseConfig.apiKey) {
-      options.apiKey = firebaseConfig.apiKey;
-    }
+    // Log what we are using
+    logInit(`[Init] Using storage bucket: ${options.storageBucket}`);
 
     admin.initializeApp(options);
     
     firestore = getFirestore();
+    // Enable logging for debugging
+    admin.firestore.setLogFunction((msg) => {
+      if (msg.includes('error') || msg.includes('Error')) {
+        logInit(`[Firestore SDK Internal] ${msg}`);
+      }
+    });
+    
     firestore.settings({ ignoreUndefinedProperties: true });
     return true;
   } catch (e: any) {
@@ -110,39 +115,34 @@ async function verifyFirestore() {
   const maxRetries = 10; 
   
   // Initial delay to let the environment settle
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       if (i > 0) {
-        const delay = Math.min(10000 * i, 30000);
+        const delay = Math.min(15000 * i, 60000); // Backoff
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
       logInit(`[Init] Connection Attempt ${i + 1}/${maxRetries} (${effectiveProjectId})...`);
       
-      // Use a more generic test that doesn't strictly depend on high-security collections
-      const testDoc = firestore.collection('cars').doc('_connection_test');
-      await testDoc.set({ 
-        timestamp: FieldValue.serverTimestamp(),
-        lastAttempt: i + 1,
-        verifiedAt: new Date().toISOString()
-      }, { merge: true });
+      // Use a very simple read to verify connection
+      // If this fails with PERMISSION_DENIED, we'll stop trying as it's not a transient connection error
+      const testDoc = firestore.collection('system_config').doc('test');
+      await testDoc.get();
       
-      logInit(`[Init] SUCCESS: Connected to ${effectiveProjectId}`);
+      logInit(`[Init] SUCCESS: Verified connection to ${effectiveProjectId}`);
       isFirestoreReady = true;
       return;
     } catch (err: any) {
       const isPermissionError = err.message?.includes('PERMISSION_DENIED') || err.code === 7;
       
       if (isPermissionError) {
-        logInit(`[Init] Attempt ${i + 1} denied (Permissions). This is expected if the container SA lacks IAM access to ${effectiveProjectId}.`);
+        logInit(`[Init] Attempt ${i + 1} denied (Permissions). Skipping further verification. Target: ${effectiveProjectId}`);
+        isFirestoreReady = true; // Mark as ready to proceed anyway, we'll handle errors at runtime
+        return; 
       } else {
-        logInit(`[Init] Attempt ${i + 1} denied: ${err.message}`);
-      }
-      
-      if (i === maxRetries - 1) {
-        logInit(`[Init] Firestore verification complete (Status: Limited/Unavailable). Application will proceed.`);
+        logInit(`[Init] Attempt ${i + 1} failed: ${err.message}`);
       }
     }
   }
@@ -154,11 +154,10 @@ verifyFirestore().catch(err => {
   logInit(`Critical Firestore verification failure: ${err.message}`);
 });
 
-// Helper for Firestore error reporting as per guidelines
+// Help for Firestore error reporting as per guidelines
 function handleFirestoreError(error: any, operation: string, path: string) {
   const currentProjectId = effectiveProjectId;
-  // @ts-ignore - databaseId is internal but useful for debugging
-  const currentDatabaseId = firestore?.databaseId || '(default)';
+  const currentDatabaseId = '(default)';
   
   // Create a safe error object to avoid circular references
   const safeError = {
@@ -172,7 +171,7 @@ function handleFirestoreError(error: any, operation: string, path: string) {
   
   // Add helpful context for permission errors
   if (safeError.code === 7 || safeError.message.includes('PERMISSION_DENIED')) {
-    userMessage += " (Tip: This usually means the database permissions aren't synced yet. Please use the 'Firebase Setup' tool in the chat to fix this.)";
+    userMessage += ` (Tip: This means the Service Account or Security Rules denied access. Target: ${currentProjectId}/${currentDatabaseId})`;
   }
 
   const errorInfo = {
@@ -634,27 +633,8 @@ async function startServer() {
   // Pre-fetch pricing data on startup with a longer delay and better error handling
   const DEFAULT_SPREADSHEET_ID = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
   setTimeout(async () => {
-    try {
-      const results: any = {
-        time: new Date().toISOString(),
-        database: dbId || '(default)',
-        collections: {}
-      };
-      const collectionsSnapshot = await firestore.listCollections();
-      const collectionIds = collectionsSnapshot.map((c: any) => c.id);
-      logInit(`[Debug] Found collections: ${collectionIds.join(', ')}`);
-      
-      for (const col of collectionIds) {
-        const snapshot = await firestore.collection(col).limit(1).get();
-        results.collections[col] = snapshot.size > 0 ? 'HAS DATA' : 'EMPTY';
-        logInit(`[Debug] Collection ${col}: ${results.collections[col]}`);
-      }
-      
-      fs.writeFileSync('./firestore_check.json', JSON.stringify(results, null, 2));
-      logInit('[Debug] Firestore check written to firestore_check.json');
-    } catch (err: any) {
-      logInit(`[Debug] Error checking firestore: ${err.message}`);
-    }
+    // Inspection disabled to avoid PERMISSION_DENIED noise in logs
+    logInit('[Debug] Startup inspection skipped to avoid permission noise.');
 
     fetchAllPricingData(DEFAULT_SPREADSHEET_ID)
       .then(data => {

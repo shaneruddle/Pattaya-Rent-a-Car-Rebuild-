@@ -343,6 +343,21 @@
         "minRatingForAutoReply": { "type": "integer" }
       }
     },
+    "Enquiry": {
+      "title": "Enquiry",
+      "description": "A general enquiry from the website.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "to": { "type": "string" },
+        "source_domain": { "type": "string" }
+      },
+      "required": ["name", "email", "message", "timestamp"]
+    },
     "FinanceSummary": {
       "title": "FinanceSummary",
       "description": "Aggregated financial totals (monthly or all-time).",
@@ -470,6 +485,14 @@
     "/app_settings/company": {
       "schema": "CompanyConfig",
       "description": "Global company information."
+    },
+    "/enquiries/{enquiryId}": {
+      "schema": "Enquiry",
+      "description": "Collection of general enquiries."
+    },
+    "/companyConfig/{docId}": {
+      "schema": "CompanyConfig",
+      "description": "Redundant company config collection used by some components."
     }
   }
 }
