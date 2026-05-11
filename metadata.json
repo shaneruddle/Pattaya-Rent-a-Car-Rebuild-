@@ -3,6 +3,5 @@
   "description": "Professional rental management dashboard with centralized company settings and multi-language support.",
   "requestFramePermissions": [
     "camera"
-  ],
-  "majorCapabilities": []
+  ]
 }

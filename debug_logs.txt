@@ -2411,3 +2411,18 @@ for call at
 2026-05-11T11:14:01.317Z: [Init] Metadata Server Project ID: ais-asia-east1-fc0827eb33c3412
 2026-05-11T11:14:06.279Z: [Init] Connection Attempt 1/10 (pattaya-rent-a-car-rebuild)...
 2026-05-11T11:14:06.284Z: [Debug] Startup inspection skipped to avoid permission noise.
+2026-05-11T11:16:37.163Z: [Init] Primary Project ID: pattaya-rent-a-car-rebuild
+2026-05-11T11:16:37.164Z: [Init] Initializing Admin SDK for: pattaya-rent-a-car-rebuild
+2026-05-11T11:16:37.268Z: [Init] Using provided FIREBASE_SERVICE_ACCOUNT_KEY.
+2026-05-11T11:16:37.268Z: [Init] Using storage bucket: pattaya-rent-a-car-rebuild.firebasestorage.app
+2026-05-11T11:16:37.351Z: [Init] Metadata Server Project ID: ais-asia-east1-fc0827eb33c3412
+2026-05-11T11:16:42.321Z: [Init] Connection Attempt 1/10 (pattaya-rent-a-car-rebuild)...
+2026-05-11T11:16:42.328Z: [Debug] Startup inspection skipped to avoid permission noise.
+2026-05-11T11:16:42.932Z: [Init] SUCCESS: Verified connection to pattaya-rent-a-car-rebuild
+2026-05-11T11:24:43.335Z: [Init] Primary Project ID: pattaya-rent-a-car-rebuild
+2026-05-11T11:24:43.336Z: [Init] Initializing Admin SDK for: pattaya-rent-a-car-rebuild
+2026-05-11T11:24:43.370Z: [Init] Using provided FIREBASE_SERVICE_ACCOUNT_KEY.
+2026-05-11T11:24:43.370Z: [Init] Using storage bucket: pattaya-rent-a-car-rebuild.firebasestorage.app
+2026-05-11T11:24:43.412Z: [Init] Metadata Server Project ID: ais-asia-east1-fc0827eb33c3412
+2026-05-11T11:24:48.374Z: [Init] Connection Attempt 1/10 (pattaya-rent-a-car-rebuild)...
+2026-05-11T11:24:48.379Z: [Debug] Startup inspection skipped to avoid permission noise.
