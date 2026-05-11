@@ -175,6 +175,17 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   });
 
   useEffect(() => {
+    if (showCalendar) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showCalendar]);
+
+  useEffect(() => {
     console.log('BookingEngine: Starting car data fetch...');
     
     const fetchData = async (force = false) => {
@@ -851,7 +862,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         />
                         <div 
                           ref={calendarRef}
-                          className="fixed inset-x-4 top-[5%] bottom-[5%] md:absolute md:top-full md:left-0 md:translate-x-0 md:-mt-2 md:w-[700px] md:max-w-[95vw] md:bottom-auto z-[100]"
+                          className="fixed inset-x-0 bottom-0 md:inset-x-auto md:bottom-auto md:absolute md:top-full md:left-0 md:translate-x-0 md:-mt-2 md:w-[700px] md:max-w-[95vw] z-[100] px-4 md:px-0"
                         >
                           <DatePickerCustom 
                             selectedRange={selectedRange}

@@ -57,6 +57,17 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showImportantInfo, setShowImportantInfo] = useState(false);
+
+  useEffect(() => {
+    if (showDatePicker) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showDatePicker]);
   
   // Form State
   const [vehicleType, setVehicleType] = useState<'Car' | 'Motorbike' | null>(null);

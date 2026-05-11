@@ -634,6 +634,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const [pickUpTime, setPickUpTime] = useState('09:30');
   const [dropOffTime, setDropOffTime] = useState('09:30');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (showDatePicker) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showDatePicker]);
+  
   const [showImportantInfo, setShowImportantInfo] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);

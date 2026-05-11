@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Booking, Car } from '../types';
 import { format, parseISO, startOfDay, isToday, isPast, isFuture, getMonth, getYear, isValid, differenceInDays, addDays } from 'date-fns';
 import { Calendar, Clock, User, Car as CarIcon, MapPin, Search, Filter, Eye, Edit2, Trash2, X, AlertCircle, AlertTriangle, CheckCircle2, Mail, Phone, FileText, DollarSign, ShieldCheck } from 'lucide-react';
@@ -35,6 +35,17 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
     to: addDays(new Date(), 1)
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (showDatePicker) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showDatePicker]);
 
   const filteredBookings = useMemo(() => {
     return bookings.filter(booking => {

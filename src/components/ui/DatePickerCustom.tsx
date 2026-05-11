@@ -175,94 +175,96 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
   return (
     <div 
       className={cn(
-        "rounded-[40px] overflow-visible z-[100] shadow-2xl transition-all",
-        "w-full max-w-[700px] mx-auto bg-white dark:bg-[#1A1A1A]",
+        "relative md:absolute md:top-full md:left-0 lg:left-1/2 lg:-translate-x-1/2 md:mt-4 rounded-[30px] md:rounded-[40px] z-[100] shadow-2xl transition-all flex flex-col",
+        "w-full max-w-[700px] mx-auto bg-white dark:bg-[#1A1A1A] max-h-[90dvh] md:max-h-none",
         isBikeMode ? "bike-mode" : "car-mode"
       )}
     >
-      <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 overflow-visible rounded-t-[40px]">
-        <button 
-          type="button"
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="absolute left-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
-        >
-          <ChevronLeft size={24} />
-        </button>
-        {renderMonth(currentMonth)}
-        <div className="w-px bg-black/10 dark:bg-white/10 hidden md:block" />
-        {renderMonth(nextMonth)}
-        <button 
-          type="button"
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="absolute right-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
-        >
-          <ChevronRight size={24} />
-        </button>
-      </div>
-
-      {/* Time Selection Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 border-b border-black/10 dark:border-white/10">
-        <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-black/10 dark:border-white/10">
-          <div className="flex items-start gap-4">
-            <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
-              {tempRange.from ? format(tempRange.from, 'd') : '--'}
-            </span>
-            <div>
-              <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
-                {tempRange.from ? format(tempRange.from, 'MMMM yyyy') : 'Select Date'}
-              </p>
-              <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
-                {tempRange.from ? format(tempRange.from, 'EEEE') : ''}
-              </p>
-            </div>
-          </div>
-          <div className="mt-6 md:mt-8 relative">
-            <select 
-              value={pickUpTime}
-              onChange={(e) => onPickUpTimeChange(e.target.value)}
-              className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
-            >
-              {times.map(time => (
-                <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
-              ))}
-            </select>
-            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
-          </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden">
+        <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 rounded-t-[40px]">
+          <button 
+            type="button"
+            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+            className="absolute left-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          {renderMonth(currentMonth)}
+          <div className="w-px bg-black/10 dark:bg-white/10 hidden md:block" />
+          {renderMonth(nextMonth)}
+          <button 
+            type="button"
+            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+            className="absolute right-6 top-8 p-2 text-[#1A1A1A] dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full z-20 transition-colors"
+          >
+            <ChevronRight size={24} />
+          </button>
         </div>
 
-        <div className="p-6 md:p-8">
-          <div className="flex items-start gap-4">
-            <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
-              {tempRange.to ? format(tempRange.to, 'd') : '--'}
-            </span>
-            <div>
-              <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
-                {tempRange.to ? format(tempRange.to, 'MMMM yyyy') : 'Select Date'}
-              </p>
-              <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
-                {tempRange.to ? format(tempRange.to, 'EEEE') : ''}
-              </p>
+        {/* Time Selection Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-black/10 dark:border-white/10">
+          <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-black/10 dark:border-white/10">
+            <div className="flex items-start gap-4">
+              <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
+                {tempRange.from ? format(tempRange.from, 'd') : '--'}
+              </span>
+              <div>
+                <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
+                  {tempRange.from ? format(tempRange.from, 'MMMM yyyy') : 'Select Date'}
+                </p>
+                <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
+                  {tempRange.from ? format(tempRange.from, 'EEEE') : ''}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 md:mt-8 relative">
+              <select 
+                value={pickUpTime}
+                onChange={(e) => onPickUpTimeChange(e.target.value)}
+                className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
+              >
+                {times.map(time => (
+                  <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
+                ))}
+              </select>
+              <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
+              <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
             </div>
           </div>
-          <div className="mt-6 md:mt-8 relative">
-            <select 
-              value={dropOffTime}
-              onChange={(e) => onDropOffTimeChange(e.target.value)}
-              className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
-            >
-              {times.map(time => (
-                <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
-              ))}
-            </select>
-            <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
-            <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
+
+          <div className="p-6 md:p-8">
+            <div className="flex items-start gap-4">
+              <span className="text-4xl md:text-6xl font-bold text-[#1A1A1A]/20 dark:text-white/20 leading-none">
+                {tempRange.to ? format(tempRange.to, 'd') : '--'}
+              </span>
+              <div>
+                <p className="text-[#1A1A1A] dark:text-white font-bold text-base md:text-lg leading-tight text-left">
+                  {tempRange.to ? format(tempRange.to, 'MMMM yyyy') : 'Select Date'}
+                </p>
+                <p className="text-[#1A1A1A]/60 dark:text-white/60 text-xs md:text-sm font-medium text-left">
+                  {tempRange.to ? format(tempRange.to, 'EEEE') : ''}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 md:mt-8 relative">
+              <select 
+                value={dropOffTime}
+                onChange={(e) => onDropOffTimeChange(e.target.value)}
+                className="w-full bg-transparent text-[#1A1A1A] dark:text-white text-3xl md:text-5xl font-bold outline-none appearance-none cursor-pointer"
+              >
+                {times.map(time => (
+                  <option key={time} value={time} className="text-[#1A1A1A] dark:text-white bg-white dark:bg-[#1A1A1A] text-base">{time}</option>
+                ))}
+              </select>
+              <ChevronDown size={24} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none md:hidden" />
+              <ChevronDown size={32} className="absolute right-0 top-1/2 -translate-y-1/2 text-[#1A1A1A] dark:text-white pointer-events-none hidden md:block" />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom Bar Container */}
-      <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222] rounded-b-[40px]">
+      {/* Bottom Bar Container - Sticky/Pinned at bottom */}
+      <div className="p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222] rounded-b-[30px] md:rounded-b-[40px] border-t border-black/10 dark:border-white/10 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-8">
         <div className="flex items-center gap-3">
           <span className="text-[#1A1A1A]/60 dark:text-white/60 font-medium text-sm">Duration:</span>
           <span className="bg-[#28a745] text-white font-bold text-lg px-4 py-1.5 rounded-full shadow-sm">
