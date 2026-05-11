@@ -409,7 +409,7 @@ function AppContent() {
       
       // If it's a domain error, give specific advice
       if (error.code === 'auth/unauthorized-domain') {
-        toast.error('This domain is not authorized in Firebase. Please add new1.pattayarentacar.com to Authorized Domains in Firebase Console.', {
+        toast.error(`Domain not authorized in Firebase. Please add ${window.location.hostname} to Authorized Domains in Firebase Console (Project: pattaya-rent-a-car-rebuild).`, {
           duration: 10000
         });
       }
