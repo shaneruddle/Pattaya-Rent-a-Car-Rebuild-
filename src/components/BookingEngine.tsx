@@ -858,11 +858,20 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           onClick={() => setShowCalendar(false)}
-                          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90] md:hidden"
+                          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90]"
                         />
                         <div 
                           ref={calendarRef}
-                          className="fixed inset-x-0 bottom-0 md:inset-x-auto md:bottom-auto md:absolute md:top-full md:left-0 md:translate-x-0 md:-mt-2 md:w-[700px] md:max-w-[95vw] z-[100] px-4 md:px-0"
+                          className={cn(
+                            "fixed z-[100] transition-all duration-300",
+                            // Mobile positioning
+                            "inset-x-0 bottom-0 px-4 pb-4",
+                            // Desktop positioning: centered on screen
+                            "md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2",
+                            "md:w-[700px] md:max-w-[95vw] md:px-0",
+                            // Scroll fix: limits height and adds internal scrollbar
+                            "max-h-[90vh] md:max-h-[85vh] overflow-y-auto custom-scrollbar shadow-2xl rounded-[2.5rem]"
+                          )}
                         >
                           <DatePickerCustom 
                             selectedRange={selectedRange}
@@ -1444,4 +1453,3 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     </div>
   );
 };
-
