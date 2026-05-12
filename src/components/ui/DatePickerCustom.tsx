@@ -175,8 +175,7 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
   return (
     <div 
       className={cn(
-        "relative md:absolute md:top-full md:left-0 lg:left-1/2 lg:-translate-x-1/2 md:mt-4 rounded-[30px] md:rounded-[40px] z-[100] shadow-2xl transition-all flex flex-col overflow-hidden",
-        "w-full max-w-[700px] mx-auto bg-white dark:bg-[#1A1A1A] max-h-[90dvh] md:max-h-none",
+        "flex flex-col h-full w-full bg-white dark:bg-[#1A1A1A]",
         isBikeMode ? "bike-mode" : "car-mode"
       )}
     >
@@ -264,7 +263,7 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
       </div>
 
       {/* Sticky Footer */}
-      <div className="mt-auto p-4 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222] rounded-b-[30px] md:rounded-b-[40px] border-t border-black/10 dark:border-white/10 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-8">
+      <div className="sticky bottom-0 mt-auto p-4 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-[#f8f8f8] dark:bg-[#222] border-t border-black/10 dark:border-white/10 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-8 z-30">
         <div className="flex items-center gap-3">
           <span className="text-[#1A1A1A]/60 dark:text-white/60 font-medium text-sm">Duration:</span>
           <span className="bg-[#28a745] text-white font-bold text-lg px-4 py-1.5 rounded-full shadow-sm">

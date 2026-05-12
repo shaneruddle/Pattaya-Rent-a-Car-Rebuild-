@@ -1,16 +1,13 @@
 FROM node:20-slim AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
 COPY . /app
 WORKDIR /app
 
 FROM base AS build
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm run build
+RUN npm install
+RUN npm run build
 
 FROM base
 COPY --from=build /app/dist /app/dist
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
-EXPOSE 8080
-CMD [ "node", "server.js" ]
+RUN npm install --omit=dev
+EXPOSE 3000
+CMD [ "node", "dist/server.js" ]

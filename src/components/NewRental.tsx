@@ -633,12 +633,19 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
                     <AnimatePresence>
                       {showDatePicker && (
-                        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+                        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowDatePicker(false)}
+                            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+                          />
                           <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            className="w-full max-w-[700px]"
+                            className="relative z-10 w-full max-w-[700px] bg-white dark:bg-[#1A1A1A] rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
                           >
                             <DatePickerCustom
                               selectedRange={dateRange}

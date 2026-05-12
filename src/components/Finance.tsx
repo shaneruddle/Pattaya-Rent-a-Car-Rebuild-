@@ -296,14 +296,19 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   // Form State
   const [formData, setFormData] = useState({
     amount: 0,
+    rentalAmount: 0,
+    depositAmount: 0,
     date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     category: '',
     carId: '',
     bookingId: '',
     accountId: '',
+    depositAccountId: '',
     toAccountId: '',
     description: ''
   });
+
+  const [depositAccountManuallySet, setDepositAccountManuallySet] = useState(false);
 
   const carOptions = useMemo(() => [
     { value: '', label: 'None' },
@@ -594,18 +599,85 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     }
 
     try {
-      if (!formData.accountId) {
-        toast.error("Please select an account");
-        return;
-      }
+      if (modalType === 'Income' && !editingTransactionId) {
+        // Handle Split Income (Rental + Deposit)
+        if (formData.rentalAmount <= 0 && formData.depositAmount <= 0) {
+          toast.error("At least one amount must be greater than 0");
+          return;
+        }
 
-      const account = accounts.find(a => a.id === formData.accountId);
-      if (!account) {
-        toast.error("Account not found");
-        return;
-      }
+        if (!formData.accountId) {
+          toast.error("Please select an account for Rental");
+          return;
+        }
+        if (formData.depositAmount > 0 && !formData.depositAccountId) {
+          toast.error("Please select an account for Deposit");
+          return;
+        }
 
-      if (editingTransactionId) {
+        const rentalAcc = accounts.find(a => a.id === formData.accountId);
+        const depositAcc = accounts.find(a => a.id === formData.depositAccountId);
+
+        if (!rentalAcc) {
+          toast.error("Rental account not found");
+          return;
+        }
+
+        // 1. Log Rental Transaction
+        if (formData.rentalAmount > 0) {
+          await addDoc(collection(db, 'transactions'), {
+            type: 'Income',
+            amount: formData.rentalAmount,
+            date: formData.date,
+            category: 'Rental',
+            carId: formData.carId || null,
+            bookingId: formData.bookingId || null,
+            accountId: formData.accountId,
+            description: formData.description ? `(Rental) ${formData.description}` : 'Rental Income'
+          });
+
+          await updateDoc(doc(db, 'accounts', rentalAcc.id), {
+            balance: rentalAcc.balance + formData.rentalAmount
+          });
+        }
+
+        // 2. Log Deposit Transaction
+        if (formData.depositAmount > 0) {
+          if (!depositAcc) {
+            toast.error("Deposit account not found");
+            return;
+          }
+
+          await addDoc(collection(db, 'transactions'), {
+            type: 'Income',
+            amount: formData.depositAmount,
+            date: formData.date,
+            category: 'Deposit',
+            carId: formData.carId || null,
+            bookingId: formData.bookingId || null,
+            accountId: formData.depositAccountId,
+            description: formData.description ? `(Deposit) ${formData.description}` : 'Deposit Income'
+          });
+
+          await updateDoc(doc(db, 'accounts', depositAcc.id), {
+            balance: depositAcc.balance + formData.depositAmount
+          });
+        }
+
+        // Update booking status if linked
+        if (formData.bookingId) {
+          try {
+            await updateDoc(doc(db, 'bookings', formData.bookingId), {
+              status: 'Paid'
+            });
+            toast.success("Booking status updated to Paid");
+          } catch (err) {
+            console.error("Error updating booking status:", err);
+          }
+        }
+
+        setSuccessAction("Income logged successfully (Split)");
+      } else if (editingTransactionId) {
         const oldTx = transactions.find(t => t.id === editingTransactionId);
         if (!oldTx) return;
 
@@ -690,6 +762,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         
         setSuccessAction("Transaction updated successfully");
       } else {
+        const account = accounts.find(a => a.id === formData.accountId);
+        if (!account && modalType !== 'Transfer') {
+          toast.error("Account not found");
+          return;
+        }
+
         if (modalType === 'Transfer') {
           const toAccount = accounts.find(a => a.id === formData.toAccountId);
           if (!toAccount) {
@@ -774,10 +852,13 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     setModalType(tx.type === 'Transfer' ? 'Transfer' : 'TransactionEdit');
     setFormData({
       amount: tx.amount,
+      rentalAmount: tx.category === 'Rental' ? tx.amount : 0,
+      depositAmount: tx.category === 'Deposit' ? tx.amount : 0,
       date: tx.date,
       category: tx.category,
       carId: tx.carId || '',
       accountId: tx.accountId,
+      depositAccountId: tx.category === 'Deposit' ? tx.accountId : tx.accountId,
       toAccountId: tx.toAccountId || '',
       description: tx.description || '',
       bookingId: tx.bookingId || ''
@@ -849,14 +930,18 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const resetForm = () => {
     setFormData({
       amount: 0,
+      rentalAmount: 0,
+      depositAmount: 0,
       date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       category: '',
       carId: '',
       bookingId: '',
       accountId: '',
+      depositAccountId: '',
       toAccountId: '',
       description: ''
     });
+    setDepositAccountManuallySet(false);
     setSelectedAccount(null);
     setEditingTransactionId(null);
   };
@@ -865,9 +950,20 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     setModalType(type);
     if (account) {
       setSelectedAccount(account);
-      setFormData(prev => ({ ...prev, accountId: account.id, amount: account.balance }));
+      setFormData(prev => ({ 
+        ...prev, 
+        accountId: account.id, 
+        depositAccountId: account.id, // Default deposit account to the same one
+        amount: account.balance 
+      }));
     } else {
-      setFormData(prev => ({ ...prev, accountId: accounts[0]?.id || '' }));
+      const defaultAccId = accounts[0]?.id || '';
+      setFormData(prev => ({ 
+        ...prev, 
+        accountId: defaultAccId,
+        depositAccountId: defaultAccId,
+        category: type === 'Income' ? 'Rental' : '' // Set default category for Income
+      }));
     }
     setShowModal(true);
   };
@@ -2195,7 +2291,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                 </button>
               </div>
 
-              <div className="p-8">
+              <div className="p-8 max-h-[70vh] overflow-y-auto">
                 {modalType === 'AccountEdit' ? (
                   <form onSubmit={handleAccountUpdate} className="space-y-6">
                     <div className="space-y-2">
@@ -2219,8 +2315,89 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                     </button>
                   </form>
                 ) : (
-                  <form onSubmit={handleTransactionSubmit} className="space-y-6">
-                    <div className="grid grid-cols-2 gap-6">
+                  <form onSubmit={handleTransactionSubmit} className="space-y-5">
+                    {modalType === 'Income' && !editingTransactionId ? (
+                      <div className="space-y-6">
+                        {/* Split Income Layout */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2 bg-green-50/50 p-4 rounded-3xl border border-green-100">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-green-600 ml-2">Rental Amount (THB)</label>
+                            <input 
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white/60 border-b-2 border-green-200 p-2 text-lg font-bold focus:border-green-500 outline-none transition-all rounded-t-xl"
+                              value={formData.rentalAmount || ''}
+                              onChange={e => setFormData({ ...formData, rentalAmount: Number(e.target.value) })}
+                              placeholder="0.00"
+                            />
+                            <div className="mt-2">
+                              <label className="text-[9px] font-bold uppercase tracking-wider text-green-600/60 ml-2">Account</label>
+                              <select 
+                                className="w-full bg-white/40 border-b border-green-100 p-2 text-[10px] uppercase font-bold focus:border-green-500 outline-none rounded-t-lg appearance-none"
+                                value={formData.accountId}
+                                onChange={e => {
+                                  const newAccountId = e.target.value;
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    accountId: newAccountId,
+                                    depositAccountId: depositAccountManuallySet ? prev.depositAccountId : newAccountId
+                                  }));
+                                }}
+                              >
+                                {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 bg-blue-50/50 p-4 rounded-3xl border border-blue-100">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-blue-600 ml-2">Deposit Amount (THB)</label>
+                            <input 
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white/60 border-b-2 border-blue-200 p-2 text-lg font-bold focus:border-blue-500 outline-none transition-all rounded-t-xl"
+                              value={formData.depositAmount || ''}
+                              onChange={e => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                              placeholder="0.00"
+                            />
+                            <div className="mt-2">
+                              <label className="text-[9px] font-bold uppercase tracking-wider text-blue-600/60 ml-2">Account</label>
+                              <select 
+                                className="w-full bg-white/40 border-b border-blue-100 p-2 text-[10px] uppercase font-bold focus:border-blue-500 outline-none rounded-t-lg appearance-none"
+                                value={formData.depositAccountId}
+                                onChange={e => {
+                                  setFormData({ ...formData, depositAccountId: e.target.value });
+                                  setDepositAccountManuallySet(true);
+                                }}
+                              >
+                                {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center px-4 py-3 bg-[#141414] rounded-2xl text-white">
+                          <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Income</span>
+                          <span className="text-xl font-bold">฿{(formData.rentalAmount + formData.depositAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Date & Time</label>
+                          <input 
+                            type="datetime-local"
+                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl"
+                            value={formData.date}
+                            onChange={e => setFormData({ ...formData, date: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Amount (THB)</label>
                         <input 
@@ -2309,6 +2486,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         </div>
                       )}
                     </div>
+                  </>
+                )}
 
                     {modalType !== 'Transfer' && (
                       <div className="space-y-2">
@@ -2375,17 +2554,19 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                       />
                     </div>
 
-                    <button 
-                      type="submit"
-                      className={cn(
-                        "w-full py-4 rounded-3xl font-bold uppercase tracking-widest text-[10px] transition-all shadow-lg",
-                        (modalType === 'Income' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Income')) ? "bg-green-500 text-white shadow-green-500/20" : 
-                        (modalType === 'Expense' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Expense')) ? "bg-red-500 text-white shadow-red-500/20" :
-                        "bg-brand-orange text-white shadow-brand-orange/20"
-                      )}
-                    >
-                      {editingTransactionId ? 'Update Transaction' : `Log ${modalType}`}
-                    </button>
+                    <div className="sticky bottom-0 bg-white pt-4">
+                      <button 
+                        type="submit"
+                        className={cn(
+                          "w-full py-4 rounded-3xl font-bold uppercase tracking-widest text-[10px] transition-all shadow-lg",
+                          (modalType === 'Income' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Income')) ? "bg-green-500 text-white shadow-green-500/20" : 
+                          (modalType === 'Expense' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Expense')) ? "bg-red-500 text-white shadow-red-500/20" :
+                          "bg-brand-orange text-white shadow-brand-orange/20"
+                        )}
+                      >
+                        {editingTransactionId ? 'Update Transaction' : `Log ${modalType}`}
+                      </button>
+                    </div>
                   </form>
                 )}
               </div>

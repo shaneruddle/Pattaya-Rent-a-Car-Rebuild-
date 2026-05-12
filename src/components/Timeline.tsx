@@ -54,6 +54,22 @@ const ManageRentalModal: React.FC<{
   const [extraReason, setExtraReason] = useState('');
   const [extensionPayment, setExtensionPayment] = useState<number>(0);
   const [extensionDays, setExtensionDays] = useState<number>(1);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      const fetchAccounts = async () => {
+        const querySnapshot = await getDocs(collection(db, 'accounts'));
+        const accs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAccounts(accs);
+        // Default to 'Cash Car' or first available
+        const defaultAcc = accs.find((a: any) => a.name === 'Cash Car') || accs[0];
+        if (defaultAcc) setSelectedAccountId(defaultAcc.id);
+      };
+      fetchAccounts();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -110,6 +126,11 @@ const ManageRentalModal: React.FC<{
   };
 
   const handleExtendRental = async () => {
+    if (extensionPayment > 0 && !selectedAccountId) {
+      toast.error('Please select an account for the payment');
+      return;
+    }
+
     setLoading(true);
     try {
       const currentEndDate = parseISO(booking.endDate);
@@ -123,9 +144,8 @@ const ManageRentalModal: React.FC<{
 
       // 2. Log Income to Finance
       if (extensionPayment > 0) {
-        const accs = await getDocs(collection(db, 'accounts'));
-        const defaultAcc = accs.docs.find(d => d.data().name === 'Cash Car')?.id || accs.docs[0]?.id || 'unknown';
-
+        const account = accounts.find(a => a.id === selectedAccountId);
+        
         await addDoc(collection(db, 'transactions'), {
           type: 'Income',
           amount: Number(extensionPayment),
@@ -133,9 +153,16 @@ const ManageRentalModal: React.FC<{
           category: 'Rental Extension',
           carId: booking.carId,
           bookingId: booking.id,
-          accountId: defaultAcc,
+          accountId: selectedAccountId,
           description: `Extension payment (+${extensionDays} days) from ${booking.customerName}`
         });
+
+        // Update Account Balance
+        if (account) {
+          await updateDoc(doc(db, 'accounts', account.id), {
+            balance: (account.balance || 0) + Number(extensionPayment)
+          });
+        }
       }
 
       // 3. Send Email
@@ -204,7 +231,7 @@ const ManageRentalModal: React.FC<{
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Final Extra Charges (THB)</label>
                 <div className="relative">
-                  <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-orange" />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-orange font-bold text-sm">฿</span>
                   <input
                     type="number"
                     value={extraCharges}
@@ -271,17 +298,33 @@ const ManageRentalModal: React.FC<{
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment (THB)</label>
-                <div className="relative">
-                  <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500" />
-                  <input
-                    type="number"
-                    value={extensionPayment}
-                    onChange={e => setExtensionPayment(Number(e.target.value))}
-                    className="w-full bg-black/5 border-0 p-4 pl-10 rounded-2xl text-sm font-bold focus:ring-2 ring-blue-500 outline-none transition-all"
-                    placeholder="0"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 text-left">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment (THB)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500 font-bold text-sm">฿</span>
+                    <input
+                      type="number"
+                      value={extensionPayment}
+                      onChange={e => setExtensionPayment(Number(e.target.value))}
+                      className="w-full bg-black/5 border-0 p-4 pl-10 rounded-2xl text-sm font-bold focus:ring-2 ring-blue-500 outline-none transition-all"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Payment Account</label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={e => setSelectedAccountId(e.target.value)}
+                    className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-blue-500 outline-none transition-all appearance-none"
+                  >
+                    <option value="" disabled>Select Account</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -2433,12 +2476,19 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
                             <AnimatePresence>
                               {showDatePicker && (
-                                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm shadow-2xl">
+                                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                                  <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowDatePicker(false)}
+                                    className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                                  />
                                   <motion.div
                                     initial={{ opacity: 0, scale: 0.95 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     exit={{ opacity: 0, scale: 0.95 }}
-                                    className="w-full max-w-[700px]"
+                                    className="relative z-10 w-full max-w-[700px] bg-white dark:bg-[#1A1A1A] rounded-[2.5rem] overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
                                   >
                                     <DatePickerCustom
                                       selectedRange={{ 

@@ -775,8 +775,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           ) : (
             <>
               {/* Hero Section */}
-              <section className="pt-24 pb-40 px-4 text-center">
-                <h1 className="text-4xl md:text-6xl font-bold text-black mb-12 tracking-tight">
+              <section className="pt-10 md:pt-16 pb-20 md:pb-32 px-4 text-center">
+                <h1 className="text-4xl md:text-6xl font-bold text-black mb-8 md:mb-12 tracking-tight">
                   {isBikeMode ? "Let's find your perfect bike." : t('hero.title')} <br />
                   <span className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{t('hero.subtitle')}</span>
                 </h1>
@@ -852,25 +852,23 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
                   <AnimatePresence>
                     {showCalendar && (
-                      <>
+                      <div className="fixed inset-0 z-[9999] flex items-end md:items-center justify-center p-0 md:p-4">
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           onClick={() => setShowCalendar(false)}
-                          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[90]"
+                          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                         />
-                        <div 
+                        <motion.div 
                           ref={calendarRef}
+                          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 20 }}
                           className={cn(
-                            "fixed z-[100] transition-all duration-300",
-                            // Mobile positioning
-                            "inset-x-0 bottom-0 px-4 pb-4",
-                            // Desktop positioning: centered on screen
-                            "md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2",
-                            "md:w-[700px] md:max-w-[95vw] md:px-0",
-                            // Scroll fix: limits height and adds internal scrollbar
-                            "max-h-[90vh] md:max-h-[85vh] overflow-y-auto custom-scrollbar shadow-2xl rounded-[2.5rem]"
+                            "relative z-10 w-full md:w-[700px] max-w-full md:max-w-[95vw]",
+                            "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden",
+                            "flex flex-col max-h-[90vh] md:max-h-[85vh]"
                           )}
                         >
                           <DatePickerCustom 
@@ -885,8 +883,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                             onApply={() => { setShowCalendar(false); handlePageChange('results'); }}
                             useFilteredTimes={true}
                           />
-                        </div>
-                      </>
+                        </motion.div>
+                      </div>
                     )}
                   </AnimatePresence>
 
