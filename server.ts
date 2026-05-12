@@ -670,6 +670,72 @@ async function startServer() {
       });
   }, 5000);
 
+  // Google Places Proxy for Review Manager
+  app.post("/api/places/details", async (req, res) => {
+    const { place_id } = req.body;
+    const key = process.env.VITE_GOOGLE_MAPS_API_KEY;
+
+    if (!place_id) {
+      console.error("[Proxy] Missing place_id in request body");
+      return res.status(400).json({ error: "Missing place_id" });
+    }
+
+    if (!key) {
+      console.error("[Proxy] VITE_GOOGLE_MAPS_API_KEY is not configured on the server");
+      return res.status(500).json({ error: "Google Maps API Key is not configured on the server. Please add VITE_GOOGLE_MAPS_API_KEY to secrets." });
+    }
+
+    try {
+      const url = `https://places.googleapis.com/v1/places/${place_id}`;
+      logInit(`[Proxy] Fetching Places (New) details for ${place_id}`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'reviews,rating,userRatingCount,displayName',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json'
+        },
+        timeout: 10000 // 10s timeout
+      });
+      
+      logInit(`[Proxy] Successfully fetched details for ${place_id}`);
+      // Log the reviews structure to check for replies
+      if (response.data?.reviews) {
+        logInit(`[Proxy] Fetched ${response.data.reviews.length} reviews. Sample review keys: ${Object.keys(response.data.reviews[0]).join(', ')}`);
+        // Log one full review to be absolutely sure
+        logInit(`[Proxy] Sample review: ${JSON.stringify(response.data.reviews[0]).substring(0, 500)}`);
+      }
+      res.json(response.data);
+    } catch (error: any) {
+      const statusCode = error.response?.status || 500;
+      const responseData = error.response?.data;
+
+      if (statusCode === 403) {
+        console.log('Google API 403 response:', JSON.stringify(responseData));
+      }
+      
+      // Handle non-JSON responses (like HTML 403s)
+      let errorMessage = "Internal Server Error";
+      if (typeof responseData === 'string' && responseData.includes('<html>')) {
+        errorMessage = `API Error (${statusCode}): The API returned an HTML error instead of JSON. This often means the API key is invalid or the service is restricted.`;
+      } else if (responseData?.error?.message) {
+        errorMessage = responseData.error.message;
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+      
+      console.error("Google Places API Proxy Error:", {
+        status: statusCode,
+        message: errorMessage,
+        url: error.config?.url,
+        data: typeof responseData === 'string' ? responseData.substring(0, 200) : responseData
+      });
+      
+      res.status(statusCode).json({ error: errorMessage });
+    }
+  });
+
   // Catch-all for unhandled API routes
   app.all("/api/*", (req, res) => {
     console.log(`Unhandled API Request: ${req.method} ${req.path}`);

@@ -1343,9 +1343,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const isPaid = booking.status === 'Paid';
     const isMaintenance = !!booking.isMaintenance;
     const paymentPending = booking.paymentStatus === 'pending';
+    const isFutureBooking = isFuture(startOfDay(start));
     const car = cars.find(c => c.id === (booking.carId || 'unassigned'));
     const pricePerDay = car?.pricePerDay || 0;
 
+    const RED_500 = '#EF4444';
     const EMERALD_500 = '#10B981';
     const YELLOW_400 = '#FACC15';
     const GRAY_600 = '#4B5563';
@@ -1354,13 +1356,13 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
     if (isMaintenance) {
       background = GRAY_600;
-    } else if (!isPaid) {
-      // IF (booking.status is NOT 'Paid'): Return background: #FACC15
-      background = YELLOW_400;
+    } else if (isFutureBooking && !isPaid) {
+      // High Priority - Future Unpaid (Red)
+      background = RED_500;
     } else if (isPaid && paymentPending) {
-      // ELSE IF (booking.status === 'Paid' AND booking.paymentStatus === 'pending')
+      // Medium Priority - Paid with Unpaid Extension (Split)
       // Calculate split point based on original payment
-      let splitPercentage = 70; // Placeholder
+      let splitPercentage = 70; 
       if (pricePerDay > 0 && (booking.amount || 0) > 0) {
         const originalDays = Math.round((booking.amount || 0) / pricePerDay);
         const originalEndDate = addDays(start, originalDays);
@@ -1372,8 +1374,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
         }
       }
       background = `linear-gradient(to right, ${EMERALD_500} 0%, ${EMERALD_500} ${splitPercentage}%, ${YELLOW_400} ${splitPercentage}%, ${YELLOW_400} 100%)`;
+    } else if (!isPaid) {
+      // Low Priority - Standard Unpaid (Yellow)
+      // Catch bookings starting today or in the past that aren't paid
+      background = YELLOW_400;
     } else {
-      // ELSE: Return background: #10B981
+      // Default - Fully Paid (Green)
       background = EMERALD_500;
     }
 
