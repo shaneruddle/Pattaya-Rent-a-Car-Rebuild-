@@ -404,7 +404,7 @@ async function startServer() {
     }
   });
 
-  async function fetchAllPricingData(spreadsheetId: string, retries = 5): Promise<any> {
+  async function fetchAllPricingData(spreadsheetId: string, retries = 12): Promise<any> {
     if (currentFetchPromise) {
       console.log('Using existing fetch promise for pricing data');
       return currentFetchPromise;
@@ -415,18 +415,20 @@ async function startServer() {
       console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
       
       try {
-        const response = await axios.get(url, {
+        const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          },
-          responseType: 'arraybuffer',
-          timeout: 300000, // 5 minutes
-          maxRedirects: 5
+          }
         });
 
-        const buffer = response.data;
-        const contentTypeRaw = response.headers['content-type'];
-        const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
+        if (!response.ok) {
+          const status = response.status;
+          const text = status !== 404 ? await response.text() : 'Not Found';
+          throw new Error(`Server returned ${status}: ${text.substring(0, 100)}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('content-type') || '';
         console.log(`Successfully downloaded spreadsheet (${buffer.byteLength} bytes), Content-Type: ${contentType}`);
         
         if (contentType && !contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel') && !contentType.includes('application/zip')) {
@@ -501,11 +503,12 @@ async function startServer() {
                               error.message?.toLowerCase().includes('stream has been aborted') ||
                               error.message?.toLowerCase().includes('fetch failed');
         
-        const status = error.response?.status || (error.message?.includes('status: ') ? parseInt(error.message.split('status: ')[1]) : null);
+        const status = error.response?.status || (error.message?.includes('Server returned ') ? parseInt(error.message.split('Server returned ')[1]) : null);
         const isRateLimit = status === 429 || status === 503;
+        const is404 = status === 404;
 
-        if (currentRetries > 0 && (isTimeout || isNetworkError || isRateLimit)) {
-          const delay = Math.pow(2, 6 - currentRetries) * 1000;
+        if (currentRetries > 0 && !is404 && (isTimeout || isNetworkError || isRateLimit)) {
+          const delay = Math.min(10000, Math.pow(2, 6 - currentRetries) * 1000);
           console.warn(`Fetch error (${error.message}), retrying in ${delay}ms... ${currentRetries} attempts left`);
           await new Promise(r => setTimeout(r, delay));
           return fetchTask(currentRetries - 1);

@@ -229,7 +229,7 @@ const ManageRentalModal: React.FC<{
 
             <div className="grid grid-cols-2 gap-6 bg-white/40 p-6 rounded-[32px] border border-white/60 shadow-sm">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Final Extra Charges (THB)</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Final Extra Charges (฿)</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-orange font-bold text-sm">฿</span>
                   <input
@@ -300,7 +300,7 @@ const ManageRentalModal: React.FC<{
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment (THB)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Extension Payment (฿)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500 font-bold text-sm">฿</span>
                     <input
@@ -1340,29 +1340,48 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const endSlotIdx = endDayIdx * 2 + endSlot;
     const totalSlots = Math.max(endSlotIdx - startSlotIdx + 1, 1);
 
-    const isFutureBooking = isFuture(start);
-    const isUnpaid = start < new Date() && booking.status !== 'Paid';
-    
-    let bgColor = '#FF6321'; // Default brand-orange
-    
-    if (booking.isMaintenance) {
-      bgColor = '#4B5563'; // Dark Grey (gray-600)
-    } else if (booking.paymentStatus === 'pending') {
-      bgColor = '#FACC15'; // Yellow (yellow-400)
-    } else if (booking.status === 'Paid') {
-      bgColor = '#10B981'; // Green (emerald-500)
-    } else if (isUnpaid) {
-      bgColor = '#EAB308'; // Yellow (yellow-500) - Unpaid
-    } else if (isFutureBooking) {
-      bgColor = '#EF4444'; // Red (red-500)
-    } else if (!booking.carId || booking.carId === 'unassigned') {
-      bgColor = '#EAB308'; // Yellow (yellow-500)
+    const isPaid = booking.status === 'Paid';
+    const isMaintenance = !!booking.isMaintenance;
+    const paymentPending = booking.paymentStatus === 'pending';
+    const car = cars.find(c => c.id === (booking.carId || 'unassigned'));
+    const pricePerDay = car?.pricePerDay || 0;
+
+    const EMERALD_500 = '#10B981';
+    const YELLOW_400 = '#FACC15';
+    const GRAY_600 = '#4B5563';
+
+    let background = EMERALD_500;
+
+    if (isMaintenance) {
+      background = GRAY_600;
+    } else if (!isPaid) {
+      // IF (booking.status is NOT 'Paid'): Return background: #FACC15
+      background = YELLOW_400;
+    } else if (isPaid && paymentPending) {
+      // ELSE IF (booking.status === 'Paid' AND booking.paymentStatus === 'pending')
+      // Calculate split point based on original payment
+      let splitPercentage = 70; // Placeholder
+      if (pricePerDay > 0 && (booking.amount || 0) > 0) {
+        const originalDays = Math.round((booking.amount || 0) / pricePerDay);
+        const originalEndDate = addDays(start, originalDays);
+        const originalEndSlotIdxOverall = differenceInDays(startOfDay(originalEndDate), timelineStart) * 2 + (originalEndDate.getHours() >= 12 ? 1 : 0);
+        
+        if (originalEndSlotIdxOverall > startSlotIdx && originalEndSlotIdxOverall < endSlotIdx) {
+          const relativeSplit = originalEndSlotIdxOverall - startSlotIdx;
+          splitPercentage = (relativeSplit / totalSlots) * 100;
+        }
+      }
+      background = `linear-gradient(to right, ${EMERALD_500} 0%, ${EMERALD_500} ${splitPercentage}%, ${YELLOW_400} ${splitPercentage}%, ${YELLOW_400} 100%)`;
+    } else {
+      // ELSE: Return background: #10B981
+      background = EMERALD_500;
     }
 
     return {
       left: `${startSlotIdx * 36}px`,
       width: `${totalSlots * 36}px`,
-      backgroundColor: bgColor
+      background: background,
+      border: '1px solid rgba(0,0,0,0.1)'
     };
   };
 
@@ -2079,14 +2098,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Amount</p>
                     <p className="text-2xl font-bold text-brand-orange bg-white/40 p-4 rounded-2xl border border-white/60">
-                      {editingBooking.amount ? `${editingBooking.amount.toLocaleString()} THB` : '0 THB'}
+                      {editingBooking.amount ? `฿${editingBooking.amount.toLocaleString()}` : '฿0'}
                     </p>
                   </div>
 
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-1">Deposit Held</p>
                     <p className="text-2xl font-bold text-emerald-600 bg-white/40 p-4 rounded-2xl border border-white/60">
-                      {editingBooking.deposit ? `${editingBooking.deposit.toLocaleString()} THB` : '0 THB'}
+                      {editingBooking.deposit ? `฿${editingBooking.deposit.toLocaleString()}` : '฿0'}
                     </p>
                   </div>
 
@@ -2156,7 +2175,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                           : "border-red-500/30 text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white"
                       )}
                     >
-                      <DollarSign size={16} /> 
+                      <Check size={16} /> 
                       {editingBooking.paymentStatus === 'pending' ? 'Mark as Paid' : 'Mark as Pending'}
                     </button>
                     <button
@@ -2177,7 +2196,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       onClick={() => onLogIncome(editingBooking)}
                       className="w-full mt-4 h-12 border border-emerald-500/30 text-emerald-600 bg-emerald-500/5 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
                     >
-                      <DollarSign size={16} /> Log Payment to Finance
+                      <Check size={16} /> Log Payment to Finance
                     </button>
                   )}
                 </div>
@@ -2591,7 +2610,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Financial Overview</label>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="bg-brand-orange/5 p-4 rounded-[24px] border border-brand-orange/10">
-                            <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Total Fee (THB)</label>
+                            <label className="text-[8px] font-bold uppercase text-brand-orange block mb-1">Total Fee (฿)</label>
                             <input
                               type="number"
                               className="w-full bg-transparent border-0 p-0 text-lg font-bold text-gray-900 focus:ring-0 outline-none"
@@ -2600,7 +2619,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                             />
                           </div>
                           <div className="bg-black/5 p-4 rounded-[24px] border border-black/5">
-                            <label className="text-[8px] font-bold uppercase text-gray-500 block mb-1">Deposit (THB)</label>
+                            <label className="text-[8px] font-bold uppercase text-gray-500 block mb-1">Deposit (฿)</label>
                             <input
                               type="number"
                               className="w-full bg-transparent border-0 p-0 text-lg font-bold text-gray-900 focus:ring-0 outline-none"
