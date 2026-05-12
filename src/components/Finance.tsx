@@ -593,14 +593,20 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
   const handleTransactionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.amount <= 0) {
+    
+    // For new Income transactions, we use the sum of rental and deposit amounts
+    const isNewIncome = modalType === 'Income' && !editingTransactionId;
+    const effectiveAmount = isNewIncome ? (formData.rentalAmount + formData.depositAmount) : formData.amount;
+
+    if (effectiveAmount <= 0) {
       toast.error("Amount must be greater than 0");
       return;
     }
 
     try {
-      if (modalType === 'Income' && !editingTransactionId) {
+      if (isNewIncome) {
         // Handle Split Income (Rental + Deposit)
+        // Validation already partially handled by effectiveAmount check above
         if (formData.rentalAmount <= 0 && formData.depositAmount <= 0) {
           toast.error("At least one amount must be greater than 0");
           return;
@@ -833,9 +839,9 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
       await logSystemActivity(
         editingTransactionId ? 'Transaction Updated' : 'Transaction Logged',
-        `${editingTransactionId ? 'Updated' : 'Created'} ${modalType === 'Transfer' ? 'transfer' : modalType} transaction: ${formData.description || 'No description'} (THB ${formData.amount.toLocaleString()})`,
+        `${editingTransactionId ? 'Updated' : 'Created'} ${modalType === 'Transfer' ? 'transfer' : modalType} transaction: ${formData.description || 'No description'} (THB ${effectiveAmount.toLocaleString()})`,
         'Finance',
-        { transactionId: editingTransactionId || 'new', type: modalType, amount: formData.amount }
+        { transactionId: editingTransactionId || 'new', type: modalType, amount: effectiveAmount }
       );
 
       setShowModal(false);
