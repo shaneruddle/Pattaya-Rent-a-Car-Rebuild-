@@ -15,6 +15,8 @@ import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
+import { google } from "googleapis";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -692,7 +694,7 @@ async function startServer() {
       const response = await axios.get(url, {
         headers: {
           'X-Goog-Api-Key': key,
-          'X-Goog-FieldMask': 'reviews,rating,userRatingCount,displayName',
+          'X-Goog-FieldMask': 'displayName,rating,userRatingCount,reviews.authorAttribution,reviews.rating,reviews.text,reviews.publishTime,reviews.relativePublishTimeDescription,reviews.name',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           'Accept': 'application/json'
         },
@@ -733,6 +735,148 @@ async function startServer() {
       });
       
       res.status(statusCode).json({ error: errorMessage });
+    }
+  });
+
+  // --- Google Search Console & Analytics Integration ---
+  const GOOGLE_CLIENT_ID = "700448424476-9fsmqpo3qsmud5qomll84kn2gjfndqk7.apps.googleusercontent.com";
+  const getOAuth2Client = () => {
+    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+
+    if (!clientSecret || !refreshToken) {
+      return null;
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      GOOGLE_CLIENT_ID,
+      clientSecret,
+      "http://localhost:3000"
+    );
+
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken
+    });
+
+    return oauth2Client;
+  };
+
+  // Search Console Helper
+  async function getSearchConsoleData(startDate: string, endDate: string, siteUrl: string, dimensions: string[] = ['query'], rowLimit: number = 100) {
+    const auth = getOAuth2Client();
+    if (!auth) throw new Error("Google OAuth credentials not configured.");
+
+    const searchconsole = google.searchconsole({ version: "v1", auth });
+    const response = await searchconsole.searchanalytics.query({
+      siteUrl: siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions,
+        rowLimit
+      }
+    });
+
+    return response.data.rows || [];
+  }
+
+  // Analytics Helper
+  async function getAnalyticsData(startDate: string, endDate: string, propertyId: string) {
+    const auth = getOAuth2Client();
+    if (!auth) throw new Error("Google OAuth credentials not configured.");
+
+    const analyticsdata = google.analyticsdata({ version: "v1beta", auth });
+    const response = await analyticsdata.properties.runReport({
+      property: `properties/${propertyId}`,
+      requestBody: {
+        dateRanges: [{ startDate, endDate }],
+        dimensions: [{ name: "pagePath" }],
+        metrics: [
+          { name: "screenPageViews" },
+          { name: "sessions" },
+          { name: "averageSessionDuration" },
+          { name: "bounceRate" }
+        ],
+        limit: "100"
+      }
+    });
+
+    const reportData = (response as any).data;
+    return reportData.rows?.map((row: any) => ({
+      pagePath: row.dimensionValues?.[0]?.value,
+      pageViews: parseInt(row.metricValues?.[0]?.value || "0"),
+      sessions: parseInt(row.metricValues?.[1]?.value || "0"),
+      avgSessionDuration: parseFloat(row.metricValues?.[2]?.value || "0"),
+      bounceRate: parseFloat(row.metricValues?.[3]?.value || "0")
+    })) || [];
+  }
+
+  app.post("/api/searchconsole/performance", async (req, res) => {
+    try {
+      const { startDate, endDate, dimensions, rowLimit } = req.body;
+      const siteUrl = "sc-domain:pattayarentacar.com";
+      const data = await getSearchConsoleData(startDate, endDate, siteUrl, dimensions, rowLimit);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[Search Console] Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/searchconsole/suggestions", async (req, res) => {
+    try {
+      const siteUrl = "sc-domain:pattayarentacar.com";
+      const endDate = format(new Date(), "yyyy-MM-dd");
+      const startDate = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+      
+      const topQueries = await getSearchConsoleData(startDate, endDate, siteUrl, ['query'], 50);
+      
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured." });
+      }
+
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const queriesText = topQueries.map((q: any) => `- ${q.keys[0]} (Impressions: ${q.impressions}, Clicks: ${q.clicks})`).join("\n");
+      
+      const prompt = `
+        You are an SEO expert for "Pattaya Rent a Car", a car rental company in Pattaya, Thailand.
+        Based on the following top search queries from Google Search Console, generate 10 content ideas (blog posts or pages) that would help drive more traffic.
+        
+        Top Queries:
+        ${queriesText}
+        
+        Return a JSON array of objects. Each object MUST have:
+        - title: A catchy headlines
+        - targetKeyword: The primary keyword this content targets
+        - rationale: 2 sentences explaining why this will drive traffic
+        - estimatedImpact: "high", "medium", or "low"
+        
+        Format the response as raw JSON only, no markdown markers.
+      `;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const cleanText = text.replace(/```json|```/g, "").trim();
+      const suggestions = JSON.parse(cleanText);
+      
+      res.json(suggestions);
+    } catch (error: any) {
+      console.error("[Search Console Suggestions] Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/analytics/pages", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.body;
+      const propertyId = "311694159";
+      const data = await getAnalyticsData(startDate, endDate, propertyId);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[Analytics] Error:", error.message);
+      res.status(500).json({ error: error.message });
     }
   });
 

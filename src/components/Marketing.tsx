@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { BlogManager } from './BlogManager';
 import { MarketingFAQ } from './MarketingFAQ';
-import { FileText, MessageSquare } from 'lucide-react';
+import ContentCalendar from './ContentCalendar';
+import { FileText, MessageSquare, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' }> = ({ defaultTab = 'blog' }) => {
-  const [activeTab, setActiveTab] = useState<'blog' | 'faq'>(defaultTab);
+export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> = ({ defaultTab = 'blog' }) => {
+  const [activeTab, setActiveTab] = useState<'blog' | 'faq' | 'calendar'>(defaultTab);
 
   // Sync state if prop changes from sidebar navigation
   React.useEffect(() => {
@@ -42,12 +43,27 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' }> = ({ defaultTa
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange" />
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={cn(
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
+            activeTab === 'calendar' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+          )}
+        >
+          <Calendar size={16} />
+          Content Calendar
+          {activeTab === 'calendar' && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange" />
+          )}
+        </button>
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto p-8">
         {activeTab === 'blog' ? (
           <BlogManager />
+        ) : activeTab === 'calendar' ? (
+          <ContentCalendar />
         ) : (
           <MarketingFAQ />
         )}

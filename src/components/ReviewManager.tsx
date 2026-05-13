@@ -25,10 +25,6 @@ interface PlaceReview {
   publishTime: string;
   relativePublishTime: string;
   photoUri?: string;
-  reply?: {
-    text: string;
-    publishTime: string;
-  };
 }
 
 interface PlaceDetails {
@@ -82,13 +78,7 @@ export const ReviewManager: React.FC = () => {
             text: r.text?.text || '',
             publishTime: r.publishTime || new Date().toISOString(),
             relativePublishTime: r.relativePublishTimeDescription || 'Recently',
-            photoUri: r.authorAttribution?.photoUri,
-            // Google Places API (New) doesn't typically expose owner replies to the public API,
-            // but we'll map it just in case it's added or exists in the data.
-            reply: r.reply ? {
-              text: r.reply.text || '',
-              publishTime: r.reply.publishTime || ''
-            } : undefined
+            photoUri: r.authorAttribution?.photoUri
           }))
         });
       } else if (response.data?.error_message) {
@@ -251,18 +241,7 @@ export const ReviewManager: React.FC = () => {
               </div>
               
               <p className="italic text-black/80 leading-relaxed font-medium mb-8 text-lg">"{review.text}"</p>
-              
-              {review.reply && (
-                <div className="mb-8 pl-6 border-l-2 border-brand-orange/30">
-                  <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange">
-                    <MessageSquare size={12} /> Owner Response
-                  </div>
-                  <p className="text-sm text-black/70 italic leading-relaxed">
-                    "{review.reply.text}"
-                  </p>
-                </div>
-              )}
-              
+
               <div className="border-t border-black/5 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-black/40 flex items-center gap-2">
                   <MessageSquare size={14} /> Google Maps Review

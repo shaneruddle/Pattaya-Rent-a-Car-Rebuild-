@@ -56,6 +56,7 @@ export default function App() {
         <PricingProvider>
           <AppHeader />
           <AppContent />
+          <Toaster position="bottom-right" />
         </PricingProvider>
       </LanguageProvider>
     </ErrorBoundary>
@@ -88,7 +89,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -691,6 +692,8 @@ function AppContent() {
                 <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
               ) : currentView === 'marketing_blog' ? (
                 <Marketing defaultTab="blog" />
+              ) : currentView === 'marketing_calendar' ? (
+                <Marketing defaultTab="calendar" />
               ) : currentView === 'marketing_faq' ? (
                 <Marketing defaultTab="faq" />
               ) : currentView === 'marketing_reviews' ? (

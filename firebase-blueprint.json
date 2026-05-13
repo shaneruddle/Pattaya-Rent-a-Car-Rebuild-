@@ -358,6 +358,23 @@
       },
       "required": ["name", "email", "message", "timestamp"]
     },
+    "ContentCalendarItem": {
+      "title": "ContentCalendarItem",
+      "description": "An item in the content marketing calendar.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "targetKeyword": { "type": "string" },
+        "targetUrl": { "type": "string" },
+        "publishDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Idea", "In Progress", "Scheduled", "Published"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "seoData": { "type": "object" },
+        "analyticsData": { "type": "object" }
+      },
+      "required": ["title", "status", "createdAt"]
+    },
     "FinanceSummary": {
       "title": "FinanceSummary",
       "description": "Aggregated financial totals (monthly or all-time).",
@@ -489,6 +506,10 @@
     "/enquiries/{enquiryId}": {
       "schema": "Enquiry",
       "description": "Collection of general enquiries."
+    },
+    "/contentCalendar/{itemId}": {
+      "schema": "ContentCalendarItem",
+      "description": "Collection of content marketing items."
     },
     "/companyConfig/{docId}": {
       "schema": "CompanyConfig",
