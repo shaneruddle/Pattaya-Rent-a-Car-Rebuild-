@@ -868,7 +868,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           className={cn(
                             "relative z-10 w-full md:w-[700px] max-w-full md:max-w-[95vw]",
                             "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden",
-                            "flex flex-col max-h-[90vh] md:max-h-[85vh]"
+                            "flex flex-col h-[90vh] md:h-auto md:max-h-[85vh]"
                           )}
                         >
                           <DatePickerCustom 

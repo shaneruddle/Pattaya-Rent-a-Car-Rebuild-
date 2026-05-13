@@ -1744,169 +1744,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
             )}
           </div>
         </div>
-      </div>
-
-      <AnimatePresence>
-        {summaryBooking && (() => {
-          const isBottomHalf = summaryBooking.clientY > window.innerHeight - 300;
-          
-          return (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed z-[1000000] booking-summary-popover"
-              style={{
-                left: Math.min(window.innerWidth - 300, Math.max(16, summaryBooking.clientX)),
-                ...(isBottomHalf 
-                  ? { bottom: window.innerHeight - summaryBooking.clientY + 10 }
-                  : { top: summaryBooking.clientY + 10 }
-                ),
-              }}
-            >
-              <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-[#1A1A1A]">
-                      {summaryBooking.booking.isMaintenance ? (
-                        <span className="flex items-center gap-2">
-                          <Wrench size={14} className="text-gray-600" /> Maintenance
-                        </span>
-                      ) : summaryBooking.booking.customerName}
-                    </h4>
-                    {summaryBooking.booking.isMaintenance ? (
-                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
-                        {summaryBooking.booking.maintenanceDescription}
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{summaryBooking.booking.email || 'No email'}</p>
-                    )}
-                    <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
-                      {summaryBooking.booking.carId 
-                        ? cars.find(c => c.id === summaryBooking.booking.carId)?.name 
-                        : (summaryBooking.booking.requestedCarType || 'Unassigned')}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className={cn(
-                      "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                      summaryBooking.booking.isMaintenance
-                        ? "bg-gray-100 text-gray-600"
-                        : (summaryBooking.booking.status === 'Paid' 
-                            ? "bg-green-100 text-green-600" 
-                            : (parseISO(summaryBooking.booking.startDate) < new Date()
-                                ? "bg-yellow-100 text-yellow-600"
-                                : (isFuture(parseISO(summaryBooking.booking.startDate)) 
-                                    ? "bg-red-100 text-red-600" 
-                                    : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
-                    )}>
-                      {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
-                    </span>
-                    <div className="flex gap-1.5 pointer-events-auto">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenManageModal(summaryBooking.booking);
-                          setSummaryBookingInfo(null);
-                        }}
-                        className="px-3 py-1.5 bg-brand-orange text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-orange/90 transition-all flex items-center gap-2 shadow-sm"
-                      >
-                        <Settings size={12} />
-                        Manage
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCutBooking(summaryBooking.booking);
-                          setSummaryBookingInfo(null);
-                        }}
-                        className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all"
-                        title="Cut Booking"
-                      >
-                        <Scissors size={12} />
-                        </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingBooking(summaryBooking.booking);
-                          setShowDeleteConfirm(true);
-                          setSummaryBookingInfo(null);
-                        }}
-                        className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
-                        title="Delete Booking"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSummaryBookingInfo(null);
-                        }}
-                        className="p-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-200 transition-all"
-                        title="Close Summary"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
-                    <Calendar size={12} className="text-brand-orange" />
-                    <span>
-                      {isValid(parseISO(summaryBooking.booking.startDate)) && isValid(parseISO(summaryBooking.booking.endDate)) ? (
-                        `${format(parseISO(summaryBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(summaryBooking.booking.endDate), 'MMM d, HH:mm')}`
-                      ) : 'Invalid dates'}
-                    </span>
-                  </div>
-
-                  {summaryBooking.booking.returnNote && (
-                    <div className="flex items-start gap-2 text-[10px] bg-brand-orange/10 p-2 rounded-lg border border-brand-orange/20 mt-1">
-                      <AlertTriangle size={12} className="text-brand-orange shrink-0 mt-0.5" />
-                      <div className="text-[#1A1A1A] font-medium leading-relaxed">
-                        <span className="font-bold uppercase text-[8px] block mb-0.5">End Note:</span>
-                        {summaryBooking.booking.returnNote}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {summaryBooking.booking.mobileNumber && (
-                    <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
-                      <Phone size={12} className="text-brand-orange" />
-                      <span>{summaryBooking.booking.mobileNumber}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-2 border-t border-[#1A1A1A]/5 flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Amount</span>
-                    <span className="text-sm font-bold text-brand-orange">
-                      ฿{(summaryBooking.booking.amount || 0).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div className="pt-3 mt-1 border-t border-[#1A1A1A]/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
-                    <p className={cn(
-                      "text-[10px] leading-relaxed break-words",
-                      summaryBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
-                    )}>
-                      {summaryBooking.booking.notes || 'No notes added'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Arrow */}
-                {isBottomHalf ? (
-                  <div className="absolute bottom-0 left-4 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
-                ) : (
-                  <div className="absolute top-0 left-4 -translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/90" />
-                )}
-              </div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
 
       {/* Booking Modal */}
       <AnimatePresence>
@@ -2766,6 +2603,169 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
           onClose={() => setQuickNoteEdit(null)}
         />
       )}
+
+      <AnimatePresence>
+        {summaryBooking && (() => {
+          const isBottomHalf = summaryBooking.clientY > window.innerHeight - 300;
+          
+          return (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed z-[1000000] booking-summary-popover"
+              style={{
+                left: Math.min(window.innerWidth - 300, Math.max(16, summaryBooking.clientX)),
+                ...(isBottomHalf 
+                  ? { bottom: window.innerHeight - summaryBooking.clientY + 10 }
+                  : { top: summaryBooking.clientY + 10 }
+                ),
+              }}
+            >
+              <div className="bg-white/90 backdrop-blur-2xl border border-black/10 shadow-2xl rounded-2xl p-4 min-w-[240px] relative">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1A1A1A]">
+                      {summaryBooking.booking.isMaintenance ? (
+                        <span className="flex items-center gap-2">
+                          <Wrench size={14} className="text-gray-600" /> Maintenance
+                        </span>
+                      ) : summaryBooking.booking.customerName}
+                    </h4>
+                    {summaryBooking.booking.isMaintenance ? (
+                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium italic mt-1">
+                        {summaryBooking.booking.maintenanceDescription}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-[#1A1A1A]/60 font-medium">{summaryBooking.booking.email || 'No email'}</p>
+                    )}
+                    <p className="text-[9px] font-bold text-brand-orange uppercase tracking-widest mt-1">
+                      {summaryBooking.booking.carId 
+                        ? cars.find(c => c.id === summaryBooking.booking.carId)?.name 
+                        : (summaryBooking.booking.requestedCarType || 'Unassigned')}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                      summaryBooking.booking.isMaintenance
+                        ? "bg-gray-100 text-gray-600"
+                        : (summaryBooking.booking.status === 'Paid' 
+                            ? "bg-green-100 text-green-600" 
+                            : (parseISO(summaryBooking.booking.startDate) < new Date()
+                                ? "bg-yellow-100 text-yellow-600"
+                                : (isFuture(parseISO(summaryBooking.booking.startDate)) 
+                                    ? "bg-red-100 text-red-600" 
+                                    : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
+                    )}>
+                      {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
+                    </span>
+                    <div className="flex gap-1.5 pointer-events-auto">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenManageModal(summaryBooking.booking);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="px-3 py-1.5 bg-brand-orange text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-orange/90 transition-all flex items-center gap-2 shadow-sm"
+                      >
+                        <Settings size={12} />
+                        Manage
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCutBooking(summaryBooking.booking);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all"
+                        title="Cut Booking"
+                      >
+                        <Scissors size={12} />
+                        </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingBooking(summaryBooking.booking);
+                          setShowDeleteConfirm(true);
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                        title="Delete Booking"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSummaryBookingInfo(null);
+                        }}
+                        className="p-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-200 transition-all"
+                        title="Close Summary"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
+                    <Calendar size={12} className="text-brand-orange" />
+                    <span>
+                      {isValid(parseISO(summaryBooking.booking.startDate)) && isValid(parseISO(summaryBooking.booking.endDate)) ? (
+                        `${format(parseISO(summaryBooking.booking.startDate), 'MMM d, HH:mm')} - ${format(parseISO(summaryBooking.booking.endDate), 'MMM d, HH:mm')}`
+                      ) : 'Invalid dates'}
+                    </span>
+                  </div>
+
+                  {summaryBooking.booking.returnNote && (
+                    <div className="flex items-start gap-2 text-[10px] bg-brand-orange/10 p-2 rounded-lg border border-brand-orange/20 mt-1">
+                      <AlertTriangle size={12} className="text-brand-orange shrink-0 mt-0.5" />
+                      <div className="text-[#1A1A1A] font-medium leading-relaxed">
+                        <span className="font-bold uppercase text-[8px] block mb-0.5">End Note:</span>
+                        {summaryBooking.booking.returnNote}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {summaryBooking.booking.mobileNumber && (
+                    <div className="flex items-center gap-2 text-[10px] text-[#1A1A1A]/80">
+                      <Phone size={12} className="text-brand-orange" />
+                      <span>{summaryBooking.booking.mobileNumber}</span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-[#1A1A1A]/5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Amount</span>
+                    <span className="text-sm font-bold text-brand-orange">
+                      ฿{(summaryBooking.booking.amount || 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="pt-3 mt-1 border-t border-[#1A1A1A]/5">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-1">Notes</p>
+                    <p className={cn(
+                      "text-[10px] leading-relaxed break-words",
+                      summaryBooking.booking.notes ? "text-slate-600 italic" : "text-[#1A1A1A]/20 font-medium"
+                    )}>
+                      {summaryBooking.booking.notes || 'No notes added'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                {isBottomHalf ? (
+                  <div className="absolute bottom-0 left-4 translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90" />
+                ) : (
+                  <div className="absolute top-0 left-4 -translate-y-full w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/90" />
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+      </div>
     </div>
   );
 };

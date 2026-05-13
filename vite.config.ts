@@ -26,6 +26,26 @@ export default defineConfig(({mode}) => {
       outDir: 'dist',
       assetsDir: 'assets',
       emptyOutDir: true,
+      rollupOptions: {
+        external: [
+          'firebase-admin',
+          'firebase-admin/firestore',
+          'firebase-admin/storage',
+          'google-auth-library',
+          'googleapis',
+          '@google-cloud/storage'
+        ]
+      }
+    },
+    ssr: {
+      external: [
+        'firebase-admin',
+        'firebase-admin/firestore',
+        'firebase-admin/storage',
+        'google-auth-library',
+        'googleapis',
+        '@google-cloud/storage'
+      ]
     },
     server: {
       port: 3000,

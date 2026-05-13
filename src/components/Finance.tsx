@@ -43,6 +43,8 @@ interface FinanceProps {
   preFill?: {
     type: 'Income' | 'Expense';
     amount: number;
+    rentalAmount?: number;
+    depositAmount?: number;
     carId?: string;
     bookingId?: string;
     description?: string;
@@ -486,11 +488,14 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       setFormData(prev => ({
         ...prev,
         amount: preFill.amount,
+        rentalAmount: preFill.rentalAmount !== undefined ? preFill.rentalAmount : preFill.amount,
+        depositAmount: preFill.depositAmount || 0,
         carId: preFill.carId || '',
         bookingId: preFill.bookingId || '',
         description: preFill.description || '',
         category: preFill.category || '',
-        accountId: accounts[0]?.id || ''
+        accountId: accounts[0]?.id || '',
+        depositAccountId: accounts[0]?.id || ''
       }));
       setShowModal(true);
       onClearPreFill?.();

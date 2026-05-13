@@ -15,8 +15,6 @@ import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
-import { google } from "googleapis";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -738,57 +736,75 @@ async function startServer() {
     }
   });
 
-  // --- Google Search Console & Analytics Integration ---
-  const GOOGLE_CLIENT_ID = "700448424476-9fsmqpo3qsmud5qomll84kn2gjfndqk7.apps.googleusercontent.com";
-  const getOAuth2Client = () => {
-    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-    const refreshToken = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+  // --- Google Search Console & Analytics Integration (Manual REST API) ---
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "700448424476-9fsmqpo3qsmud5qomll84kn2gjfndqk7.apps.googleusercontent.com";
+  
+  async function getAccessToken(): Promise<string> {
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    const refreshToken = process.env.OAUTH_REFRESH_TOKEN || process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
 
     if (!clientSecret || !refreshToken) {
-      return null;
+      throw new Error("Google OAuth credentials not configured (Missing Client Secret or Refresh Token).");
     }
 
-    const oauth2Client = new google.auth.OAuth2(
-      GOOGLE_CLIENT_ID,
-      clientSecret,
-      "http://localhost:3000"
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: refreshToken
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }).toString(),
     });
 
-    return oauth2Client;
-  };
+    const data = await response.json() as any;
+    if (!response.ok) {
+      throw new Error(`Failed to refresh Google access token: ${JSON.stringify(data)}`);
+    }
+
+    return data.access_token;
+  }
 
   // Search Console Helper
   async function getSearchConsoleData(startDate: string, endDate: string, siteUrl: string, dimensions: string[] = ['query'], rowLimit: number = 100) {
-    const auth = getOAuth2Client();
-    if (!auth) throw new Error("Google OAuth credentials not configured.");
-
-    const searchconsole = google.searchconsole({ version: "v1", auth });
-    const response = await searchconsole.searchanalytics.query({
-      siteUrl: siteUrl,
-      requestBody: {
+    const accessToken = await getAccessToken();
+    
+    const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
         startDate,
         endDate,
         dimensions,
         rowLimit
-      }
+      })
     });
 
-    return response.data.rows || [];
+    const data = await response.json() as any;
+    if (!response.ok) {
+      throw new Error(`Search Console API error: ${JSON.stringify(data)}`);
+    }
+
+    return data.rows || [];
   }
 
   // Analytics Helper
   async function getAnalyticsData(startDate: string, endDate: string, propertyId: string) {
-    const auth = getOAuth2Client();
-    if (!auth) throw new Error("Google OAuth credentials not configured.");
-
-    const analyticsdata = google.analyticsdata({ version: "v1beta", auth });
-    const response = await analyticsdata.properties.runReport({
-      property: `properties/${propertyId}`,
-      requestBody: {
+    const accessToken = await getAccessToken();
+    
+    const url = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
         dateRanges: [{ startDate, endDate }],
         dimensions: [{ name: "pagePath" }],
         metrics: [
@@ -798,11 +814,15 @@ async function startServer() {
           { name: "bounceRate" }
         ],
         limit: "100"
-      }
+      })
     });
 
-    const reportData = (response as any).data;
-    return reportData.rows?.map((row: any) => ({
+    const data = await response.json() as any;
+    if (!response.ok) {
+      throw new Error(`Analytics API error: ${JSON.stringify(data)}`);
+    }
+
+    return data.rows?.map((row: any) => ({
       pagePath: row.dimensionValues?.[0]?.value,
       pageViews: parseInt(row.metricValues?.[0]?.value || "0"),
       sessions: parseInt(row.metricValues?.[1]?.value || "0"),
@@ -831,12 +851,8 @@ async function startServer() {
       
       const topQueries = await getSearchConsoleData(startDate, endDate, siteUrl, ['query'], 50);
       
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured." });
-      }
-
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      if (!apiKey) { return res.status(500).json({ error: 'GEMINI_API_KEY not configured' }); }
 
       const queriesText = topQueries.map((q: any) => `- ${q.keys[0]} (Impressions: ${q.impressions}, Clicks: ${q.clicks})`).join("\n");
       
@@ -856,9 +872,14 @@ async function startServer() {
         Format the response as raw JSON only, no markdown markers.
       `;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const cleanText = text.replace(/```json|```/g, "").trim();
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+      const geminiData = await geminiRes.json() as any;
+      const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+      const cleanText = text.replace(/```json|```/g, '').trim();
       const suggestions = JSON.parse(cleanText);
       
       res.json(suggestions);

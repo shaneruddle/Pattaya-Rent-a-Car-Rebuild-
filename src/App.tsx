@@ -56,7 +56,6 @@ export default function App() {
         <PricingProvider>
           <AppHeader />
           <AppContent />
-          <Toaster position="bottom-right" />
         </PricingProvider>
       </LanguageProvider>
     </ErrorBoundary>
@@ -647,7 +646,9 @@ function AppContent() {
                 onLogIncome={(booking) => {
                   setFinancePreFill({
                     type: 'Income',
-                    amount: booking.amount || 0,
+                    amount: (booking.amount || 0) + (booking.deposit || 0),
+                    rentalAmount: booking.amount || 0,
+                    depositAmount: booking.deposit || 0,
                     carId: booking.carId,
                     bookingId: booking.id,
                     description: `Rental payment from ${booking.customerName}`,
