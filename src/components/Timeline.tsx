@@ -977,35 +977,42 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   }, [currentDate]);
 
   const availabilityData = useMemo(() => {
-    const activeCarsCount = cars.filter(c => c.isActive !== false).length;
+    const activeCars = cars.filter(c => c.isActive !== false);
+    
     return visibleDays.map(day => {
-      const amStart = new Date(day);
-      amStart.setHours(0, 0, 0, 0);
+      const amStart = startOfDay(day);
       const amEnd = new Date(day);
       amEnd.setHours(11, 59, 59, 999);
 
       const pmStart = new Date(day);
       pmStart.setHours(12, 0, 0, 0);
-      const pmEnd = new Date(day);
-      pmEnd.setHours(23, 59, 59, 999);
+      const pmEnd = endOfDay(day);
 
-      const amBooked = bookings.filter(b => {
-        if (!b.carId) return false;
-        const start = parseISO(b.startDate);
-        const end = parseISO(b.endDate);
-        return (start <= amEnd && end >= amStart);
-      }).length;
+      let amAvailable = 0;
+      let pmAvailable = 0;
 
-      const pmBooked = bookings.filter(b => {
-        if (!b.carId) return false;
-        const start = parseISO(b.startDate);
-        const end = parseISO(b.endDate);
-        return (start <= pmEnd && end >= pmStart);
-      }).length;
+      activeCars.forEach(car => {
+        const carBookings = bookings.filter(b => b.carId === car.id);
+        
+        const isAmBooked = carBookings.some(b => {
+          const start = parseISO(b.startDate);
+          const end = parseISO(b.endDate);
+          return (start <= amEnd && end >= amStart);
+        });
+
+        const isPmBooked = carBookings.some(b => {
+          const start = parseISO(b.startDate);
+          const end = parseISO(b.endDate);
+          return (start <= pmEnd && end >= pmStart);
+        });
+
+        if (!isAmBooked) amAvailable++;
+        if (!isPmBooked) pmAvailable++;
+      });
 
       return {
-        am: activeCarsCount - amBooked,
-        pm: activeCarsCount - pmBooked
+        am: amAvailable,
+        pm: pmAvailable
       };
     });
   }, [cars, bookings, visibleDays]);

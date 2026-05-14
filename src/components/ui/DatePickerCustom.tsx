@@ -179,8 +179,8 @@ export const DatePickerCustom: React.FC<DatePickerCustomProps> = ({
         isBikeMode ? "bike-mode" : "car-mode"
       )}
     >
-      <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden min-h-0 [overscroll-behavior:contain] pb-20 md:pb-0">
-        <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 rounded-t-[40px]">
+      <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden min-h-0 [overscroll-behavior:contain] pb-32 md:pb-0">
+        <div className="flex flex-col md:flex-row relative border-b border-black/10 dark:border-white/10 rounded-t-[40px] pb-6 md:pb-0">
           <button 
             type="button"
             onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}

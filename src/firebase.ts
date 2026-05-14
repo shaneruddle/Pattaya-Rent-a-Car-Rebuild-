@@ -24,7 +24,8 @@ import {
   onSnapshot,
   Timestamp,
   where,
-  limit
+  limit,
+  increment
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -45,7 +46,7 @@ setPersistence(auth, browserLocalPersistence);
 export { 
   collection, query, orderBy, addDoc, updateDoc, setDoc,
   deleteDoc, writeBatch, getDocs, getDoc, doc, onSnapshot,
-  onAuthStateChanged, Timestamp, where, limit
+  onAuthStateChanged, Timestamp, where, limit, increment
 };
 
 export enum OperationType {

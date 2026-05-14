@@ -112,6 +112,7 @@
         "date": { "type": "string", "format": "date-time", "description": "The date of the transaction." },
         "category": { "type": "string", "description": "The category (e.g., Rental, Maintenance, Rent)." },
         "carId": { "type": "string", "description": "Optional car ID associated with the transaction." },
+        "vehicleFinanceId": { "type": "string", "description": "Optional finance record ID associated with a loan repayment." },
         "accountId": { "type": "string", "description": "The account associated with the transaction." },
         "toAccountId": { "type": "string", "description": "The destination account for transfers." },
         "description": { "type": "string", "description": "A brief description of the transaction." }
@@ -394,6 +395,31 @@
       },
       "required": ["type", "totalIncome", "totalExpense", "netProfit", "lastUpdated"]
     },
+    "MarketingPage": {
+      "title": "MarketingPage",
+      "description": "A standalone marketing page for the website.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "categoryPath": { "type": "string", "description": "e.g., /cars/ev-rentals" },
+        "content": { "type": "string", "description": "HTML content for the page." },
+        "excerpt": { "type": "string" },
+        "featuredImageUrl": { "type": "string" },
+        "featuredImageAlt": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Published"] },
+        "layoutType": { "type": "string", "enum": ["Service", "Location", "Blog", "Home", "Landing", "Contact", "About", "FAQ", "Fleet", "Custom"] },
+        "metaDescription": { "type": "string" },
+        "keywords": { "type": "string" },
+        "canonicalUrl": { "type": "string" },
+        "schemaMarkup": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorId": { "type": "string" },
+        "fullUrl": { "type": "string", "description": "Combines categoryPath and slug." }
+      },
+      "required": ["title", "slug", "status", "layoutType", "createdAt", "updatedAt"]
+    },
     "CompanyConfig": {
       "title": "CompanyConfig",
       "description": "Global business information.",
@@ -412,6 +438,21 @@
           "additionalProperties": { "type": "string" }
         }
       }
+    }
+    "VehicleFinance": {
+      "title": "VehicleFinance",
+      "description": "Repayment and loan details for a financed vehicle.",
+      "type": "object",
+      "properties": {
+        "vehicleId": { "type": "string", "description": "Reference to the fleet vehicle ID." },
+        "lender": { "type": "string", "description": "e.g., K-Bank, SCB." },
+        "totalLoanAmount": { "type": "number", "description": "Original loan principal." },
+        "monthlyInstallment": { "type": "number", "description": "Fixed monthly payment." },
+        "totalInstallments": { "type": "number", "description": "Total number of months." },
+        "startDate": { "type": "string", "format": "date-time" },
+        "interestRate": { "type": "number" }
+      },
+      "required": ["vehicleId", "lender", "totalLoanAmount", "monthlyInstallment", "totalInstallments", "startDate"]
     }
   },
   "firestore": {
@@ -495,6 +536,10 @@
       "schema": "ReviewSettings",
       "description": "Settings for review management."
     },
+    "/marketing_pages/{pageId}": {
+      "schema": "MarketingPage",
+      "description": "Collection of standalone marketing pages."
+    },
     "/finance_summaries/{summaryId}": {
       "schema": "FinanceSummary",
       "description": "Aggregated financial summaries (monthly and all-time)."
@@ -510,6 +555,10 @@
     "/contentCalendar/{itemId}": {
       "schema": "ContentCalendarItem",
       "description": "Collection of content marketing items."
+    },
+    "/vehicleFinance/{financeId}": {
+      "schema": "VehicleFinance",
+      "description": "Collection of vehicle loan and repayment details."
     },
     "/companyConfig/{docId}": {
       "schema": "CompanyConfig",

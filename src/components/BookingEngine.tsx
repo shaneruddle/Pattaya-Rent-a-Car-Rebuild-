@@ -34,6 +34,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import ReactGA from 'react-ga4';
 import { safeLocalStorage } from '../lib/storage';
 import { StorageImage } from './StorageImage';
 import { WhyChooseUs, GoogleReviews, EnquiryForm, Footer } from './HomeSections';
@@ -44,7 +45,9 @@ import { BlogPostView } from './BlogPostView';
 import { useLanguage } from '../LanguageContext';
 import { usePricing } from '../contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AIAssistant } from './AIAssistant';
+import MarketingPageView from './MarketingPageView';
 import { Language } from '../translations';
 import { LocationPicker } from './LocationPicker';
 import { ImportantInfoModal } from './ImportantInfoModal';
@@ -71,12 +74,29 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const { t, language, setLanguage } = useLanguage();
   const { config, loading: configLoading } = useCompanyConfig();
   const { sheetPricing, loading: pricingLoading, calculatePrice } = usePricing();
+  const location = useLocation();
+  const navigate = useNavigate();
+  
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post'>('landing');
+  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post' | 'marketing-page'>('landing');
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
   const [isBikeMode, setIsBikeMode] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Track page views on view change
+  useEffect(() => {
+    const ga_id = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FHJNX2F1T';
+    if (ga_id) {
+      const seo = getSeoMetadata();
+      ReactGA.send({ 
+        hitType: "pageview", 
+        page: view === 'landing' ? '/' : `/${view}`,
+        title: seo.title
+      });
+    }
+  }, [view]);
 
   useEffect(() => {
     if (view === 'rent-a-bike') {
@@ -157,7 +177,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -450,53 +469,61 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
   const handlePageChange = (newView: string) => {
     if (newView === 'blog') {
-      window.history.pushState({}, '', '/blog');
+      navigate('/blog');
     } else if (newView === 'landing') {
-      window.history.pushState({}, '', '/');
+      navigate('/');
     } else if (newView === 'rent-a-bike') {
-      window.history.pushState({}, '', '/rent-a-bike');
+      navigate('/rent-a-bike');
+    } else if (newView === 'long-term') {
+      navigate('/long-term-rental');
+    } else if (newView === 'about') {
+      navigate('/about');
+    } else if (newView === 'contact') {
+      navigate('/contact');
+    } else if (newView === 'faq') {
+      navigate('/faq');
     } else {
-      window.history.pushState({}, '', `/${newView}`);
+      setView(newView as any);
     }
-    setView(newView as any);
     window.scrollTo(0, 0);
   };
 
   const handleBlogPostClick = (slug: string) => {
-    window.history.pushState({}, '', `/blog/${slug}`);
-    setSelectedBlogSlug(slug);
-    setView('blog-post');
+    navigate(`/blog/${slug}`);
     window.scrollTo(0, 0);
   };
 
+  // Sync view state with URL
   useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.pathname;
-      if (path === '/blog') {
-        setView('blog');
-      } else if (path.startsWith('/blog/')) {
-        const slug = path.split('/')[2];
-        setSelectedBlogSlug(slug);
-        setView('blog-post');
-      } else if (path === '/rent-a-bike') {
-        setView('rent-a-bike');
-        setIsBikeMode(true);
-      } else if (path === '/about') {
-        setView('about');
-      } else if (path === '/contact') {
-        setView('contact');
-      } else if (path === '/long-term') {
-        setView('long-term');
-      } else {
-        setView('landing');
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    handlePopState(); // Initial check
-
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    const path = location.pathname;
+    if (path === '/blog') {
+      setView('blog');
+    } else if (path.startsWith('/blog/')) {
+      const slug = path.split('/')[2];
+      setSelectedBlogSlug(slug);
+      setView('blog-post');
+    } else if (path === '/rent-a-bike') {
+      setView('rent-a-bike');
+      setIsBikeMode(true);
+    } else if (path === '/rent-a-car') {
+      setView('landing');
+      setIsBikeMode(false);
+    } else if (path === '/about') {
+      setView('about');
+    } else if (path === '/contact') {
+      setView('contact');
+    } else if (path === '/long-term-rental' || path === '/long-term') {
+      setView('long-term');
+    } else if (path === '/faq') {
+      setView('landing'); // FAQ is currently a section on landing, but could be a page
+    } else if (path.includes('/') && path.split('/').filter(Boolean).length >= 2) {
+      // Detected nested path, try to find a marketing page
+      setView('marketing-page');
+    } else if (path === '/') {
+      setView('landing');
+      setIsBikeMode(false);
+    }
+  }, [location.pathname]);
 
   if (isSuccess) {
     return (
@@ -769,6 +796,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           <BlogList isBikeMode={isBikeMode} onPostClick={handleBlogPostClick} />
         ) : view === 'blog-post' && selectedBlogSlug ? (
           <BlogPostView isBikeMode={isBikeMode} slug={selectedBlogSlug} onBack={() => handlePageChange('blog')} />
+        ) : view === 'marketing-page' ? (
+          <MarketingPageView fullPath={location.pathname} isBikeMode={isBikeMode} />
         ) : view === 'landing' || view === 'rent-a-bike' ? (
           isBikeMode ? (
             <BikeRentalLanding />
@@ -867,8 +896,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                           exit={{ opacity: 0, scale: 0.95, y: 20 }}
                           className={cn(
                             "relative z-10 w-full md:w-[700px] max-w-full md:max-w-[95vw]",
-                            "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden",
-                            "flex flex-col h-[90vh] md:h-auto md:max-h-[85vh]"
+                            "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem]",
+                            "flex flex-col h-[85vh] md:h-auto md:max-h-[85vh] overflow-hidden"
                           )}
                         >
                           <DatePickerCustom 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BlogPost } from '../types';
-import { Calendar, User, ChevronLeft, Tag, Share2, Facebook, Twitter, Link as LinkIcon } from 'lucide-react';
+import { Calendar, User, ChevronLeft, Tag, Share2, Globe, Share, Link as LinkIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -176,10 +176,10 @@ export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBike
             </div>
             <div className="flex items-center gap-4">
               <button className="w-12 h-12 rounded-full bg-[#1877F2] text-white flex items-center justify-center hover:scale-110 transition-transform">
-                <Facebook size={20} />
+                <Globe size={20} />
               </button>
               <button className="w-12 h-12 rounded-full bg-[#1DA1F2] text-white flex items-center justify-center hover:scale-110 transition-transform">
-                <Twitter size={20} />
+                <Share size={20} />
               </button>
               <button 
                 onClick={handleShare}

@@ -56,11 +56,6 @@ service cloud.firestore {
     // 2. ROOT PROTECTION & OVERRIDES
     // -------------------------------------------------------------------------
 
-    // Default deny for safety
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // Master account override
     match /{document=**} {
       allow read, write: if getEmail() == "info@pattayarentacar.com";
@@ -70,7 +65,11 @@ service cloud.firestore {
     // 3. PUBLIC COLLECTIONS (READ-ONLY FOR PUBLIC)
     // -------------------------------------------------------------------------
 
-    // Cars & Fleet Data
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
     match /cars/{carId} {
       allow get, list: if true;
       allow write: if isStaff();
@@ -99,11 +98,11 @@ service cloud.firestore {
     }
 
     // Marketing & Content
-    match /faqs/{faqId} {
+    match /blog_posts/{postId} {
       allow get, list: if true;
       allow write: if isStaff();
     }
-    match /blog_posts/{postId} {
+    match /marketing_pages/{pageId} {
       allow get, list: if true;
       allow write: if isStaff();
     }
@@ -114,6 +113,11 @@ service cloud.firestore {
     match /email_templates/{templateId} {
       allow get: if true;
       allow list, write: if isStaff();
+    }
+
+    // Default deny for safety (moved down to allow specific matches to take precedence)
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // -------------------------------------------------------------------------
@@ -167,6 +171,9 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
     match /finance_summaries/{summaryId} {
+      allow read, write: if isStaff();
+    }
+    match /vehicleFinance/{financeId} {
       allow read, write: if isStaff();
     }
     match /rentals/{rentalId} {

@@ -90,9 +90,10 @@ export const CRM: React.FC = () => {
     }
   };
 
-  const safeFormatForInput = (dateValue: any) => {
+  const safeFormatForInput = (dateValue: any, isNew: boolean = false) => {
     const formatted = safeFormat(dateValue, "yyyy-MM-dd'T'HH:mm", '');
-    return formatted || format(new Date(), "yyyy-MM-dd'T'HH:mm");
+    if (formatted) return formatted;
+    return isNew ? format(new Date(), "yyyy-MM-dd'T'HH:mm") : '';
   };
 
   const [lastFetch, setLastFetch] = useState<number>(() => {
@@ -431,6 +432,7 @@ export const CRM: React.FC = () => {
       carLicenceExpiry: formData.get('carLicenceExpiry') as string,
       notes: formData.get('notes') as string,
       creationDate: formData.get('creationDate') as string || (isAdding ? new Date().toISOString() : selectedCustomer?.creationDate),
+      updatedAt: new Date().toISOString(),
       uniqueId: formData.get('uniqueId') as string,
       location: {
         lat: formLocation?.lat || 0,
@@ -734,9 +736,26 @@ export const CRM: React.FC = () => {
                       </div>
                       <div className="space-y-2.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Creation Date</label>
-                        <input name="creationDate" type="datetime-local" defaultValue={safeFormatForInput(selectedCustomer?.creationDate)} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" />
+                        <input 
+                          name="creationDate" 
+                          type="datetime-local" 
+                          defaultValue={safeFormatForInput(selectedCustomer?.creationDate || (selectedCustomer as any)?.createdAt, isAdding)} 
+                          className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" 
+                        />
                       </div>
                     </div>
+
+                    {!isAdding && selectedCustomer?.updatedAt && (
+                      <div className="space-y-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Modified Date</label>
+                        <input 
+                          type="datetime-local" 
+                          defaultValue={safeFormatForInput(selectedCustomer.updatedAt)} 
+                          readOnly 
+                          className="w-full bg-black/5 border-b-2 border-black/10 px-4 py-3 rounded-t-xl outline-none font-bold transition-all text-black/40 cursor-not-allowed" 
+                        />
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-8">
                       <div className="space-y-2.5">
@@ -872,8 +891,16 @@ export const CRM: React.FC = () => {
                             {selectedCustomer.uniqueId || 'Active Customer'}
                           </span>
                           <p className="text-[#141414]/40 uppercase tracking-widest text-[10px]">
-                            Since {safeFormat(selectedCustomer.creationDate, 'dd MMM yyyy', format(new Date(), 'yyyy'))}
+                            Since {safeFormat(selectedCustomer.creationDate || (selectedCustomer as any).createdAt, 'dd MMM yyyy', format(new Date(), 'yyyy'))}
                           </p>
+                          {selectedCustomer.updatedAt && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-[#141414]/20" />
+                              <p className="text-[#141414]/40 uppercase tracking-widest text-[10px]">
+                                Last Modified: {safeFormat(selectedCustomer.updatedAt, 'dd MMM yyyy, HH:mm')}
+                              </p>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

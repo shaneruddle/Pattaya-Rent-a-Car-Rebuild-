@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, limit, where, onSnapshot } from 'firebase/firestore';
 import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType, safeGetDocs } from './firebase';
 import { Car, Booking } from './types';
@@ -33,6 +34,7 @@ import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactGA from 'react-ga4';
 import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck } from 'lucide-react';
 import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
@@ -47,6 +49,18 @@ import { PricingProvider } from './contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
 import { SystemLog } from './types';
 import { useCompanyConfig } from './hooks/useCompanyConfig';
+import NotFound from './components/NotFound';
+
+function CanonicalHandler() {
+  const location = useLocation();
+  const canonicalUrl = `https://www.pattayarentacar.com${location.pathname === '/' ? '' : location.pathname}`;
+  
+  return (
+    <Helmet>
+      <link rel="canonical" href={canonicalUrl} />
+    </Helmet>
+  );
+}
 
 export default function App() {
   console.log('App: Rendering top-level component');
@@ -54,6 +68,7 @@ export default function App() {
     <ErrorBoundary>
       <LanguageProvider>
         <PricingProvider>
+          <CanonicalHandler />
           <AppHeader />
           <AppContent />
         </PricingProvider>
@@ -124,6 +139,18 @@ function AppContent() {
     const email = (user?.email || '').toLowerCase().trim();
     return email.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
+
+  // Track page views on view change - only for staff and when authenticated
+  useEffect(() => {
+    const ga_id = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FHJNX2F1T';
+    if (ga_id && user && isStaff) {
+      ReactGA.send({ 
+        hitType: "pageview", 
+        page: `/admin/${currentView}`,
+        title: `Dashboard - ${currentView.replace(/_/g, ' ').toUpperCase()}`
+      });
+    }
+  }, [currentView, user, isStaff]);
 
   const isAdmin = useMemo(() => {
     const email = (user?.email || '').toLowerCase();
@@ -441,7 +468,25 @@ function AppContent() {
   if (!user && !showLogin) {
     return (
       <ErrorBoundary>
-        <BookingEngine onLoginClick={() => setShowLogin(true)} />
+        <Routes>
+          <Route path="/" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/rent-a-car" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/rent-a-bike" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/long-term-rental" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/about" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/contact" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/faq" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/blog" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/blog/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/faq/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/services/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/pages/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/locations/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/search" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/vehicle/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          {/* Catch-all for 404 */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
         <AIAssistant />
       </ErrorBoundary>
     );

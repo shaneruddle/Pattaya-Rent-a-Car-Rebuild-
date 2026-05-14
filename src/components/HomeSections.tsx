@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Clock, MapPin, CheckCircle2, Star, Send, Phone, Mail, Facebook, Youtube, Linkedin, Loader2 } from 'lucide-react';
+import { ShieldCheck, Clock, MapPin, CheckCircle2, Star, Send, Phone, Mail, Globe, Play, UserCircle, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, addDoc } from 'firebase/firestore';
@@ -468,9 +468,9 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
             </p>
             <div className="flex gap-4">
               {[
-                { icon: <Facebook size={20} />, href: "https://www.facebook.com/PattayaRentaCar/" },
-                { icon: <Youtube size={20} />, href: "https://www.youtube.com/@Pattayarentacar" },
-                { icon: <Linkedin size={20} />, href: "https://linkedin.com/company/pattaya-rent-a-car/" },
+                { icon: <Globe size={20} />, href: "https://www.facebook.com/PattayaRentaCar/" },
+                { icon: <Play size={20} />, href: "https://www.youtube.com/@Pattayarentacar" },
+                { icon: <UserCircle size={20} />, href: "https://linkedin.com/company/pattaya-rent-a-car/" },
                 { icon: <MapPin size={20} />, href: "https://maps.app.goo.gl/MdmFFiF7u9FgbByj8" }
               ].map((social, i) => (
                 <a 

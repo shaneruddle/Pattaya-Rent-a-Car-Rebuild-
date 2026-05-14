@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { BlogManager } from './BlogManager';
+import { PagesManager } from './PagesManager';
 import { MarketingFAQ } from './MarketingFAQ';
 import ContentCalendar from './ContentCalendar';
-import { FileText, MessageSquare, Calendar } from 'lucide-react';
+import { FileText, MessageSquare, Calendar, Layout } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> = ({ defaultTab = 'blog' }) => {
-  const [activeTab, setActiveTab] = useState<'blog' | 'faq' | 'calendar'>(defaultTab);
+export const Marketing: React.FC<{ defaultTab?: 'blog' | 'pages' | 'faq' | 'calendar' }> = ({ defaultTab = 'blog' }) => {
+  const [activeTab, setActiveTab] = useState<'blog' | 'pages' | 'faq' | 'calendar'>(defaultTab);
 
   // Sync state if prop changes from sidebar navigation
   React.useEffect(() => {
@@ -16,11 +17,11 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> =
   return (
     <div className="flex flex-col h-full bg-warm-bg overflow-hidden">
       {/* Tab Header */}
-      <div className="bg-white border-b border-black/10 px-8 flex items-center gap-8 shadow-sm z-10">
+      <div className="bg-white border-b border-black/10 px-8 flex items-center gap-8 shadow-sm z-10 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('blog')}
           className={cn(
-            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative shrink-0",
             activeTab === 'blog' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
           )}
         >
@@ -31,9 +32,22 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> =
           )}
         </button>
         <button
+          onClick={() => setActiveTab('pages')}
+          className={cn(
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative shrink-0",
+            activeTab === 'pages' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+          )}
+        >
+          <Layout size={16} />
+          Pages Manager
+          {activeTab === 'pages' && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange" />
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('faq')}
           className={cn(
-            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative shrink-0",
             activeTab === 'faq' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
           )}
         >
@@ -46,7 +60,7 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> =
         <button
           onClick={() => setActiveTab('calendar')}
           className={cn(
-            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative shrink-0",
             activeTab === 'calendar' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
           )}
         >
@@ -62,6 +76,8 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'faq' | 'calendar' }> =
       <div className="flex-1 overflow-y-auto p-8">
         {activeTab === 'blog' ? (
           <BlogManager />
+        ) : activeTab === 'pages' ? (
+          <PagesManager />
         ) : activeTab === 'calendar' ? (
           <ContentCalendar />
         ) : (

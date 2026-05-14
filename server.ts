@@ -907,6 +907,56 @@ async function startServer() {
     res.status(404).json({ error: "API route not found", path: req.path, method: req.method });
   });
 
+  // SEO: robots.txt and sitemap.xml
+  app.get('/robots.txt', (req, res) => {
+    const filePath = path.join(process.cwd(), 'public', 'robots.txt');
+    if (fs.existsSync(filePath)) {
+      res.type('text/plain').sendFile(filePath);
+    } else {
+      res.status(404).send('Not Found');
+    }
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const filePath = path.join(process.cwd(), 'public', 'sitemap.xml');
+    if (fs.existsSync(filePath)) {
+      res.type('application/xml').sendFile(filePath);
+    } else {
+      res.status(404).send('Not Found');
+    }
+  });
+
+  // 301 Redirects for old WordPress URLs
+  app.get('/index.html', (req, res) => res.redirect(301, '/'));
+  app.get('/wp-login.php', (req, res) => res.redirect(301, '/'));
+  app.all(['/wp-content/*', '/wp-admin/*'], (req, res) => res.redirect(301, '/'));
+
+  // Known Public Routes for 200 status
+  const KNOWN_ROUTES = [
+    '/', 
+    '/rent-a-car', 
+    '/rent-a-bike', 
+    '/long-term-rental', 
+    '/about', 
+    '/contact', 
+    '/faq', 
+    '/blog', 
+    '/search'
+  ];
+
+  const isKnownRoute = (url: string) => {
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    if (KNOWN_ROUTES.includes(cleanUrl)) return true;
+    if (cleanUrl.startsWith('/blog/')) return true;
+    if (cleanUrl.startsWith('/faq/')) return true;
+    if (cleanUrl.startsWith('/services/')) return true;
+    if (cleanUrl.startsWith('/pages/')) return true;
+    if (cleanUrl.startsWith('/locations/')) return true;
+    if (cleanUrl.startsWith('/vehicle/')) return true;
+    if (cleanUrl.startsWith('/search/')) return true;
+    return false;
+  };
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -914,6 +964,24 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+    app.get('*', async (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.includes('.')) {
+        return next();
+      }
+      
+      try {
+        const url = req.originalUrl;
+        const status = isKnownRoute(req.path) ? 200 : 404;
+        
+        let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        
+        res.status(status).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        res.status(500).end(e.message);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     
@@ -922,7 +990,8 @@ async function startServer() {
       app.get('*', (req, res) => {
         const indexPath = path.join(distPath, 'index.html');
         if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
+          const status = isKnownRoute(req.path) ? 200 : 404;
+          res.status(status).sendFile(indexPath);
         } else {
           res.status(404).send('Static files not found. Please run "npm run build".');
         }

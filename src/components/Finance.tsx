@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, query, orderBy, addDoc, updateDoc, setDoc,
   deleteDoc, writeBatch, getDocs, getDoc, doc, onSnapshot,
-  onAuthStateChanged, Timestamp, where, limit,
+  onAuthStateChanged, Timestamp, where, limit, increment,
   safeGetDocs, db, handleFirestoreError, OperationType, logSystemActivity, auth 
 } from '../firebase';
-import { Transaction, Account, Car, Booking } from '../types';
-import { format, startOfDay, endOfDay, isSameDay, parseISO, isWithinInterval, parse } from 'date-fns';
+import { Transaction, Account, Car, Booking, VehicleFinance } from '../types';
+import { format, startOfDay, endOfDay, isSameDay, parseISO, isWithinInterval, parse, subMonths } from 'date-fns';
 import * as Papa from 'papaparse';
 import Select, { components, SingleValueProps, OptionProps } from 'react-select';
 import { 
@@ -263,6 +263,8 @@ const TransactionRow: React.FC<{
 export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preFill, onClearPreFill }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [vehicleFinances, setVehicleFinances] = useState<VehicleFinance[]>([]);
+  const [showVehicleLoans, setShowVehicleLoans] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showSummaryReport, setShowSummaryReport] = useState(false);
@@ -303,6 +305,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     category: '',
     carId: '',
+    vehicleFinanceId: '',
     bookingId: '',
     accountId: '',
     depositAccountId: '',
@@ -498,14 +501,17 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         depositAccountId: accounts[0]?.id || ''
       }));
       setShowModal(true);
+      
+      // Clear preFill immediately if onClearPreFill is provided
       onClearPreFill?.();
     }
-  }, [preFill, accounts]);
+  }, [preFill, accounts.length, onClearPreFill]); // Added onClearPreFill to dependencies
 
   // Real-time synchronization
   useEffect(() => {
     let unsubscribeAccounts: (() => void) | null = null;
     let unsubscribeTransactions: (() => void) | null = null;
+    let unsubscribeVehicleFinance: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, user => {
       if (!user) {
@@ -518,7 +524,23 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           unsubscribeTransactions();
           unsubscribeTransactions = null;
         }
+        if (unsubscribeVehicleFinance) {
+          unsubscribeVehicleFinance();
+          unsubscribeVehicleFinance = null;
+        }
         return;
+      }
+
+      // Listen to Vehicle Finance
+      if (!unsubscribeVehicleFinance) {
+        unsubscribeVehicleFinance = onSnapshot(collection(db, 'vehicleFinance'), (snapshot) => {
+          const finances = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VehicleFinance));
+          setVehicleFinances(finances);
+        }, (error) => {
+          if (auth.currentUser) {
+            handleFirestoreError(error, OperationType.GET, 'vehicleFinance');
+          }
+        });
       }
 
       // Listen to Accounts
@@ -575,6 +597,64 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     };
   }, []);
 
+  // Seed vehicle loans if empty
+  useEffect(() => {
+    const seedVehicleFinances = async () => {
+      console.log('Checking vehicle loan seeding conditions...');
+      
+      const seedData = [
+        { plate: "7264", lender: "TOYATA LEASING", start: "2022-12-05", principal: 1164200, monthly: 26397, totalMonths: 48, paidMonths: 37 },
+        { plate: "7262", lender: "TOYATA LEASING", start: "2022-12-25", principal: 1164200, monthly: 26397, totalMonths: 48, paidMonths: 33 },
+        { plate: "7263", lender: "TOYATA LEASING", start: "2022-12-25", principal: 1164200, monthly: 26397, totalMonths: 48, paidMonths: 33 },
+        { plate: "2172", lender: "TISCO BANK", start: "2023-01-02", principal: 871962, monthly: 21257, totalMonths: 48, paidMonths: 39 },
+        { plate: "2174", lender: "TISCO BANK", start: "2023-01-02", principal: 871962, monthly: 21257, totalMonths: 48, paidMonths: 39 },
+        { plate: "2171", lender: "TISCO BANK", start: "2023-01-02", principal: 871962, monthly: 21257, totalMonths: 48, paidMonths: 39 },
+        { plate: "2173", lender: "TISCO BANK", start: "2023-01-02", principal: 871962, monthly: 21257, totalMonths: 48, paidMonths: 39 },
+        { plate: "7737", lender: "TOYATA LEASING", start: "2023-10-29", principal: 1173000, monthly: 26833, totalMonths: 48, paidMonths: 24 },
+        { plate: "7736", lender: "TOYATA LEASING", start: "2023-10-29", principal: 1173000, monthly: 26833, totalMonths: 48, paidMonths: 24 },
+        { plate: "7738", lender: "TOYATA LEASING", start: "2023-11-06", principal: 1173000, monthly: 26833, totalMonths: 48, paidMonths: 26 },
+        { plate: "7741", lender: "TOYATA LEASING", start: "2023-12-02", principal: 1173000, monthly: 26833, totalMonths: 48, paidMonths: 27 },
+        { plate: "3315", lender: "TOYATA LEASING", start: "2026-04-12", principal: 449000, monthly: 18709, totalMonths: 24, paidMonths: 2 },
+        { plate: "3317", lender: "TOYATA LEASING", start: "2026-04-12", principal: 449000, monthly: 18709, totalMonths: 24, paidMonths: 2 },
+        { plate: "3316", lender: "TOYATA LEASING", start: "2026-04-12", principal: 449000, monthly: 18709, totalMonths: 24, paidMonths: 2 },
+        { plate: "3319", lender: "TOYATA LEASING", start: "2026-05-01", principal: 449000, monthly: 18709, totalMonths: 24, paidMonths: 1 },
+        { plate: "3318", lender: "TOYATA LEASING", start: "2026-05-01", principal: 449000, monthly: 18709, totalMonths: 24, paidMonths: 1 },
+        { plate: "5257", lender: "TOYATA LEASING", start: "2026-05-09", principal: 661000, monthly: 27542, totalMonths: 24, paidMonths: 1 },
+        { plate: "5253", lender: "TOYATA LEASING", start: "2026-05-09", principal: 661000, monthly: 27542, totalMonths: 24, paidMonths: 1 },
+        { plate: "5330", lender: "TOYATA LEASING", start: "2026-05-25", principal: 661000, monthly: 27542, totalMonths: 24, paidMonths: 0 }
+      ];
+
+      for (const item of seedData) {
+        const car = cars.find(c => c.plateNumber?.includes(item.plate));
+        if (car) {
+          const exists = vehicleFinances.some(vf => vf.vehicleId === car.id);
+          if (!exists) {
+            console.log(`Seeding loan for ${car.name} (${car.plateNumber})`);
+            try {
+              await addDoc(collection(db, 'vehicleFinance'), {
+                vehicleId: car.id,
+                lender: item.lender,
+                totalLoanAmount: item.principal,
+                monthlyInstallment: item.monthly,
+                totalInstallments: item.totalMonths,
+                paidInstallments: item.paidMonths,
+                startDate: new Date(item.start).toISOString()
+              });
+            } catch (error) {
+              console.error('Error seeding loan:', error);
+            }
+          }
+        } else {
+          console.warn(`Could not find car for plate ${item.plate}`);
+        }
+      }
+    };
+
+    if (!loading && auth.currentUser && vehicleFinances.length < 2 && cars.length > 0) {
+      seedVehicleFinances();
+    }
+  }, [loading, auth.currentUser, vehicleFinances.length, cars]);
+
   const fetchData = React.useCallback(async (force = false) => {
     if (!auth.currentUser) return;
     setLoading(true);
@@ -609,9 +689,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     }
 
     try {
+      const batch = writeBatch(db);
+
       if (isNewIncome) {
         // Handle Split Income (Rental + Deposit)
-        // Validation already partially handled by effectiveAmount check above
         if (formData.rentalAmount <= 0 && formData.depositAmount <= 0) {
           toast.error("At least one amount must be greater than 0");
           return;
@@ -636,7 +717,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
         // 1. Log Rental Transaction
         if (formData.rentalAmount > 0) {
-          await addDoc(collection(db, 'transactions'), {
+          const rentalTxRef = doc(collection(db, 'transactions'));
+          batch.set(rentalTxRef, {
             type: 'Income',
             amount: formData.rentalAmount,
             date: formData.date,
@@ -647,8 +729,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             description: formData.description ? `(Rental) ${formData.description}` : 'Rental Income'
           });
 
-          await updateDoc(doc(db, 'accounts', rentalAcc.id), {
-            balance: rentalAcc.balance + formData.rentalAmount
+          batch.update(doc(db, 'accounts', rentalAcc.id), {
+            balance: increment(formData.rentalAmount)
           });
         }
 
@@ -659,7 +741,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             return;
           }
 
-          await addDoc(collection(db, 'transactions'), {
+          const depositTxRef = doc(collection(db, 'transactions'));
+          batch.set(depositTxRef, {
             type: 'Income',
             amount: formData.depositAmount,
             date: formData.date,
@@ -670,23 +753,19 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             description: formData.description ? `(Deposit) ${formData.description}` : 'Deposit Income'
           });
 
-          await updateDoc(doc(db, 'accounts', depositAcc.id), {
-            balance: depositAcc.balance + formData.depositAmount
+          batch.update(doc(db, 'accounts', depositAcc.id), {
+            balance: increment(formData.depositAmount)
           });
         }
 
         // Update booking status if linked
         if (formData.bookingId) {
-          try {
-            await updateDoc(doc(db, 'bookings', formData.bookingId), {
-              status: 'Paid'
-            });
-            toast.success("Booking status updated to Paid");
-          } catch (err) {
-            console.error("Error updating booking status:", err);
-          }
+          batch.update(doc(db, 'bookings', formData.bookingId), {
+            status: 'Paid'
+          });
         }
 
+        await batch.commit();
         setSuccessAction("Income logged successfully (Split)");
       } else if (editingTransactionId) {
         const oldTx = transactions.find(t => t.id === editingTransactionId);
@@ -696,25 +775,25 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         if (oldTx.type === 'Transfer') {
           const oldFromAcc = accounts.find(a => a.id === oldTx.accountId);
           const oldToAcc = accounts.find(a => a.id === oldTx.toAccountId);
-          if (oldFromAcc) await updateDoc(doc(db, 'accounts', oldFromAcc.id), { balance: oldFromAcc.balance + oldTx.amount });
-          if (oldToAcc) await updateDoc(doc(db, 'accounts', oldToAcc.id), { balance: oldToAcc.balance - oldTx.amount });
+          if (oldFromAcc) batch.update(doc(db, 'accounts', oldFromAcc.id), { balance: increment(oldTx.amount) });
+          if (oldToAcc) batch.update(doc(db, 'accounts', oldToAcc.id), { balance: increment(-oldTx.amount) });
         } else {
           const oldAcc = accounts.find(a => a.id === oldTx.accountId);
           if (oldAcc) {
-            const revertedBalance = oldTx.type === 'Income' ? oldAcc.balance - oldTx.amount : oldAcc.balance + oldTx.amount;
-            await updateDoc(doc(db, 'accounts', oldAcc.id), { balance: revertedBalance });
+            const revertAmount = oldTx.type === 'Income' ? -oldTx.amount : oldTx.amount;
+            batch.update(doc(db, 'accounts', oldAcc.id), { balance: increment(revertAmount) });
           }
         }
 
         // 2. Update transaction document
         if (modalType === 'Transfer' || oldTx.type === 'Transfer') {
-          const toAccount = accounts.find(a => a.id === formData.toAccountId);
+          const toAccount = accounts.find(a => a.id === (formData.toAccountId || oldTx.toAccountId));
           if (!toAccount) {
             toast.error("Please select a destination account");
             return;
           }
           
-          await updateDoc(doc(db, 'transactions', editingTransactionId), {
+          batch.update(doc(db, 'transactions', editingTransactionId), {
             type: 'Transfer',
             amount: formData.amount,
             date: formData.date,
@@ -725,32 +804,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           });
 
           // 3. Apply new balance
-          // We need to re-calculate based on the latest state.
-          // To be safe, we'll use the current accounts state and manually adjust for the revert we just did.
-          const currentFromAcc = accounts.find(a => a.id === formData.accountId)!;
-          const currentToAcc = accounts.find(a => a.id === formData.toAccountId)!;
-          
-          let fromBalanceAdjustment = 0;
-          if (oldTx.type === 'Transfer') {
-            if (oldTx.accountId === currentFromAcc.id) fromBalanceAdjustment += oldTx.amount;
-            if (oldTx.toAccountId === currentFromAcc.id) fromBalanceAdjustment -= oldTx.amount;
-          } else {
-            if (oldTx.accountId === currentFromAcc.id) fromBalanceAdjustment += (oldTx.type === 'Income' ? -oldTx.amount : oldTx.amount);
-          }
-          
-          await updateDoc(doc(db, 'accounts', currentFromAcc.id), { balance: currentFromAcc.balance + fromBalanceAdjustment - formData.amount });
-          
-          let toBalanceAdjustment = 0;
-          if (oldTx.type === 'Transfer') {
-            if (oldTx.accountId === currentToAcc.id) toBalanceAdjustment += oldTx.amount;
-            if (oldTx.toAccountId === currentToAcc.id) toBalanceAdjustment -= oldTx.amount;
-          } else {
-            if (oldTx.accountId === currentToAcc.id) toBalanceAdjustment += (oldTx.type === 'Income' ? -oldTx.amount : oldTx.amount);
-          }
-          await updateDoc(doc(db, 'accounts', currentToAcc.id), { balance: currentToAcc.balance + toBalanceAdjustment + formData.amount });
-
+          batch.update(doc(db, 'accounts', formData.accountId), { balance: increment(-formData.amount) });
+          batch.update(doc(db, 'accounts', formData.toAccountId!), { balance: increment(formData.amount) });
         } else {
-          await updateDoc(doc(db, 'transactions', editingTransactionId), {
+          batch.update(doc(db, 'transactions', editingTransactionId), {
             type: oldTx.type,
             amount: formData.amount,
             date: formData.date,
@@ -760,17 +817,11 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             description: formData.description
           });
           
-          const currentAcc = accounts.find(a => a.id === formData.accountId)!;
-          let balanceAdjustment = 0;
-          
-          if (oldTx.accountId === currentAcc.id) {
-            balanceAdjustment += (oldTx.type === 'Income' ? -oldTx.amount : oldTx.amount);
-          }
-          
-          const newBalance = currentAcc.balance + balanceAdjustment + (oldTx.type === 'Income' ? formData.amount : -formData.amount);
-          await updateDoc(doc(db, 'accounts', currentAcc.id), { balance: newBalance });
+          const newAdjustment = oldTx.type === 'Income' ? formData.amount : -formData.amount;
+          batch.update(doc(db, 'accounts', formData.accountId), { balance: increment(newAdjustment) });
         }
         
+        await batch.commit();
         setSuccessAction("Transaction updated successfully");
       } else {
         const account = accounts.find(a => a.id === formData.accountId);
@@ -786,27 +837,22 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             return;
           }
 
-          // Add Transfer Transaction
-          await addDoc(collection(db, 'transactions'), {
+          const txRef = doc(collection(db, 'transactions'));
+          batch.set(txRef, {
             type: 'Transfer',
             amount: formData.amount,
             date: formData.date,
             category: 'Transfer',
             accountId: formData.accountId,
             toAccountId: formData.toAccountId,
-            description: formData.description || `Transfer from ${account.name} to ${toAccount.name}`
+            description: formData.description || `Transfer from ${account?.name || 'Unknown'} to ${toAccount.name}`
           });
 
-          // Update Balances
-          await updateDoc(doc(db, 'accounts', account.id), {
-            balance: account.balance - formData.amount
-          });
-          await updateDoc(doc(db, 'accounts', toAccount.id), {
-            balance: toAccount.balance + formData.amount
-          });
+          batch.update(doc(db, 'accounts', formData.accountId), { balance: increment(-formData.amount) });
+          batch.update(doc(db, 'accounts', formData.toAccountId!), { balance: increment(formData.amount) });
         } else {
-          // Add Income or Expense
-          await addDoc(collection(db, 'transactions'), {
+          const txRef = doc(collection(db, 'transactions'));
+          batch.set(txRef, {
             type: modalType,
             amount: formData.amount,
             date: formData.date,
@@ -817,28 +863,14 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             description: formData.description
           });
 
-          // If this is linked to a booking, update the booking status to Paid
           if (formData.bookingId) {
-            try {
-              await updateDoc(doc(db, 'bookings', formData.bookingId), {
-                status: 'Paid'
-              });
-              toast.success("Booking status updated to Paid");
-            } catch (err) {
-              console.error("Error updating booking status:", err);
-              toast.error("Transaction logged, but failed to update booking status");
-            }
+            batch.update(doc(db, 'bookings', formData.bookingId), { status: 'Paid' });
           }
 
-          // Update Balance
-          const newBalance = modalType === 'Income' 
-            ? account.balance + formData.amount 
-            : account.balance - formData.amount;
-          
-          await updateDoc(doc(db, 'accounts', account.id), {
-            balance: newBalance
-          });
+          const balanceAdjustment = modalType === 'Income' ? formData.amount : -formData.amount;
+          batch.update(doc(db, 'accounts', formData.accountId), { balance: increment(balanceAdjustment) });
         }
+        await batch.commit();
         setSuccessAction(`${modalType} logged successfully`);
       }
 
@@ -851,7 +883,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
       setShowModal(false);
       resetForm();
-      fetchData(true); // Refresh data to show new transaction
+      fetchData(true);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'transactions/accounts');
       toast.error("Failed to process transaction");
@@ -868,6 +900,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       date: tx.date,
       category: tx.category,
       carId: tx.carId || '',
+      vehicleFinanceId: '', // Ideally we could find the finance ID based on carId if needed
       accountId: tx.accountId,
       depositAccountId: tx.category === 'Deposit' ? tx.accountId : tx.accountId,
       toAccountId: tx.toAccountId || '',
@@ -946,6 +979,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       category: '',
       carId: '',
+      vehicleFinanceId: '',
       bookingId: '',
       accountId: '',
       depositAccountId: '',
@@ -1636,6 +1670,76 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     setDisplayLimit(50);
   };
 
+  const [showAddLoanForm, setShowAddLoanForm] = useState(false);
+  const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
+  const [newLoanData, setNewLoanData] = useState({
+    vehicleId: '',
+    lender: '',
+    totalLoanAmount: 0,
+    monthlyInstallment: 0,
+    totalInstallments: 0,
+    paidInstallments: 0,
+    startDate: format(new Date(), "yyyy-MM-dd")
+  });
+
+  const handleEditLoan = (loan: VehicleFinance) => {
+    setEditingLoanId(loan.id);
+    setNewLoanData({
+      vehicleId: loan.vehicleId,
+      lender: loan.lender,
+      totalLoanAmount: loan.totalLoanAmount,
+      monthlyInstallment: loan.monthlyInstallment,
+      totalInstallments: loan.totalInstallments,
+      paidInstallments: loan.paidInstallments || 0,
+      startDate: loan.startDate ? format(new Date(loan.startDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
+    });
+    setShowAddLoanForm(true);
+  };
+
+  const handleDeleteLoan = async (loanId: string) => {
+    if (!window.confirm("Are you sure you want to delete this finance record? This will not delete past transactions.")) return;
+    try {
+      await deleteDoc(doc(db, 'vehicleFinance', loanId));
+      toast.success("Finance record deleted");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'vehicleFinance');
+      toast.error("Failed to delete record");
+    }
+  };
+
+  const handleSaveLoan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const data = {
+        ...newLoanData,
+        startDate: new Date(newLoanData.startDate).toISOString()
+      };
+
+      if (editingLoanId) {
+        await updateDoc(doc(db, 'vehicleFinance', editingLoanId), data);
+        toast.success("Finance record updated successfully");
+      } else {
+        await addDoc(collection(db, 'vehicleFinance'), data);
+        toast.success("Finance record added successfully");
+      }
+
+      setShowAddLoanForm(false);
+      setEditingLoanId(null);
+      setNewLoanData({
+        vehicleId: '',
+        lender: '',
+        totalLoanAmount: 0,
+        monthlyInstallment: 0,
+        totalInstallments: 0,
+        paidInstallments: 0,
+        startDate: format(new Date(), "yyyy-MM-dd")
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'vehicleFinance');
+      toast.error(editingLoanId ? "Failed to update record" : "Failed to add record");
+    }
+  };
+
   if (!auth.currentUser) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-warm-bg">
@@ -1688,6 +1792,14 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             >
               <LayoutDashboard size={16} /> 
               Overview
+            </button>
+            <button 
+              onClick={() => setShowVehicleLoans(true)}
+              className="h-12 px-6 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2"
+              title="View vehicle financing and loan progress"
+            >
+              <CarIcon size={16} /> 
+              Vehicle Loans
             </button>
             <button 
               onClick={() => openModal('Income')}
@@ -2057,6 +2169,290 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       </div>
     </div>
 
+      {/* Vehicle Loans Modal */}
+      <AnimatePresence>
+        {showVehicleLoans && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowVehicleLoans(false)}
+              className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-xl"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-[40px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-8 border-b border-black/5 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h2 className="font-serif italic text-3xl text-[#141414]">Vehicle Loans</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">Financing & Repayment Progress</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      if (showAddLoanForm) {
+                        setShowAddLoanForm(false);
+                        setEditingLoanId(null);
+                      } else {
+                        setEditingLoanId(null);
+                        setNewLoanData({
+                          vehicleId: '',
+                          lender: '',
+                          totalLoanAmount: 0,
+                          monthlyInstallment: 0,
+                          totalInstallments: 0,
+                          paidInstallments: 0,
+                          startDate: format(new Date(), "yyyy-MM-dd")
+                        });
+                        setShowAddLoanForm(true);
+                      }
+                    }}
+                    className="h-10 px-6 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[9px] hover:bg-brand-orange/90 transition-all flex items-center gap-2"
+                  >
+                    {showAddLoanForm ? <X size={14} /> : <Plus size={14} />}
+                    {showAddLoanForm ? 'Cancel' : 'Add Loan'}
+                  </button>
+                  <button 
+                    onClick={() => setShowVehicleLoans(false)}
+                    className="p-2 hover:bg-gray-200 rounded-full transition-all"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto p-8 space-y-8">
+                {showAddLoanForm && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-gray-50 border border-black/5 rounded-[32px] p-8 mb-8"
+                  >
+                    <h3 className="font-serif italic text-xl mb-6">{editingLoanId ? 'Edit Financing Record' : 'New Financing Record'}</h3>
+                    <form onSubmit={handleSaveLoan} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Vehicle</label>
+                        <select 
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.vehicleId}
+                          onChange={e => setNewLoanData({ ...newLoanData, vehicleId: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Vehicle...</option>
+                          {cars.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.plateNumber})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Lender (Bank)</label>
+                        <input 
+                          type="text"
+                          placeholder="e.g., K-Bank, SCB"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.lender}
+                          onChange={e => setNewLoanData({ ...newLoanData, lender: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Total Loan Amount</label>
+                        <input 
+                          type="number"
+                          placeholder="Original Principal"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.totalLoanAmount || ''}
+                          onChange={e => setNewLoanData({ ...newLoanData, totalLoanAmount: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Monthly Installment</label>
+                        <input 
+                          type="number"
+                          placeholder="Monthly Payment"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.monthlyInstallment || ''}
+                          onChange={e => setNewLoanData({ ...newLoanData, monthlyInstallment: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Total Months</label>
+                        <input 
+                          type="number"
+                          placeholder="e.g., 48"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.totalInstallments || ''}
+                          onChange={e => setNewLoanData({ ...newLoanData, totalInstallments: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Months Paid</label>
+                        <input 
+                          type="number"
+                          placeholder="e.g., 37"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.paidInstallments || 0}
+                          onChange={e => setNewLoanData({ ...newLoanData, paidInstallments: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-2">Start Date</label>
+                        <input 
+                          type="date"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs outline-none focus:border-brand-orange"
+                          value={newLoanData.startDate}
+                          onChange={e => setNewLoanData({ ...newLoanData, startDate: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <button 
+                          type="submit"
+                          className="w-full bg-[#141414] text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-brand-orange transition-all"
+                        >
+                          Save Financing Details
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                )}
+                {vehicleFinances.length === 0 ? (
+                  <div className="text-center py-10">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CarIcon size={24} className="text-gray-300" />
+                    </div>
+                    <h3 className="text-lg font-serif italic text-gray-400 mb-1">No Financed Vehicles</h3>
+                    <p className="text-[10px] text-gray-400 max-w-xs mx-auto uppercase tracking-widest font-bold">Add vehicle loans to track progress</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-black/5 rounded-[32px] custom-scrollbar">
+                    <table className="w-full border-collapse bg-white">
+                      <thead className="sticky top-0 bg-gray-50 z-10 border-b border-black/5">
+                        <tr className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 whitespace-nowrap">
+                          <th className="p-4 text-left">#</th>
+                          <th className="p-4 text-left">Vehicle</th>
+                          <th className="p-4 text-left">Lender</th>
+                          <th className="p-4 text-left">Start Date</th>
+                          <th className="p-4 text-right">Monthly (฿)</th>
+                          <th className="p-4 text-center">Months</th>
+                          <th className="p-4 text-right">Total Loan (฿)</th>
+                          <th className="p-4 text-center">Paid</th>
+                          <th className="p-4 text-right">Paid So Far (฿)</th>
+                          <th className="p-4 text-right">Balance (฿)</th>
+                          <th className="p-4 text-left">Progress (%)</th>
+                          <th className="p-4 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/5 font-sans">
+                        {vehicleFinances.map((vf, index) => {
+                          const car = cars.find(c => c.id === vf.vehicleId);
+                          const installmentsPaid = vf.paidInstallments ?? 0;
+                          const monthlyPayment = vf.monthlyInstallment || 0;
+                          const totalMonths = vf.totalInstallments || 1;
+                          
+                          const totalPaid = installmentsPaid * monthlyPayment;
+                          const totalLoanWithInterest = (vf.totalInstallments || 0) * monthlyPayment;
+                          const remainingBalance = Math.max(0, totalLoanWithInterest - totalPaid);
+                          const progress = Math.min(100, (installmentsPaid / totalMonths) * 100);
+
+                          return (
+                            <tr key={vf.id} className="hover:bg-slate-50 transition-colors odd:bg-white even:bg-gray-50/30 whitespace-nowrap group/row">
+                              <td className="p-4 text-[10px] font-bold text-gray-300">{index + 1}</td>
+                              <td className="p-4">
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-bold text-[#141414] tracking-tight">{car?.name || 'Unknown'}</span>
+                                  <span className="text-[10px] font-mono font-bold text-[#141414]/40">{car?.plateNumber || 'N/A'}</span>
+                                </div>
+                              </td>
+                              <td className="p-4 text-xs font-bold text-[#141414]/60">{vf.lender || 'N/A'}</td>
+                              <td className="p-4 text-xs font-bold text-[#141414]/60">
+                                {vf.startDate && !isNaN(Date.parse(vf.startDate)) ? format(parseISO(vf.startDate), 'MMM d, yyyy') : 'N/A'}
+                              </td>
+                              <td className="p-4 text-right text-xs font-bold text-[#141414]">฿{(vf.monthlyInstallment || 0).toLocaleString()}</td>
+                              <td className="p-4 text-center text-xs font-bold text-[#141414]/60">{vf.totalInstallments || 0}</td>
+                              <td className="p-4 text-right text-xs font-bold text-[#141414]">฿{totalLoanWithInterest.toLocaleString()}</td>
+                              <td className="p-4 text-center text-xs font-bold text-[#141414]/60">{installmentsPaid}</td>
+                              <td className="p-4 text-right text-xs font-bold text-green-600">฿{totalPaid.toLocaleString()}</td>
+                              <td className="p-4 text-right text-xs font-bold text-brand-orange">฿{remainingBalance.toLocaleString()}</td>
+                              <td className="p-4 min-w-[140px]">
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-widest">
+                                    <span className="text-[#141414]/40">{isNaN(progress) ? 0 : progress.toFixed(0)}%</span>
+                                    <span className={progress === 100 ? "text-green-500" : "text-brand-orange"}>
+                                      {installmentsPaid}/{vf.totalInstallments || 0}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-[#141414]/5 rounded-full overflow-hidden">
+                                    <motion.div 
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${isNaN(progress) ? 0 : progress}%` }}
+                                      className={cn(
+                                        "h-full transition-all duration-1000 rounded-full",
+                                        progress === 100 ? "bg-green-500" : "bg-brand-orange"
+                                      )}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <div className="flex justify-center gap-2 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                  <button 
+                                    onClick={() => handleEditLoan(vf)}
+                                    className="p-2 hover:bg-brand-orange hover:text-white rounded-xl transition-all text-[#141414]/20"
+                                    title="Edit Loan"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteLoan(vf.id)}
+                                    className="p-2 hover:bg-red-500 hover:text-white rounded-xl transition-all text-[#141414]/20"
+                                    title="Delete Record"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="sticky bottom-0 bg-white border-t-2 border-[#141414]/5 z-10 font-sans">
+                        <tr className="font-bold text-xs whitespace-nowrap bg-gray-50/80 backdrop-blur-sm">
+                          <td colSpan={6} className="p-5 text-right uppercase tracking-[0.2em] text-[#141414]/40">Totals</td>
+                          <td className="p-5 text-right text-[#141414]">
+                            ฿{vehicleFinances.reduce((sum, vf) => sum + ((vf.totalInstallments || 0) * (vf.monthlyInstallment || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td></td>
+                          <td className="p-5 text-right text-green-600">
+                            ฿{vehicleFinances.reduce((sum, vf) => sum + ((vf.paidInstallments ?? 0) * (vf.monthlyInstallment || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td className="p-5 text-right text-brand-orange">
+                            ฿{vehicleFinances.reduce((sum, vf) => {
+                              const total = (vf.totalInstallments || 0) * (vf.monthlyInstallment || 0);
+                              const paid = (vf.paidInstallments ?? 0) * (vf.monthlyInstallment || 0);
+                              return sum + Math.max(0, total - paid);
+                            }, 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Summary Report Modal */}
       <AnimatePresence>
         {showSummaryReport && (
@@ -2337,7 +2733,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                               type="number"
                               step="0.01"
                               className="w-full bg-white/60 border-b-2 border-green-200 p-2 text-lg font-bold focus:border-green-500 outline-none transition-all rounded-t-xl"
-                              value={formData.rentalAmount || ''}
+                              value={formData.rentalAmount}
                               onChange={e => setFormData({ ...formData, rentalAmount: Number(e.target.value) })}
                               placeholder="0.00"
                             />
@@ -2368,7 +2764,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                               type="number"
                               step="0.01"
                               className="w-full bg-white/60 border-b-2 border-blue-200 p-2 text-lg font-bold focus:border-blue-500 outline-none transition-all rounded-t-xl"
-                              value={formData.depositAmount || ''}
+                              value={formData.depositAmount}
                               onChange={e => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
                               placeholder="0.00"
                             />
@@ -2488,6 +2884,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                                 <option value="Tax">Tax</option>
                                 <option value="Staff Salary">Staff Salary</option>
                                 <option value="Rent">Rent</option>
+                                <option value="Repayment">Repayment</option>
                                 <option value="Utilities">Utilities</option>
                                 <option value="Marketing">Marketing</option>
                                 <option value="Other Expense">Other Expense</option>
@@ -2500,7 +2897,46 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   </>
                 )}
 
-                    {modalType !== 'Transfer' && (
+                    {formData.category === 'Repayment' && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Select Financed Vehicle</label>
+                        <select 
+                          className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl appearance-none"
+                          value={formData.vehicleFinanceId}
+                          onChange={e => {
+                            const vfId = e.target.value;
+                            const vf = vehicleFinances.find(v => v.id === vfId);
+                            if (vf) {
+                              const car = cars.find(c => c.id === vf.vehicleId);
+                              const repaymentsCount = transactions.filter(t => t.category === 'Repayment' && t.carId === vf.vehicleId).length;
+                              const description = `Monthly Repayment - ${car?.plateNumber || 'Unknown'} (Installment ${repaymentsCount + 1} of ${vf.totalInstallments})`;
+                              setFormData({
+                                ...formData,
+                                vehicleFinanceId: vfId,
+                                amount: vf.monthlyInstallment,
+                                carId: vf.vehicleId,
+                                description: description
+                              });
+                            } else {
+                              setFormData({ ...formData, vehicleFinanceId: vfId });
+                            }
+                          }}
+                          required
+                        >
+                          <option value="">Select financed vehicle...</option>
+                          {vehicleFinances.map(vf => {
+                            const car = cars.find(c => c.id === vf.vehicleId);
+                            return (
+                              <option key={vf.id} value={vf.id}>
+                                {car ? `${car.name} (${car.plateNumber})` : 'Unknown Vehicle'} - {vf.lender}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
+
+                    {modalType !== 'Transfer' && formData.category !== 'Repayment' && (
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
                           Vehicle (Optional)

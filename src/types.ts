@@ -42,6 +42,7 @@ export interface Customer {
   carLicenceExpiry?: string;
   notes?: string;
   creationDate?: string;
+  updatedAt?: string;
   uniqueId?: string;
   location?: {
     lat: number;
@@ -100,6 +101,18 @@ export interface Rental {
   paymentStatus?: 'paid' | 'pending';
   createdAt: string; // ISO string
   processedBy: string; // user email
+}
+
+export interface VehicleFinance {
+  id: string;
+  vehicleId: string; // Reference to Car.id
+  lender: string;
+  totalLoanAmount: number;
+  monthlyInstallment: number;
+  totalInstallments: number;
+  paidInstallments?: number;
+  startDate: string; // ISO string
+  interestRate?: number;
 }
 
 export interface Transaction {
@@ -238,6 +251,27 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   lastUpdated?: string;
+}
+
+export interface MarketingPage {
+  id: string;
+  title: string;
+  slug: string;
+  categoryPath: string; // e.g., /cars/ev-rentals
+  content: string; // HTML content
+  excerpt: string;
+  featuredImageUrl?: string;
+  featuredImageAlt?: string;
+  status: 'Draft' | 'Published';
+  layoutType: 'Service' | 'Location' | 'Blog' | 'Home' | 'Landing' | 'Contact' | 'About' | 'FAQ' | 'Fleet' | 'Custom';
+  metaDescription?: string;
+  keywords?: string;
+  canonicalUrl?: string;
+  schemaMarkup?: string;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+  authorId: string;
+  fullUrl: string; // Combined path
 }
 
 export interface AppSettings {
