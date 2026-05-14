@@ -97,8 +97,12 @@ export const FAQ: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode }) => {
         if (faqData.length > 0) {
           setDbFaqs(faqData);
         }
-      } catch (error) {
-        console.error('Error fetching FAQs:', error);
+      } catch (error: any) {
+        if (error.code === 'permission-denied') {
+          console.warn('FAQ: Public read access not confirmed via rules, using local translations fallback.');
+        } else {
+          console.error('Error fetching FAQs:', error);
+        }
       }
     };
 

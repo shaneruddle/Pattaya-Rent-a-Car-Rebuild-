@@ -26,16 +26,38 @@ const MarketingPageView: React.FC<MarketingPageViewProps> = ({ fullPath, isBikeM
       setLoading(true);
       setError(null);
       try {
+        // Normalize the path (ensure leading slash, no trailing slash)
+        const normalizedPath = '/' + fullPath.split('/').filter(Boolean).join('/');
+        
+        // Try querying by fullUrl (handles both leading and non-leading slash versions)
         const q = query(
           collection(db, 'marketing_pages'),
-          where('fullUrl', '==', fullPath),
+          where('fullUrl', 'in', [normalizedPath, normalizedPath.substring(1)]),
           where('status', '==', 'Published'),
           limit(1)
         );
-        const snapshot = await getDocs(q);
+        
+        let snapshot = await getDocs(q);
+        
+        // Fallback: If not found by fullUrl, try matching by slug as a secondary lookup
+        if (snapshot.empty) {
+          const segments = normalizedPath.split('/').filter(Boolean);
+          const potentialSlug = segments[segments.length - 1];
+          
+          if (potentialSlug) {
+            const qSlug = query(
+              collection(db, 'marketing_pages'),
+              where('slug', '==', potentialSlug),
+              where('status', '==', 'Published'),
+              limit(1)
+            );
+            snapshot = await getDocs(qSlug);
+          }
+        }
         
         if (!snapshot.empty) {
-          setPage({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as MarketingPage);
+          const pageData = snapshot.docs[0].data();
+          setPage({ id: snapshot.docs[0].id, ...pageData } as MarketingPage);
         } else {
           setError('Page not found');
         }

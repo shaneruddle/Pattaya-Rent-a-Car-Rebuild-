@@ -603,57 +603,61 @@ const handleCreateNew = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/5 text-[12px] font-bold">
-                  {filteredPages.map(page => (
-                    <tr key={page.id} className="hover:bg-gray-50/50 transition-colors group">
-                      <td className="p-6">
-                        <div 
-                          className={cn(
-                            "flex items-center gap-4 transition-all duration-200",
-                            page.status === 'Published' && "cursor-pointer hover:text-brand-orange"
-                          )}
-                          onClick={() => {
-                            if (page.status === 'Published') {
-                              window.open(`https://www.pattayarentacar.com${page.fullUrl}`, '_blank');
-                            } else {
-                              handleEdit(page);
-                            }
-                          }}
-                        >
-                          <div className="w-10 h-10 rounded-xl bg-black/5 flex items-center justify-center text-brand-orange shrink-0">
-                            <FileText size={18} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm text-gray-900 truncate max-w-[200px] flex items-center gap-2">
-                              {page.title}
-                              {page.status === 'Published' && <ExternalLink size={12} className="text-black/20" />}
+                    {filteredPages.map(page => (
+                      <tr key={page.id} className="hover:bg-gray-50/50 transition-colors group">
+                        <td className="p-6">
+                          <div 
+                            className="flex items-center gap-4 cursor-pointer hover:text-brand-orange transition-all font-bold"
+                            onClick={() => handleEdit(page)}
+                          >
+                            <div className="w-10 h-10 rounded-xl bg-black/5 flex items-center justify-center text-brand-orange shrink-0">
+                              <FileText size={18} />
                             </div>
-                            <div className="text-[10px] text-black/30 truncate max-w-[200px]">{page.excerpt || 'No excerpt'}</div>
+                            <div className="min-w-0">
+                              <div className="text-sm text-gray-900 truncate max-w-[200px]">
+                                {page.title}
+                              </div>
+                              <div className="text-[10px] text-black/30 truncate max-w-[200px]">
+                                {page.excerpt || 'No excerpt'}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-6">
-                        <span className="bg-black/5 text-black/60 px-3 py-1 rounded-full text-[9px] uppercase tracking-widest">
-                          {page.layoutType}
-                        </span>
-                      </td>
-                      <td className="p-6">
-                        <div 
-                          className="font-mono text-black/40 flex items-center gap-1.5 hover:text-brand-orange cursor-pointer transition-colors max-w-[250px] truncate group/link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (page.status === 'Published') {
-                              window.open(`https://www.pattayarentacar.com${page.fullUrl}`, '_blank');
-                            } else {
-                              handleEdit(page);
-                            }
-                          }}
-                        >
-                          <Globe size={12} className="shrink-0" />
-                          <span className="truncate">{page.fullUrl}</span>
-                          {page.status === 'Published' && <ExternalLink size={10} className="text-black/0 group-hover/link:text-brand-orange transition-colors" />}
-                        </div>
-                      </td>
-                      <td className="p-6 text-center">
+                        </td>
+                        <td className="p-6">
+                          <span className="bg-black/5 text-black/60 px-3 py-1 rounded-full text-[9px] uppercase tracking-widest">
+                            {page.layoutType}
+                          </span>
+                        </td>
+                        <td className="p-6">
+                          <div className="flex items-center gap-2 max-w-[250px]">
+                            <div 
+                              className="font-mono text-black/40 flex items-center gap-1.5 hover:text-brand-orange cursor-pointer transition-colors truncate group/link"
+                              onClick={() => handleEdit(page)}
+                            >
+                              <Globe size={12} className="shrink-0" />
+                              <span className="truncate">{page.fullUrl}</span>
+                            </div>
+                            {page.status === 'Published' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = `https://www.pattayarentacar.com${page.fullUrl}`;
+                                  window.open(url, '_blank');
+                                }}
+                                className="p-1.5 bg-brand-orange/10 text-brand-orange rounded-lg hover:bg-brand-orange hover:text-white transition-all shadow-sm"
+                                title="Open Live Page"
+                              >
+                                <ExternalLink size={12} />
+                              </button>
+                            )}
+                          </div>
+                          {page.nestedCategoryPath && (
+                            <div className="text-[9px] text-black/20 font-mono mt-1">
+                              Internal Path: {page.nestedCategoryPath}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-6 text-center">
                         <div className={cn(
                           "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest",
                           page.status === 'Published' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"

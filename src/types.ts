@@ -272,6 +272,7 @@ export interface MarketingPage {
   updatedAt: string; // ISO string
   authorId: string;
   fullUrl: string; // Combined path
+  nestedCategoryPath?: string; // e.g., faq
 }
 
 export interface AppSettings {
