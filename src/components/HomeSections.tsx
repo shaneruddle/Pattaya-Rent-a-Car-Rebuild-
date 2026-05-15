@@ -436,6 +436,21 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
   const { config, loading: configLoading } = useCompanyConfig();
   const { info } = useBusinessInfo();
   const { t } = useLanguage();
+  const [marketingPages, setMarketingPages] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/marketing-pages/list')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMarketingPages(data);
+        }
+      })
+      .catch(err => console.error('Error fetching marketing pages for footer:', err));
+  }, []);
+
+  const locationPages = marketingPages.filter(p => p.fullUrl?.startsWith('/locations/') || p.categoryPath === 'locations');
+  const servicePages = marketingPages.filter(p => p.fullUrl?.startsWith('/services/') || p.categoryPath === 'services');
 
   return (
     <footer className="bg-black text-white pt-32 pb-16 relative overflow-hidden">
@@ -487,6 +502,24 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
                 </a>
               ))}
             </div>
+
+            {/* Published Locations */}
+            {locationPages.length > 0 && (
+              <div className="pt-10">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/20 mb-6">Our Locations</h4>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {locationPages.map(page => (
+                    <button 
+                      key={page.id}
+                      onClick={() => onPageChange?.(page.fullUrl || `/${page.slug}`)}
+                      className={cn("text-[10px] font-bold uppercase tracking-widest text-white/40 transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}
+                    >
+                      {page.title.split('|')[0].trim()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           
           <div>
@@ -504,6 +537,25 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
               <li><button onClick={() => onPageChange?.('contact')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>{t('nav.contact')}</button></li>
               <li><button onClick={() => onPageChange?.('blog')} className={cn("transition-colors", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}>Blog</button></li>
             </ul>
+
+            {/* Published Services */}
+            {servicePages.length > 0 && (
+              <div className="mt-16">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/20 mb-8">Our Services</h4>
+                <ul className="space-y-4">
+                  {servicePages.map(page => (
+                    <li key={page.id}>
+                      <button 
+                        onClick={() => onPageChange?.(page.fullUrl || `/${page.slug}`)}
+                        className={cn("text-xs font-bold tracking-tight text-white/40 transition-colors text-left", isBikeMode ? "hover:text-brand-blue" : "hover:text-brand-orange")}
+                      >
+                        {page.title.split('|')[0].trim()}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div>

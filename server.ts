@@ -901,6 +901,123 @@ async function startServer() {
     }
   });
 
+  // Fetch Marketing Page by Slugs/URL via Admin SDK (Bypassing Rules)
+  app.get("/api/marketing-pages", async (req, res) => {
+    const { url, slug } = req.query;
+    const reqId = Math.random().toString(36).substring(7);
+    console.log(`[Marketing API ${reqId}] Request: url=${url}, slug=${slug}`);
+    
+    try {
+      if (url) {
+        // Normalize URL - remove trailing slash, ensure leading slash, lower case for comparison fallback
+        const rawUrl = (url as string).split('?')[0].split('#')[0]; // Remove query params/hashes
+        const segments = rawUrl.split('/').filter(Boolean);
+        const normalizedUrl = '/' + segments.join('/');
+        const lowerUrl = normalizedUrl.toLowerCase();
+        
+        const urls = new Set([
+          normalizedUrl, 
+          normalizedUrl.substring(1), 
+          normalizedUrl + '/',
+          lowerUrl,
+          lowerUrl.substring(1),
+          lowerUrl + '/'
+        ]);
+        
+        const urlList = Array.from(urls);
+        console.log(`[Marketing API ${reqId}] Testing URLs:`, urlList);
+        
+        // Try exact paths first
+        let snapshot = await firestore.collection('marketing_pages')
+          .where('status', '==', 'Published')
+          .where('fullUrl', 'in', urlList)
+          .limit(1)
+          .get();
+
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          console.log(`[Marketing API ${reqId}] Success: Found by fullUrl match: ${doc.id}`);
+          return res.json({ id: doc.id, ...doc.data() });
+        }
+
+        // Secondary fallback by slug matching
+        const derivedSlug = segments[segments.length - 1];
+        const categoryPath = segments.length > 1 ? segments[segments.length - 2] : null;
+
+        console.log(`[Marketing API ${reqId}] Fallback Check: Derived Slug=${derivedSlug}, Category=${categoryPath}`);
+
+        if (derivedSlug) {
+          let slugQuery = firestore.collection('marketing_pages')
+            .where('status', '==', 'Published')
+            .where('slug', '==', derivedSlug);
+          
+          let slugSnapshot = await slugQuery.get();
+          
+          if (!slugSnapshot.empty) {
+            console.log(`[Marketing API ${reqId}] Success: Found ${slugSnapshot.size} matches by slug. Filtering...`);
+            
+            // If we have multiple matches, try to find the best one by categoryPath
+            if (categoryPath) {
+              const bestMatch = slugSnapshot.docs.find((d: any) => d.data().categoryPath === categoryPath);
+              if (bestMatch) {
+                console.log(`[Marketing API ${reqId}] Success: Found best match by categoryPath: ${bestMatch.id}`);
+                return res.json({ id: bestMatch.id, ...bestMatch.data() });
+              }
+            }
+            
+            // Otherwise just return the first one
+            const doc = slugSnapshot.docs[0];
+            console.log(`[Marketing API ${reqId}] Success: Returning first available slug match: ${doc.id}`);
+            return res.json({ id: doc.id, ...doc.data() });
+          }
+        }
+      } else if (slug) {
+        const snapshot = await firestore.collection('marketing_pages')
+          .where('status', '==', 'Published')
+          .where('slug', '==', slug)
+          .limit(1)
+          .get();
+          
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          console.log(`[Marketing API ${reqId}] Success: Found by direct slug query: ${doc.id}`);
+          return res.json({ id: doc.id, ...doc.data() });
+        }
+      } else {
+        return res.status(400).json({ error: "url or slug is required" });
+      }
+
+      console.log(`[Marketing API ${reqId}] Not found for inputs.`);
+      res.status(404).json({ error: "Page not found" });
+    } catch (error: any) {
+      console.error(`[Marketing API ${reqId}] Error:`, error.message);
+      res.status(500).json({ error: "Failed to fetch marketing page", details: error.message });
+    }
+  });
+
+  // Fetch all published Marketing Pages for footer/sitemap
+  app.get("/api/marketing-pages/list", async (req, res) => {
+    try {
+      const snapshot = await firestore.collection('marketing_pages')
+        .where('status', '==', 'Published')
+        .get();
+      
+      const pages = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        title: doc.data().title,
+        slug: doc.data().slug,
+        fullUrl: doc.data().fullUrl,
+        categoryPath: doc.data().categoryPath,
+        layoutType: doc.data().layoutType
+      }));
+      
+      res.json(pages);
+    } catch (error: any) {
+      console.error("[Marketing List API] Error:", error.message);
+      res.status(500).json({ error: "Failed to fetch marketing pages list", details: error.message });
+    }
+  });
+
   // Catch-all for unhandled API routes
   app.all("/api/*", (req, res) => {
     console.log(`Unhandled API Request: ${req.method} ${req.path}`);
@@ -954,6 +1071,14 @@ async function startServer() {
     if (cleanUrl.startsWith('/locations/')) return true;
     if (cleanUrl.startsWith('/vehicle/')) return true;
     if (cleanUrl.startsWith('/search/')) return true;
+    
+    // Any nested path is likely a marketing page
+    const segments = cleanUrl.split('/').filter(Boolean);
+    if (segments.length >= 2) {
+      console.log(`[SEO] Path matched nested segment rule (length ${segments.length}): ${cleanUrl}`);
+      return true;
+    }
+    
     return false;
   };
 

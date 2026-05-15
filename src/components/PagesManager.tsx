@@ -632,7 +632,7 @@ const handleCreateNew = () => {
                           <div className="flex items-center gap-2 max-w-[250px]">
                             <div 
                               className="font-mono text-black/40 flex items-center gap-1.5 hover:text-brand-orange cursor-pointer transition-colors truncate group/link"
-                              onClick={() => handleEdit(page)}
+                              onClick={(e) => { e.stopPropagation(); window.open(`https://www.pattayarentacar.com${page.fullUrl}`, '_blank'); }}
                             >
                               <Globe size={12} className="shrink-0" />
                               <span className="truncate">{page.fullUrl}</span>

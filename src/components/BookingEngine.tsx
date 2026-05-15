@@ -468,7 +468,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   };
 
   const handlePageChange = (newView: string) => {
-    if (newView === 'blog') {
+    if (newView.startsWith('/')) {
+      navigate(newView);
+    } else if (newView === 'blog') {
       navigate('/blog');
     } else if (newView === 'landing') {
       navigate('/');
@@ -496,6 +498,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   // Sync view state with URL
   useEffect(() => {
     const path = location.pathname;
+    const segments = path.split('/').filter(Boolean);
+    console.log(`[BookingEngine] Route Sync: path="${path}", segments=${segments.length}`);
+    
     if (path === '/blog') {
       setView('blog');
     } else if (path.startsWith('/blog/')) {
@@ -514,10 +519,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       setView('contact');
     } else if (path === '/long-term-rental' || path === '/long-term') {
       setView('long-term');
-    } else if (path === '/faq') {
-      setView('landing'); // FAQ is currently a section on landing, but could be a page
-    } else if (path.includes('/') && path.split('/').filter(Boolean).length >= 2) {
-      // Detected nested path, try to find a marketing page
+    } else if (path === '/faq' && segments.length === 1) {
+      setView('landing'); 
+    } else if (segments.length >= 2 || 
+               path.startsWith('/pages/') || 
+               path.startsWith('/services/') || 
+               path.startsWith('/locations/') ||
+               path.startsWith('/vehicle/')) {
+      console.log(`[BookingEngine] Route match: Setting view to marketing-page for: ${path}`);
       setView('marketing-page');
     } else if (path === '/') {
       setView('landing');
