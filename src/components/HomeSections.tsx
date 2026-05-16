@@ -439,20 +439,42 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
   const [marketingPages, setMarketingPages] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/marketing-pages/list')
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        if (Array.isArray(data)) {
-          setMarketingPages(data);
-        }
-      })
-      .catch(err => {
-        console.error('Error fetching marketing pages for footer:', err);
-        // Fallback or retry logic could go here if needed
-      });
+    let retries = 0;
+    const maxRetries = 3;
+    const fetchPages = () => {
+      const url = '/api/marketing-pages/list';
+      console.log(`[Footer] Fetching marketing pages (Attempt ${retries + 1})...`);
+      
+      fetch(url)
+        .then(res => {
+          if (!res.ok) {
+            console.error(`[Footer] API returned error ${res.status}: ${res.statusText}`);
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (Array.isArray(data)) {
+            console.log(`[Footer] Successfully fetched ${data.length} marketing pages.`);
+            setMarketingPages(data);
+          } else {
+            console.warn('[Footer] API returned non-array data:', data);
+          }
+        })
+        .catch(err => {
+          console.error(`[Footer] Error (Attempt ${retries + 1}):`, err.message);
+          if (retries < maxRetries) {
+            retries++;
+            const delay = 1000 * Math.pow(2, retries);
+            console.log(`[Footer] Retrying in ${delay}ms...`);
+            setTimeout(fetchPages, delay);
+          } else {
+            console.error('[Footer] Max retries reached for marketing pages fetch.');
+          }
+        });
+    };
+
+    fetchPages();
   }, []);
 
   const locationPages = marketingPages.filter(p => p.fullUrl?.startsWith('/locations/') || p.categoryPath === 'locations');

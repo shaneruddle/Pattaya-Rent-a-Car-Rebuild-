@@ -518,6 +518,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
   // Sync view state with URL
   useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('from') && p.get('to')) return;
+
     const path = location.pathname;
     const segments = path.split('/').filter(Boolean);
     console.log(`[BookingEngine] Route Sync: path="${path}", segments=${segments.length}`);

@@ -252,8 +252,19 @@ async function startServer() {
 
   // Fetch all published Marketing Pages for footer/sitemap - MOVE THIS EARLY
   app.get("/api/marketing-pages/list", async (req, res) => {
-    console.log("[Marketing List API] Fetching list of published pages...");
+    console.log(`[Marketing List API] Received request from ${req.ip} - ${req.get('user-agent')?.substring(0, 50)}`);
+    
+    // Explicit CORS for this sensitive fetch
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+
+    if (!firestore) {
+      console.error("[Marketing List API] Firestore not initialized yet!");
+      return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+    }
+
     try {
+      console.log("[Marketing List API] Fetching list from Firestore...");
       const snapshot = await firestore.collection('marketing_pages')
         .where('status', '==', 'Published')
         .get();
@@ -270,8 +281,15 @@ async function startServer() {
       console.log(`[Marketing List API] Found ${pages.length} published pages.`);
       res.json(pages);
     } catch (error: any) {
-      console.error("[Marketing List API] Error:", error.message);
-      res.status(500).json({ error: "Failed to fetch marketing pages list", details: error.message });
+      console.error("[Marketing List API] Critical Error:", error.message);
+      // Log more error details if available
+      if (error.code) console.error("[Marketing List API] Error Code:", error.code);
+      
+      res.status(500).json({ 
+        error: "Failed to fetch marketing pages list", 
+        details: error.message,
+        timestamp: new Date().toISOString()
+      });
     }
   });
 
