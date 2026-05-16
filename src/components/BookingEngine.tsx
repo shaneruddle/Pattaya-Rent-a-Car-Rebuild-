@@ -4,7 +4,7 @@ import { db, handleFirestoreError, OperationType, logSystemActivity, storage } f
 import { sendTemplatedEmail } from '../lib/emailUtils';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { Car, WebsiteCar } from '../types';
-import { format, addDays, differenceInDays, differenceInHours, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addMonths, subMonths } from 'date-fns';
+import { format, addDays, differenceInDays, differenceInHours, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addMonths, subMonths, parseISO } from 'date-fns';
 import { 
   Calendar as CalendarIcon, 
   User, 
@@ -61,7 +61,7 @@ const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
 }).filter(time => {
   const [h, m] = time.split(':').map(Number);
   const totalMinutes = h * 60 + m;
-  return totalMinutes >= 9 * 60 && totalMinutes <= 17 * 60 + 30;
+  return totalMinutes >= 9 * 60 + 30 && totalMinutes <= 16 * 60 + 30;
 });
 
 interface BookingEngineProps {
@@ -80,7 +80,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [cars, setCars] = useState<WebsiteCar[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post' | 'marketing-page'>('landing');
+  const [view, setView] = useState<'landing' | 'results' | 'about' | 'contact' | 'long-term' | 'rent-a-bike' | 'blog' | 'blog-post' | 'marketing-page'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('from') && params.get('to')) ? 'results' : 'landing';
+  });
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
   const [isBikeMode, setIsBikeMode] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -105,6 +108,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       setIsBikeMode(false);
     }
   }, [view]);
+
 
   console.log('BookingEngine: Current state - loading:', loading, 'view:', view, 'cars count:', cars.length, 'isBikeMode:', isBikeMode);
 
@@ -154,12 +158,29 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   };
 
   const seo = getSeoMetadata();
-  const [selectedRange, setSelectedRange] = useState<{ from: Date; to: Date }>({
-    from: addDays(new Date(), 1),
-    to: addDays(new Date(), 6)
+  const [selectedRange, setSelectedRange] = useState<{ from: Date; to: Date }>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const f = params.get('from');
+    const t = params.get('to');
+    if (f && t) {
+      try {
+        const fromDate = parseISO(f);
+        const toDate = parseISO(t);
+        if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime())) {
+          return { from: fromDate, to: toDate };
+        }
+      } catch (e) {}
+    }
+    return { from: addDays(new Date(), 1), to: addDays(new Date(), 6) };
   });
-  const [pickUpTime, setPickUpTime] = useState('09:30');
-  const [dropOffTime, setDropOffTime] = useState('09:30');
+  const [pickUpTime, setPickUpTime] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('pickupTime');
+    return t || '09:30';
+  });
+  const [dropOffTime, setDropOffTime] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('dropoffTime');
+    return t || '09:30';
+  });
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedCar, setSelectedCar] = useState<WebsiteCar | null>(null);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
@@ -521,11 +542,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       setView('long-term');
     } else if (path === '/faq' && segments.length === 1) {
       setView('landing'); 
-    } else if (segments.length >= 2 || 
+    } else if (segments.length >= 1 && (
+               segments.length >= 2 || 
                path.startsWith('/pages/') || 
                path.startsWith('/services/') || 
                path.startsWith('/locations/') ||
-               path.startsWith('/vehicle/')) {
+               path.startsWith('/vehicles/') ||
+               path.startsWith('/vehicle/') ||
+               !['blog', 'rent-a-bike', 'rent-a-car', 'about', 'contact', 'long-term-rental', 'long-term', 'faq'].includes(segments[0])
+             )) {
       console.log(`[BookingEngine] Route match: Setting view to marketing-page for: ${path}`);
       setView('marketing-page');
     } else if (path === '/') {

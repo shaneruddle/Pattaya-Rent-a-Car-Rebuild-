@@ -440,13 +440,19 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
 
   useEffect(() => {
     fetch('/api/marketing-pages/list')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data)) {
           setMarketingPages(data);
         }
       })
-      .catch(err => console.error('Error fetching marketing pages for footer:', err));
+      .catch(err => {
+        console.error('Error fetching marketing pages for footer:', err);
+        // Fallback or retry logic could go here if needed
+      });
   }, []);
 
   const locationPages = marketingPages.filter(p => p.fullUrl?.startsWith('/locations/') || p.categoryPath === 'locations');

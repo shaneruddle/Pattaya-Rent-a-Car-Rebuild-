@@ -15,7 +15,7 @@ export const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
 export const filteredTimeOptions = timeOptions.filter(time => {
   const [h, m] = time.split(':').map(Number);
   const totalMinutes = h * 60 + m;
-  return totalMinutes >= 9 * 60 && totalMinutes <= 17 * 60 + 30;
+  return totalMinutes >= 9 * 60 + 30 && totalMinutes <= 16 * 60 + 30;
 });
 
 interface DatePickerCustomProps {

@@ -15,6 +15,7 @@ import * as Papa from "papaparse";
 import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
+import cors from "cors";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -234,10 +235,44 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json({ limit: '50mb' }));
+
+  // Add logging middleware for API requests
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      console.log(`[API Request] ${req.method} ${req.path}`);
+    }
+    next();
+  });
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Fetch all published Marketing Pages for footer/sitemap - MOVE THIS EARLY
+  app.get("/api/marketing-pages/list", async (req, res) => {
+    console.log("[Marketing List API] Fetching list of published pages...");
+    try {
+      const snapshot = await firestore.collection('marketing_pages')
+        .where('status', '==', 'Published')
+        .get();
+      
+      const pages = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        title: doc.data().title,
+        slug: doc.data().slug,
+        fullUrl: doc.data().fullUrl,
+        categoryPath: doc.data().categoryPath,
+        layoutType: doc.data().layoutType
+      }));
+      
+      console.log(`[Marketing List API] Found ${pages.length} published pages.`);
+      res.json(pages);
+    } catch (error: any) {
+      console.error("[Marketing List API] Error:", error.message);
+      res.status(500).json({ error: "Failed to fetch marketing pages list", details: error.message });
+    }
   });
 
   app.get("/api/debug/firestore/inspect", async (req, res) => {
@@ -995,29 +1030,6 @@ async function startServer() {
     }
   });
 
-  // Fetch all published Marketing Pages for footer/sitemap
-  app.get("/api/marketing-pages/list", async (req, res) => {
-    try {
-      const snapshot = await firestore.collection('marketing_pages')
-        .where('status', '==', 'Published')
-        .get();
-      
-      const pages = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        title: doc.data().title,
-        slug: doc.data().slug,
-        fullUrl: doc.data().fullUrl,
-        categoryPath: doc.data().categoryPath,
-        layoutType: doc.data().layoutType
-      }));
-      
-      res.json(pages);
-    } catch (error: any) {
-      console.error("[Marketing List API] Error:", error.message);
-      res.status(500).json({ error: "Failed to fetch marketing pages list", details: error.message });
-    }
-  });
-
   // Catch-all for unhandled API routes
   app.all("/api/*", (req, res) => {
     console.log(`Unhandled API Request: ${req.method} ${req.path}`);
@@ -1096,7 +1108,7 @@ async function startServer() {
       
       try {
         const url = req.originalUrl;
-        const status = isKnownRoute(req.path) ? 200 : 404;
+        const status = 200; // PATCHED: Always serve SPA - do not return 404 for any routes.
         
         let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
         template = await vite.transformIndexHtml(url, template);
@@ -1115,7 +1127,7 @@ async function startServer() {
       app.get('*', (req, res) => {
         const indexPath = path.join(distPath, 'index.html');
         if (fs.existsSync(indexPath)) {
-          const status = isKnownRoute(req.path) ? 200 : 404;
+          const status = 200; // PATCHED: Always serve SPA - do not return 404 for any routes.
           res.status(status).sendFile(indexPath);
         } else {
           res.status(404).send('Static files not found. Please run "npm run build".');
