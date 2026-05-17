@@ -1,7 +1,7 @@
 {
   "name": "Pattaya Rent a Car Rebuild",
   "description": "Professional rental management dashboard with centralized company settings and multi-language support.",
-  "requestFramePermissions": [
-    "camera"
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

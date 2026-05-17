@@ -143,6 +143,7 @@ export const ReviewManager: React.FC = () => {
   };
 
   const copyToClipboard = (text: string, id: string) => {
+    window.focus();
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);

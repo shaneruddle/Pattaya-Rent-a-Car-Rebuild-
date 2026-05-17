@@ -63,7 +63,7 @@ function CanonicalHandler() {
 }
 
 export default function App() {
-  console.log('App: Rendering top-level component');
+  console.log('App: Main component mounted');
   return (
     <ErrorBoundary>
       <LanguageProvider>

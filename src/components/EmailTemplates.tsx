@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Mail, Save, Copy, Info, Loader2, Check, Zap, Eye, Send, X, Smartphone } from 'lucide-react';
+import { Mail, Save, Copy, Info, Loader2, Check, Zap, Eye, Send, X, Smartphone, ChevronRight } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 import { EmailTemplate, AppSettings } from '../types';
@@ -71,6 +71,7 @@ export const EmailTemplates: React.FC = () => {
   const [newTemplateData, setNewTemplateData] = useState({ name: '', id: '' });
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [isTagsExpanded, setIsTagsExpanded] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -101,10 +102,16 @@ export const EmailTemplates: React.FC = () => {
         // Initial seed if empty
         const initialTemplates: EmailTemplate[] = [
           {
-            id: 'rental_confirmation',
-            name: 'Rental Confirmation',
-            subject: 'Rental Confirmation - {{vehicle_model}}',
+            id: 'booking_confirmed',
+            name: 'Booking Confirmation',
+            subject: 'Booking Confirmation - {{vehicle_model}}',
             body: '<p>Dear {{customer_name}},</p><p>Your booking for <strong>{{vehicle_model}}</strong> ({{plate_number}}) has been confirmed.</p><p><strong>Return Date:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>For your peace of mind, we have recorded the condition of the vehicle at the time of rental. Please see the photos below:</p>{{photos}}<p>Thank you for choosing us.</p>',
+          },
+          {
+            id: 'alternative_option',
+            name: 'Alternative Option',
+            subject: 'Alternative car options for your dates',
+            body: '<p>Hi {{customer_name}},</p><p>Thank you for your enquiry. Unfortunately, the <strong>{{vehicle_model}}</strong> is not available for your selected dates.</p><p>However, we can offer the following alternative options...</p>',
           },
           {
             id: 'extension_acknowledged',
@@ -264,6 +271,7 @@ export const EmailTemplates: React.FC = () => {
   };
 
   const copyTag = (tag: string) => {
+    window.focus();
     navigator.clipboard.writeText(tag);
     toast.success(`Copied ${tag} to clipboard`);
   };
@@ -393,27 +401,49 @@ export const EmailTemplates: React.FC = () => {
 
           {/* Dynamic Tags Legend */}
           <div className="bg-[#1A1A1A] p-6 rounded-[32px] shadow-xl text-white space-y-4 group">
-            <div className="flex items-center justify-between">
+            <button 
+              onClick={() => setIsTagsExpanded(!isTagsExpanded)}
+              className="w-full flex items-center justify-between"
+            >
               <h2 className="text-xs font-bold uppercase tracking-widest text-white/60 flex items-center gap-2">
                 <Zap size={14} className="text-brand-orange" />
                 Dynamic Tags
               </h2>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              {DYNAMIC_TAGS.map(({ tag, label }) => (
-                <button
-                  key={tag}
-                  onClick={() => copyTag(tag)}
-                  className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all text-left"
+              <ChevronRight 
+                size={16} 
+                className={cn(
+                  "text-white/20 transition-transform duration-300",
+                  isTagsExpanded ? "rotate-90" : ""
+                )} 
+              />
+            </button>
+            <AnimatePresence>
+              {isTagsExpanded && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
                 >
-                  <div className="flex flex-col">
-                    <span className="font-mono text-brand-orange text-xs">{tag}</span>
-                    <span className="text-[9px] text-white/40 uppercase tracking-widest">{label}</span>
+                  <div className="grid grid-cols-1 gap-2 pt-4">
+                    {DYNAMIC_TAGS.map(({ tag, label }) => (
+                      <button
+                        key={tag}
+                        onClick={() => copyTag(tag)}
+                        className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all text-left w-full"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-mono text-brand-orange text-xs">{tag}</span>
+                          <span className="text-[9px] text-white/40 uppercase tracking-widest">{label}</span>
+                        </div>
+                        <Copy size={12} className="text-white/20 group-hover:text-white/40 transition-colors" />
+                      </button>
+                    ))}
                   </div>
-                  <Copy size={12} className="text-white/20 group-hover:text-white/40 transition-colors" />
-                </button>
-              ))}
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -436,14 +466,22 @@ export const EmailTemplates: React.FC = () => {
                 key={t.id}
                 onClick={() => setActiveTemplateId(t.id)}
                 className={cn(
-                  "w-full h-14 rounded-2xl px-6 flex items-center gap-3 transition-all text-left",
+                  "w-full h-16 rounded-2xl px-6 flex items-center gap-3 transition-all text-left",
                   activeTemplateId === t.id
                     ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20"
                     : "bg-white/40 hover:bg-white/60 text-[#1A1A1A]/60 border border-black/5"
                 )}
               >
-                <Mail size={16} />
-                <span className="font-bold uppercase tracking-widest text-[9px]">{t.name}</span>
+                <div className="p-2 rounded-xl bg-black/5">
+                  <Mail size={16} className={cn(activeTemplateId === t.id ? "text-white" : "text-brand-orange")} />
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="font-bold uppercase tracking-widest text-[9px] truncate">{t.name}</span>
+                  <span className={cn(
+                    "text-[7px] font-mono tracking-wider opacity-60 truncate mt-0.5",
+                    activeTemplateId === t.id ? "text-white" : "text-brand-orange"
+                  )}>{t.id}</span>
+                </div>
               </button>
             ))}
           </div>
@@ -453,7 +491,10 @@ export const EmailTemplates: React.FC = () => {
             {activeTemplate ? (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-serif italic text-2xl text-[#1A1A1A]">{activeTemplate.name}</h3>
+                  <div className="flex flex-col">
+                    <h3 className="font-serif italic text-2xl text-[#1A1A1A]">{activeTemplate.name}</h3>
+                    <span className="text-[9px] font-mono text-brand-orange/60 uppercase tracking-widest mt-1">ID: {activeTemplate.id}</span>
+                  </div>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setShowPreview(true)}

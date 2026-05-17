@@ -12,10 +12,8 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env': {
-        GEMINI_API_KEY: JSON.stringify(env.GEMINI_API_KEY),
-        NODE_ENV: JSON.stringify(mode),
-      },
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.NODE_ENV': JSON.stringify(mode),
     },
     resolve: {
       alias: {
@@ -25,27 +23,7 @@ export default defineConfig(({mode}) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
-      emptyOutDir: true,
-      rollupOptions: {
-        external: [
-          'firebase-admin',
-          'firebase-admin/firestore',
-          'firebase-admin/storage',
-          'google-auth-library',
-          'googleapis',
-          '@google-cloud/storage'
-        ]
-      }
-    },
-    ssr: {
-      external: [
-        'firebase-admin',
-        'firebase-admin/firestore',
-        'firebase-admin/storage',
-        'google-auth-library',
-        'googleapis',
-        '@google-cloud/storage'
-      ]
+      emptyOutDir: true
     },
     server: {
       port: 3000,

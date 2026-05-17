@@ -54,6 +54,7 @@ export const BlogPostView: React.FC<BlogPostViewProps> = ({ slug, onBack, isBike
         url: window.location.href,
       }).catch(console.error);
     } else {
+      window.focus();
       navigator.clipboard.writeText(window.location.href);
       toast.success('Link copied to clipboard!');
     }

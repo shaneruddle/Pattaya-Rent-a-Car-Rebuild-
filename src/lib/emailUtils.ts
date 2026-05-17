@@ -163,9 +163,9 @@ const DEFAULT_TEMPLATES: Record<string, { subject: string, body: string }> = {
     subject: 'We have received your message',
     body: '<p>Dear {{customer_name}},</p><p>Thank you for contacting us through our website.</p><p>We have received your message and our team will get back to you shortly.</p><p>Best regards,</p>',
   } as any,
-  'rental_confirmation': {
-    name: 'Rental Confirmation',
-    subject: 'Rental Confirmation - {{vehicle_model}}',
+  'booking_confirmed': {
+    name: 'Booking Confirmation',
+    subject: 'Booking Confirmation - {{vehicle_model}}',
     body: '<p>Dear {{customer_name}},</p><p>Your booking for <strong>{{vehicle_model}}</strong> ({{plate_number}}) has been confirmed.</p><p><strong>Return Date:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>For your peace of mind, we have recorded the condition of the vehicle at the time of rental. Please see the photos below:</p>{{photos}}<p>Thank you for choosing us.</p>',
   } as any
 };

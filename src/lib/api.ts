@@ -8,7 +8,7 @@ export interface FetchOptions extends RequestInit {
  * Enhanced fetch that automatically handles the AI Studio warmup page by retrying.
  */
 export async function fetchWithRetry(url: string, options: FetchOptions = {}): Promise<Response> {
-  const { maxRetries = 200, retryDelay = 5000, ...fetchOptions } = options;
+  const { maxRetries = 5, retryDelay = 2000, ...fetchOptions } = options;
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

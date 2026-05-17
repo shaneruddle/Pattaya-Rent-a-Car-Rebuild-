@@ -361,7 +361,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         const startDate = parseISO(formData.dateOut);
         const endDate = parseISO(formData.dateIn);
 
-        await sendTemplatedEmail('rental_confirmation', formData.customerEmail, {
+        await sendTemplatedEmail('booking_confirmed', formData.customerEmail, {
           '{{customer_name}}': formData.customerName,
           '{{customer_email}}': formData.customerEmail,
           '{{customer_phone}}': formData.customerPhone,

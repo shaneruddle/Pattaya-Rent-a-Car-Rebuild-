@@ -229,6 +229,7 @@ export const ImageManagement: React.FC = () => {
   };
 
   const copyToClipboard = (text: string, type: 'path' | 'url') => {
+    window.focus();
     navigator.clipboard.writeText(text);
     setCopiedPath(text);
     toast.success(`${type === 'path' ? 'Path' : 'URL'} copied to clipboard`);

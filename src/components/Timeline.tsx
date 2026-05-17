@@ -1398,6 +1398,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const totalSlots = Math.max(endSlotIdx - startSlotIdx + 1, 1);
 
     const isPaid = booking.status === 'Paid';
+    const isCompleted = booking.status === 'Completed';
     const isMaintenance = !!booking.isMaintenance;
     const paymentPending = booking.paymentStatus === 'pending';
     const isFutureBooking = isFuture(startOfDay(start));
@@ -1413,6 +1414,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
     if (isMaintenance) {
       background = GRAY_600;
+    } else if (isCompleted) {
+      // Completed returns are always solid green
+      background = EMERALD_500;
     } else if (isFutureBooking && !isPaid) {
       // High Priority - Future Unpaid (Red)
       background = RED_500;

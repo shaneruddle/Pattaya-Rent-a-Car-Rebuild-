@@ -3,10 +3,9 @@
   "private": true,
   "version": "1.0.1",
   "type": "module",
-  "main": "server.ts",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --target=node20 --outfile=dist/server.js --format=esm --external:vite --external:express --external:firebase-admin --external:xlsx --external:axios --external:dotenv --external:https --external:node-fetch --external:nodemailer --external:papaparse --external:fs --external:path --external:url",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
     "start": "node dist/server.js",
     "preview": "vite preview",
     "clean": "rm -rf dist",
