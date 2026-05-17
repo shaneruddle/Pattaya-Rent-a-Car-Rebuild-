@@ -1397,8 +1397,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const endSlotIdx = endDayIdx * 2 + endSlot;
     const totalSlots = Math.max(endSlotIdx - startSlotIdx + 1, 1);
 
-    const isPaid = booking.status === 'Paid';
-    const isCompleted = booking.status === 'Completed';
+    const status = (booking.status || '').toLowerCase();
+    const isPaid = status === 'paid' || status === 'completed';
+    const isCompleted = status === 'completed';
     const isMaintenance = !!booking.isMaintenance;
     const paymentPending = booking.paymentStatus === 'pending';
     const isFutureBooking = isFuture(startOfDay(start));
