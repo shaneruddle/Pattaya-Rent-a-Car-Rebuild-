@@ -56,6 +56,7 @@ const ManageRentalModal: React.FC<{
   const [extensionDays, setExtensionDays] = useState<number>(1);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [returnAccountId, setReturnAccountId] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -65,7 +66,10 @@ const ManageRentalModal: React.FC<{
         setAccounts(accs);
         // Default to 'Cash Car' or first available
         const defaultAcc = accs.find((a: any) => a.name === 'Cash Car') || accs[0];
-        if (defaultAcc) setSelectedAccountId(defaultAcc.id);
+        if (defaultAcc) {
+          setSelectedAccountId(defaultAcc.id);
+          setReturnAccountId(defaultAcc.id);
+        }
       };
       fetchAccounts();
     }
@@ -74,6 +78,11 @@ const ManageRentalModal: React.FC<{
   if (!isOpen) return null;
 
   const handleEndRental = async () => {
+    if (extraCharges > 0 && !returnAccountId) {
+      toast.error('Please select an account for the extra charges');
+      return;
+    }
+
     setLoading(true);
     try {
       // 1. Update Booking Status
@@ -83,8 +92,7 @@ const ManageRentalModal: React.FC<{
 
       // 2. Log Extra Charges to Finance if > 0
       if (extraCharges > 0) {
-        const accs = await getDocs(collection(db, 'accounts'));
-        const defaultAcc = accs.docs.find(d => d.data().name === 'Cash Car')?.id || accs.docs[0]?.id || 'unknown';
+        const account = accounts.find(a => a.id === returnAccountId);
         
         await addDoc(collection(db, 'transactions'), {
           type: 'Income',
@@ -93,21 +101,39 @@ const ManageRentalModal: React.FC<{
           category: 'Extra Charges',
           carId: booking.carId,
           bookingId: booking.id,
-          accountId: defaultAcc,
+          accountId: returnAccountId,
           description: `Extra charges for ${booking.customerName}: ${extraReason}`
         });
+
+        // Update Account Balance
+        if (account) {
+          await updateDoc(doc(db, 'accounts', account.id), {
+            balance: (account.balance || 0) + Number(extraCharges)
+          });
+        }
       }
 
       // 3. Send Email
       try {
         const carSnap = await getDoc(doc(db, 'cars', booking.carId));
         const plateNumber = carSnap.exists() ? carSnap.data().plateNumber : '';
+        const startDate = parseISO(booking.startDate);
+        const endDate = parseISO(booking.endDate);
 
         await sendTemplatedEmail('return_confirmation', booking.email || 'info@pattayarentacar.com', {
           '{{customer_name}}': booking.customerName,
+          '{{customer_email}}': booking.email || '',
+          '{{customer_phone}}': booking.mobileNumber || '',
           '{{vehicle_model}}': carName,
           '{{plate_number}}': plateNumber,
+          '{{pickup_date}}': format(startDate, 'dd MMM yyyy'),
+          '{{pickup_time}}': format(startDate, 'HH:mm'),
+          '{{return_date}}': format(endDate, 'dd MMM yyyy'),
+          '{{return_time}}': format(endDate, 'HH:mm'),
+          '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`,
           '{{total_price}}': extraCharges > 0 ? extraCharges.toLocaleString() : (booking.amount || 0).toLocaleString(),
+          '{{delivery_address}}': booking.deliveryAddress || '',
+          '{{comments}}': booking.notes || ''
         });
       } catch (emailError) {
         console.error('Failed to send templated email:', emailError);
@@ -167,11 +193,22 @@ const ManageRentalModal: React.FC<{
 
       // 3. Send Email
       try {
+        const startDate = parseISO(booking.startDate);
+        const endDate = newEndDate;
+
         await sendTemplatedEmail('extension_acknowledged', booking.email || 'info@pattayarentacar.com', {
           '{{customer_name}}': booking.customerName,
+          '{{customer_email}}': booking.email || '',
+          '{{customer_phone}}': booking.mobileNumber || '',
           '{{vehicle_model}}': carName,
-          '{{return_date}}': format(newEndDate, 'PPP p'),
+          '{{pickup_date}}': format(startDate, 'dd MMM yyyy'),
+          '{{pickup_time}}': format(startDate, 'HH:mm'),
+          '{{return_date}}': format(endDate, 'dd MMM yyyy'),
+          '{{return_time}}': format(endDate, 'HH:mm'),
+          '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`,
           '{{total_price}}': extensionPayment.toLocaleString(),
+          '{{delivery_address}}': booking.deliveryAddress || '',
+          '{{comments}}': booking.notes || ''
         });
       } catch (emailError) {
         console.error('Failed to send templated email:', emailError);
@@ -250,6 +287,19 @@ const ManageRentalModal: React.FC<{
                   className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-medium focus:ring-2 ring-brand-orange outline-none transition-all"
                   placeholder="e.g. Fuel, Cleaning, Scratch"
                 />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Account Type / Payment Method</label>
+                <select
+                  value={returnAccountId}
+                  onChange={e => setReturnAccountId(e.target.value)}
+                  className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                >
+                  <option value="" disabled>Select Account</option>
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </section>

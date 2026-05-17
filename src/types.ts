@@ -67,6 +67,7 @@ export interface Booking {
   customerName: string;
   email?: string;
   mobileNumber?: string;
+  comments?: string;
   startDate: string; // ISO string
   endDate: string; // ISO string
   status: 'Paid' | 'Pending' | 'Completed';

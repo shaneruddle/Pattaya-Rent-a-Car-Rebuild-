@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { processTemplate } from '../lib/emailUtils';
+import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
 import { Booking, Car } from '../types';
 import { format, parseISO, isValid, formatDistanceToNow, isToday } from 'date-fns';
 import { 
@@ -267,16 +267,68 @@ Do you wish to proceed with the booking ?`;
         '{{customer_name}}': enquiry.customerName.split(' ')[0] || 'Customer',
         '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
         '{{total_price}}': (enquiry.amount || 0).toLocaleString(),
-        '{{return_date}}': `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
+        '{{pickup_date}}': format(parseISO(enquiry.startDate), 'dd MMM yyyy'),
+        '{{pickup_time}}': format(parseISO(enquiry.startDate), 'HH:mm'),
+        '{{return_date}}': format(parseISO(enquiry.endDate), 'dd MMM yyyy'),
+        '{{return_time}}': format(parseISO(enquiry.endDate), 'HH:mm'),
+        '{{rental_period}}': `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`,
+        '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{customer_email}}': enquiry.email || '',
+        '{{customer_phone}}': enquiry.mobileNumber || '',
+        '{{comments}}': enquiry.notes || ''
       };
 
-      const finalBody = processTemplate(bodyTemplate, placeholders);
+      const finalBody = htmlToPlainText(processTemplate(bodyTemplate, placeholders));
 
       // 3. Copy to clipboard
       await navigator.clipboard.writeText(finalBody);
       toast.success('Email template copied to clipboard!');
     } catch (err) {
       console.error('Failed to copy: ', err);
+      toast.error('Failed to copy template');
+    }
+  };
+
+  const copyDeliveryEmailTemplate = async (enquiry: Booking) => {
+    try {
+      // Find template by name "Booking Confirmed with Delivery"
+      const templatesSnap = await getDocs(collection(db, 'email_templates'));
+      const templateDoc = templatesSnap.docs.find(d => d.data().name === 'Booking Confirmed with Delivery');
+      
+      let bodyTemplate = `Hi {{customer_name}},
+
+Confirming availability for {{vehicle_model}} from {{return_date}}.
+
+Delivery Address: {{delivery_address}}
+
+Total Price: {{total_price}} THB
+
+Do you wish to proceed?`;
+
+      if (templateDoc) {
+        bodyTemplate = templateDoc.data().body;
+      }
+
+      const placeholders = {
+        '{{customer_name}}': enquiry.customerName.split(' ')[0] || 'Customer',
+        '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
+        '{{total_price}}': (enquiry.amount || 0).toLocaleString(),
+        '{{pickup_date}}': format(parseISO(enquiry.startDate), 'dd MMM yyyy'),
+        '{{pickup_time}}': format(parseISO(enquiry.startDate), 'HH:mm'),
+        '{{return_date}}': format(parseISO(enquiry.endDate), 'dd MMM yyyy'),
+        '{{return_time}}': format(parseISO(enquiry.endDate), 'HH:mm'),
+        '{{rental_period}}': `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`,
+        '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{customer_email}}': enquiry.email || '',
+        '{{customer_phone}}': enquiry.mobileNumber || '',
+        '{{comments}}': enquiry.notes || ''
+      };
+
+      const finalBody = htmlToPlainText(processTemplate(bodyTemplate, placeholders));
+      await navigator.clipboard.writeText(finalBody);
+      toast.success('Delivery email reply copied!');
+    } catch (err) {
+      console.error('Failed to copy delivery template: ', err);
       toast.error('Failed to copy template');
     }
   };
@@ -443,15 +495,21 @@ Do you wish to proceed with the booking ?`;
                   <div className="mt-auto pt-6 border-t border-black/5 flex flex-col sm:flex-row gap-4">
                     <button
                       onClick={() => copyEmailTemplate(enquiry)}
-                      className="flex-1 bg-white border border-black/10 text-black/60 py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all"
+                      className="flex-1 bg-white border border-black/10 text-black/60 py-4 rounded-2xl font-bold uppercase tracking-widest text-[9px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center"
                     >
-                      <Copy size={14} /> Copy Email Reply
+                      <Copy size={12} /> Copy Email Reply
+                    </button>
+                    <button
+                      onClick={() => copyDeliveryEmailTemplate(enquiry)}
+                      className="flex-1 bg-white border border-black/10 text-black/60 py-4 rounded-2xl font-bold uppercase tracking-widest text-[9px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center"
+                    >
+                      <Truck size={12} /> Copy Delivery Reply
                     </button>
                     <button
                       onClick={() => handleConvert(enquiry)}
-                      className="flex-1 bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20"
+                      className="flex-1 bg-brand-orange text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-[9px] flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 text-center"
                     >
-                      Confirm & Assign Car <ArrowRight size={14} />
+                      Confirm & Assign Car <ArrowRight size={12} />
                     </button>
                   </div>
                 </div>

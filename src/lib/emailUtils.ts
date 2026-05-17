@@ -249,3 +249,35 @@ export const sendTemplatedEmail = async (
     throw error;
   }
 };
+
+/**
+ * Converts HTML to plain text, preserving paragraphs and breaks.
+ */
+export const htmlToPlainText = (html: string): string => {
+  if (!html) return '';
+  
+  // 1. Replace block elements with double newlines
+  let text = html.replace(/<p[^>]*?>/gi, '\n\n');
+  text = text.replace(/<div[^>]*?>/gi, '\n');
+  
+  // 2. Replace line breaks with single newlines
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  
+  // 3. Remove all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  
+  // 4. Decode HTML entities
+  const entities: Record<string, string> = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&nbsp;': ' '
+  };
+  
+  text = text.replace(/&[a-z0-9#]+;/gi, (match) => entities[match] || match);
+  
+  // 5. Clean up extra newlines
+  return text.trim().replace(/\n{3,}/g, '\n\n');
+};

@@ -213,8 +213,7 @@ function handleFirestoreError(error: any, operation: string, path: string) {
 }
 
 // Cache for pricing data
-let pricingCache: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } | null = null;
-let lastFetchTime = 0;
+let pricingCacheMap: { [spreadsheetId: string]: { data: any, lastFetchTime: number } } = {};
 let isFetching = false;
 let currentFetchPromise: Promise<any> | null = null;
 const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes cache for pricing data
@@ -582,9 +581,10 @@ async function startServer() {
   app.get("/api/pricing/sheet", async (req, res) => {
     const spreadsheetId = (req.query.spreadsheetId as string) || '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
 
-    // Simple cache check
-    if (pricingCache && (Date.now() - lastFetchTime < CACHE_DURATION)) {
-      return res.json(pricingCache);
+    // Simple cache check with ID keying
+    const cached = pricingCacheMap[spreadsheetId];
+    if (cached && (Date.now() - cached.lastFetchTime < CACHE_DURATION)) {
+      return res.json(cached.data);
     }
 
     if (isFetching) {
@@ -596,10 +596,12 @@ async function startServer() {
       isFetching = true;
       console.log(`Fetching pricing data for spreadsheet: ${spreadsheetId}`);
       const data = await fetchAllPricingData(spreadsheetId);
-      pricingCache = data;
-      lastFetchTime = Date.now();
+      pricingCacheMap[spreadsheetId] = {
+        data,
+        lastFetchTime: Date.now()
+      };
       console.log('Pricing data fetched successfully');
-      res.json(pricingCache);
+      res.json(data);
     } catch (error: any) {
       console.error('Error fetching pricing sheet:', error.message || error);
       res.status(500).json({ error: error.message || 'Failed to fetch pricing data' });
@@ -708,20 +710,39 @@ async function startServer() {
   });
 
   // Pre-fetch pricing data on startup with a longer delay and better error handling
-  const DEFAULT_SPREADSHEET_ID = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
   setTimeout(async () => {
     // Inspection disabled to avoid PERMISSION_DENIED noise in logs
     logInit('[Debug] Startup inspection skipped to avoid permission noise.');
 
-    fetchAllPricingData(DEFAULT_SPREADSHEET_ID)
+    let spreadsheetId = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
+    try {
+      if (firestore) {
+        const configDoc = await firestore.collection('app_settings').doc('pricing').get();
+        if (configDoc.exists) {
+          const customId = configDoc.data().spreadsheetId;
+          if (customId) {
+            spreadsheetId = customId;
+            logInit(`[Init] Using custom pricing spreadsheet: ${spreadsheetId}`);
+          }
+        }
+      }
+    } catch (e) {
+      logInit(`[Init] Failed to fetch custom spreadsheet ID: ${e.message}`);
+    }
+
+    fetchAllPricingData(spreadsheetId)
       .then(data => {
-        pricingCache = data;
-        lastFetchTime = Date.now();
+        pricingCacheMap[spreadsheetId] = {
+          data,
+          lastFetchTime: Date.now()
+        };
+        logInit('[Init] Pricing data pre-fetched successfully');
       })
       .catch(err => {
+        logInit(`[Init] Pricing pre-fetch failed: ${err.message}`);
         // Silently fail pre-fetch, it will retry on first request if needed
       });
-  }, 5000);
+  }, 10000); // Increased delay to 10s to ensure Firestore is fully ready
 
   // Google Places Proxy for Review Manager
   app.post("/api/places/details", async (req, res) => {

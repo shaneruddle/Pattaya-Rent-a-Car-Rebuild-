@@ -358,13 +358,24 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
       try {
         // 1. Send to Customer using template
+        const startDate = parseISO(formData.dateOut);
+        const endDate = parseISO(formData.dateIn);
+
         await sendTemplatedEmail('rental_confirmation', formData.customerEmail, {
           '{{customer_name}}': formData.customerName,
+          '{{customer_email}}': formData.customerEmail,
+          '{{customer_phone}}': formData.customerPhone,
           '{{vehicle_model}}': carName,
           '{{plate_number}}': plateNumber,
-          '{{return_date}}': format(new Date(formData.dateIn), 'dd MMM yyyy HH:mm'),
+          '{{pickup_date}}': format(startDate, 'dd MMM yyyy'),
+          '{{pickup_time}}': format(startDate, 'HH:mm'),
+          '{{return_date}}': format(endDate, 'dd MMM yyyy'),
+          '{{return_time}}': format(endDate, 'HH:mm'),
+          '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`,
           '{{total_price}}': formData.totalCharge.toLocaleString(),
-          '{{photos}}': photoGridHtml
+          '{{photos}}': photoGridHtml,
+          '{{delivery_address}}': selectedBooking?.deliveryAddress || '',
+          '{{comments}}': selectedBooking?.notes || ''
         });
 
         // 2. Send to Staff (Simple notification)

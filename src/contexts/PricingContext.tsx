@@ -10,28 +10,31 @@ interface PricingContextType {
   sheetPricing: any | null;
   loading: boolean;
   error: string | null;
+  spreadsheetId: string;
+  updateSpreadsheetId: (id: string) => Promise<void>;
   refreshPricing: () => Promise<void>;
   calculatePrice: (car: WebsiteCar | { priceGridVehicle?: string, name?: string }, dateKey: string, durationDays: number | null) => number | null;
 }
 
 const PricingContext = createContext<PricingContextType | undefined>(undefined);
 
+const DEFAULT_SPREADSHEET_ID = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
+
 export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sheetPricing, setSheetPricing] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [spreadsheetId, setSpreadsheetId] = useState(() => {
+    return safeLocalStorage.getItem('prac_pricing_id') || DEFAULT_SPREADSHEET_ID;
+  });
   const [lastFetch, setLastFetch] = useState(() => {
     const cached = safeLocalStorage.getItem('prac_pricing_last_fetch');
     return cached ? parseInt(cached) : 0;
   });
 
-  const fetchPricing = useCallback(async (force = false) => {
-    // Avoid fetching sheet too often if not needed
-    if (!force && sheetPricing && Date.now() - lastFetch < 5 * 60 * 1000) {
-      setLoading(false);
-      return;
-    }
-
+  const fetchPricing = useCallback(async (force = false, currentId?: string) => {
+    const idToUse = currentId || spreadsheetId;
+    
     // Check for rate limit from previous attempt
     const last429 = Number(safeLocalStorage.getItem('pricing_last_429') || 0);
     if (Date.now() - last429 < 60000) { // Wait 1 minute after a 429
@@ -40,63 +43,65 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return;
     }
 
+    setLoading(true);
     setError(null);
 
-    const performFetch = async (): Promise<void> => {
-      try {
-        console.log('PricingContext: Fetching pricing from sheet API...');
-        // Force the API to use the main spreadsheet ID
-        const response = await fetchWithRetry('/api/pricing/sheet?spreadsheetId=1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo');
-        
-        if (response.ok) {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.indexOf("application/json") !== -1) {
-            const data = await response.json();
-            console.log('PricingContext: Received sheet pricing data');
-            setSheetPricing(data);
-            setLastFetch(Date.now());
-            safeLocalStorage.setItem('prac_pricing_last_fetch', Date.now().toString());
-            safeLocalStorage.setItem('prac_cached_pricing_sheet', JSON.stringify(data));
-          } else {
-            throw new Error('Invalid response format from server (not JSON)');
-          }
+    try {
+      console.log(`PricingContext: Fetching pricing from sheet API... ID: ${idToUse}`);
+      const response = await fetchWithRetry(`/api/pricing/sheet?spreadsheetId=${idToUse}`);
+      
+      if (response.ok) {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          const data = await response.json();
+          setSheetPricing(data);
+          const now = Date.now();
+          setLastFetch(now);
+          safeLocalStorage.setItem('prac_pricing_last_fetch', now.toString());
+          safeLocalStorage.setItem('prac_cached_pricing_sheet', JSON.stringify(data));
         } else {
-          if (response.status === 429) {
-            console.warn('PricingContext: Rate limit hit (429)');
-            safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
-            setError('Pricing server too busy (rate limited). Using existing data.');
-            setLoading(false);
-            return;
-          }
+          throw new Error('Invalid response format from server (not JSON)');
+        }
+      } else {
+        if (response.status === 429) {
+          safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
+          setError('Pricing server busy. Using cache.');
+        } else {
           const text = await response.text();
           throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
         }
-      } catch (err: any) {
-        if (err.message?.includes('429')) {
-          console.warn('PricingContext: Rate limit hit (429 in catch)');
-          safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
-          setError('Pricing server too busy. Using existing data.');
-        } else {
-          console.error('PricingContext: Sheet fetch error:', err);
-          setError(`Pricing server error: ${err.message}`);
-          
-          // Fallback to cache on error
-          const cached = safeLocalStorage.getItem('prac_cached_pricing_sheet');
-          if (cached && !sheetPricing) {
-            try {
-              setSheetPricing(JSON.parse(cached));
-            } catch (e) {
-              console.error('Failed to parse cached pricing');
-            }
-          }
-        }
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err: any) {
+      console.error('PricingContext: Sheet fetch error:', err);
+      setError(`Pricing server error: ${err.message}`);
+      
+      // Fallback to cache on error
+      const cached = safeLocalStorage.getItem('prac_cached_pricing_sheet');
+      if (cached && !sheetPricing) {
+        try {
+          setSheetPricing(JSON.parse(cached));
+        } catch (e) {}
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [spreadsheetId]);
 
-    await performFetch();
-  }, [sheetPricing, lastFetch]);
+  const updateSpreadsheetId = async (id: string) => {
+    if (!id) return;
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('../firebase');
+      await setDoc(doc(db, 'app_settings', 'pricing'), { spreadsheetId: id }, { merge: true });
+      setSpreadsheetId(id);
+      safeLocalStorage.setItem('prac_pricing_id', id);
+      toast.success('Pricing spreadsheet connection updated');
+      fetchPricing(true, id);
+    } catch (err) {
+      console.error('Failed to update spreadsheet ID:', err);
+      toast.error('Failed to update spreadsheet connection');
+    }
+  };
 
   const calculatePrice = useCallback((car: WebsiteCar | { priceGridVehicle?: string, name?: string }, dateString: string, durationDays: number | null): number | null => {
     if (!dateString || durationDays === null || durationDays <= 0) return null;
@@ -181,28 +186,55 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return getPriceFromData(sheetPricing, dateString);
   }, [sheetPricing]);
 
+  // Initial Data Load
   useEffect(() => {
-    // Attempt to load from cache immediately
-    if (!sheetPricing) {
+    const init = async () => {
+      // 1. Load from cache immediately
       try {
-        const cached = safeLocalStorage.getItem('prac_cached_pricing_sheet');
-        if (cached) {
-          setSheetPricing(JSON.parse(cached));
+        const cachedSheet = safeLocalStorage.getItem('prac_cached_pricing_sheet');
+        if (cachedSheet) {
+          setSheetPricing(JSON.parse(cachedSheet));
+        }
+      } catch (e) {}
+
+      // 2. Load latest ID from Firestore
+      try {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../firebase');
+        const docSnap = await getDoc(doc(db, 'app_settings', 'pricing'));
+        
+        let finalId = spreadsheetId;
+        if (docSnap.exists()) {
+          const latestId = docSnap.data().spreadsheetId;
+          if (latestId && latestId !== spreadsheetId) {
+            setSpreadsheetId(latestId);
+            safeLocalStorage.setItem('prac_pricing_id', latestId);
+            finalId = latestId;
+          }
+        }
+        
+        // 3. Fetch data if cache is old or missing
+        const lastFetchTime = Number(safeLocalStorage.getItem('prac_pricing_last_fetch') || 0);
+        if (!sheetPricing || Date.now() - lastFetchTime > 5 * 60 * 1000) {
+          fetchPricing(false, finalId);
+        } else {
+          setLoading(false);
         }
       } catch (e) {
-        console.error('Failed to parse cached pricing initially');
+        fetchPricing(); // Fallback to local ID
       }
-    }
-    
-    // Always fetch pricing on mount, regardless of auth
-    fetchPricing();
-  }, [fetchPricing]);
+    };
+
+    init();
+  }, []); // Only run once on mount
 
   return (
     <PricingContext.Provider value={{ 
       sheetPricing, 
       loading, 
       error, 
+      spreadsheetId,
+      updateSpreadsheetId,
       refreshPricing: () => fetchPricing(true),
       calculatePrice
     }}>

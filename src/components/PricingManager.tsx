@@ -12,7 +12,7 @@ import { usePricing } from '../contexts/PricingContext';
 const DURATION_TIERS = Array.from({ length: 179 }, (_, i) => (1 + i * 0.5).toString());
 
 export const PricingManager: React.FC = () => {
-  const { sheetPricing, loading: pricingLoading, refreshPricing } = usePricing();
+  const { sheetPricing, loading: pricingLoading, refreshPricing, spreadsheetId, updateSpreadsheetId } = usePricing();
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -24,6 +24,21 @@ export const PricingManager: React.FC = () => {
   const [fleetCars, setFleetCars] = useState<WebsiteCar[]>([]);
   const [dragStart, setDragStart] = useState<{ ruleId: string, tier: string, value: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ ruleId: string, tier: string } | null>(null);
+  const [newSheetId, setNewSheetId] = useState(spreadsheetId);
+  const [isEditingSheetId, setIsEditingSheetId] = useState(false);
+
+  useEffect(() => {
+    setNewSheetId(spreadsheetId);
+  }, [spreadsheetId]);
+
+  const handleUpdateSheetId = async () => {
+    if (!newSheetId || newSheetId === spreadsheetId) {
+      setIsEditingSheetId(false);
+      return;
+    }
+    await updateSpreadsheetId(newSheetId);
+    setIsEditingSheetId(false);
+  };
 
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -301,7 +316,7 @@ export const PricingManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Google Sheet Configuration Removed - Only Sheet Read Supported */}
+        {/* Google Sheet Configuration - Now with Persistence */}
         <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-[32px] shadow-xl mb-12">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
             <div className="flex items-center gap-3">
@@ -316,7 +331,7 @@ export const PricingManager: React.FC = () => {
             
             <div className="flex items-center gap-4">
               <a 
-                href={`https://docs.google.com/spreadsheets/d/1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo/edit`}
+                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-brand-orange text-white px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
@@ -328,21 +343,59 @@ export const PricingManager: React.FC = () => {
           
           <div className="bg-white/40 backdrop-blur-md p-8 rounded-3xl border border-white/60 border-dashed relative overflow-hidden group w-full">
             <div className="absolute -right-4 -top-4 w-24 h-24 bg-brand-orange/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-            <h3 className="font-bold uppercase tracking-widest text-[10px] mb-6 flex items-center gap-2 text-[#1A1A1A]/60">
-              <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Sheet Status: <span className={sheetPricing ? "text-green-600" : "text-red-600"}>{sheetPricing ? 'Connected & Active' : 'Not Connected'}</span>
-            </h3>
-            {sheetPricing ? (
-              <div className="space-y-4 relative z-10 w-full overflow-hidden">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Tabs Found & Read</p>
-                  <p className="text-sm font-bold text-[#1A1A1A] break-all">{Object.keys(sheetPricing).join(', ')}</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+              <div className="space-y-4">
+                <h3 className="font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 text-[#1A1A1A]/60">
+                  <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} /> Sheet Connection
+                </h3>
+                
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-black/30">Active Spreadsheet ID</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newSheetId}
+                      onChange={e => {
+                        setNewSheetId(e.target.value);
+                        setIsEditingSheetId(true);
+                      }}
+                      className={cn(
+                        "flex-1 bg-white border-0 px-4 py-3 rounded-2xl text-xs font-mono focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm",
+                        isEditingSheetId && "ring-2 ring-brand-orange/30"
+                      )}
+                      placeholder="Enter Spreadsheet ID..."
+                    />
+                    {isEditingSheetId && (
+                      <button
+                        onClick={handleUpdateSheetId}
+                        className="bg-brand-orange text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg shadow-brand-orange/20"
+                      >
+                        Update
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-black/40 italic">This ID is saved directly to the database and persists for all users.</p>
                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-[#1A1A1A]/40 italic font-medium">
-                Unable to read pricing from Google Sheets.
-              </p>
-            )}
+
+              <div className="space-y-4">
+                <h3 className="font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 text-[#1A1A1A]/60">
+                  <Check size={12} className="text-green-600" /> Connection Status: <span className={sheetPricing ? "text-green-600" : "text-red-600"}>{sheetPricing ? 'Connected & Active' : 'Not Connected'}</span>
+                </h3>
+                
+                {sheetPricing ? (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Tabs Found & Read</p>
+                    <p className="text-sm font-bold text-[#1A1A1A] break-all">{Object.keys(sheetPricing).join(', ')}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#1A1A1A]/40 italic font-medium">
+                    Unable to read pricing from Google Sheets. Ensure the sheet is public.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

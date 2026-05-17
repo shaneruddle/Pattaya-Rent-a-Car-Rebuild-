@@ -13,10 +13,18 @@ import { useCompanyConfig } from '../hooks/useCompanyConfig';
 
 const DYNAMIC_TAGS = [
   { tag: '{{customer_name}}', label: 'Customer Name' },
+  { tag: '{{customer_email}}', label: 'Email Address' },
+  { tag: '{{customer_phone}}', label: 'Phone Number' },
   { tag: '{{vehicle_model}}', label: 'Vehicle Model' },
   { tag: '{{plate_number}}', label: 'Plate Number' },
+  { tag: '{{pickup_date}}', label: 'Pick Up Date' },
+  { tag: '{{pickup_time}}', label: 'Pick Up Time' },
   { tag: '{{return_date}}', label: 'Return Date' },
+  { tag: '{{return_time}}', label: 'Return Time' },
+  { tag: '{{rental_period}}', label: 'Rental Period (Range)' },
   { tag: '{{total_price}}', label: 'Total Price' },
+  { tag: '{{delivery_address}}', label: 'Delivery Address' },
+  { tag: '{{comments}}', label: 'Comments / Notes' },
   { tag: '{{photos}}', label: 'Damage Photos Grid' },
 ];
 
@@ -248,10 +256,18 @@ export const EmailTemplates: React.FC = () => {
       
       const testPlaceholders = {
         '{{customer_name}}': 'John Doe',
+        '{{customer_email}}': 'john@example.com',
+        '{{customer_phone}}': '081-234-5678',
         '{{vehicle_model}}': 'Toyota Fortuner',
         '{{plate_number}}': 'ABC-1234',
-        '{{return_date}}': 'May 15, 2024',
+        '{{pickup_date}}': '15 May 2024',
+        '{{pickup_time}}': '10:00',
+        '{{return_date}}': '20 May 2024',
+        '{{return_time}}': '10:00',
+        '{{rental_period}}': '15 May 2024 to 20 May 2024',
         '{{total_price}}': '15,000',
+        '{{delivery_address}}': '123 Beach Road, Pattaya',
+        '{{comments}}': 'Please bring a child seat.',
         '{{photos}}': [
           'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400',
           'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=400',
@@ -277,8 +293,13 @@ export const EmailTemplates: React.FC = () => {
       '{{customer_name}}': 'John Doe',
       '{{vehicle_model}}': 'Toyota Fortuner',
       '{{plate_number}}': 'ABC-1234',
-      '{{return_date}}': 'May 15, 2024',
+      '{{pickup_date}}': '15 May 2024',
+      '{{pickup_time}}': '10:00',
+      '{{return_date}}': '20 May 2024',
+      '{{return_time}}': '10:00',
+      '{{rental_period}}': '15 May 2024 to 20 May 2024',
       '{{total_price}}': '15,000',
+      '{{delivery_address}}': '123 Beach Road, Pattaya',
       '{{photos}}': [
         'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400',
         'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=400',
