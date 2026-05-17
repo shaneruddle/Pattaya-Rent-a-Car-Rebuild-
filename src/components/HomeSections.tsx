@@ -442,7 +442,8 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
     let retries = 0;
     const maxRetries = 3;
     const fetchPages = () => {
-      const url = '/api/marketing-pages/list';
+      // Use query param to avoid caching and add full origin for cross-environment stability
+      const url = `/api/marketing-pages/list?_t=${Date.now()}`;
       console.log(`[Footer] Fetching marketing pages (Attempt ${retries + 1})...`);
       
       fetch(url)

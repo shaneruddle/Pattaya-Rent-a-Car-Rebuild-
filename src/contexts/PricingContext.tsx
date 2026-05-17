@@ -32,77 +32,6 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return cached ? parseInt(cached) : 0;
   });
 
-  const fetchPricing = useCallback(async (force = false, currentId?: string) => {
-    const idToUse = currentId || spreadsheetId;
-    
-    // Check for rate limit from previous attempt
-    const last429 = Number(safeLocalStorage.getItem('pricing_last_429') || 0);
-    if (Date.now() - last429 < 60000) { // Wait 1 minute after a 429
-      console.warn('PricingContext: Skipping fetch due to recent rate limit');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      console.log(`PricingContext: Fetching pricing from sheet API... ID: ${idToUse}`);
-      const response = await fetchWithRetry(`/api/pricing/sheet?spreadsheetId=${idToUse}`);
-      
-      if (response.ok) {
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          const data = await response.json();
-          setSheetPricing(data);
-          const now = Date.now();
-          setLastFetch(now);
-          safeLocalStorage.setItem('prac_pricing_last_fetch', now.toString());
-          safeLocalStorage.setItem('prac_cached_pricing_sheet', JSON.stringify(data));
-        } else {
-          throw new Error('Invalid response format from server (not JSON)');
-        }
-      } else {
-        if (response.status === 429) {
-          safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
-          setError('Pricing server busy. Using cache.');
-        } else {
-          const text = await response.text();
-          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
-        }
-      }
-    } catch (err: any) {
-      console.error('PricingContext: Sheet fetch error:', err);
-      setError(`Pricing server error: ${err.message}`);
-      
-      // Fallback to cache on error
-      const cached = safeLocalStorage.getItem('prac_cached_pricing_sheet');
-      if (cached && !sheetPricing) {
-        try {
-          setSheetPricing(JSON.parse(cached));
-        } catch (e) {}
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [spreadsheetId]);
-
-  const updateSpreadsheetId = async (id: string) => {
-    if (!id) return;
-    try {
-      const { doc, setDoc } = await import('firebase/firestore');
-      const { db } = await import('../firebase');
-      await setDoc(doc(db, 'app_settings', 'pricing'), { spreadsheetId: id }, { merge: true });
-      setSpreadsheetId(id);
-      safeLocalStorage.setItem('prac_pricing_id', id);
-      toast.success('Pricing spreadsheet connection updated');
-      fetchPricing(true, id);
-    } catch (err) {
-      console.error('Failed to update spreadsheet ID:', err);
-      toast.error('Failed to update spreadsheet connection');
-    }
-  };
-
   const calculatePrice = useCallback((car: WebsiteCar | { priceGridVehicle?: string, name?: string }, dateString: string, durationDays: number | null): number | null => {
     if (!dateString || durationDays === null || durationDays <= 0) return null;
     
@@ -186,6 +115,77 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return getPriceFromData(sheetPricing, dateString);
   }, [sheetPricing]);
 
+  const fetchPricing = useCallback(async (force = false, currentId?: string) => {
+    const idToUse = currentId || spreadsheetId;
+    
+    // Check for rate limit from previous attempt
+    const last429 = Number(safeLocalStorage.getItem('pricing_last_429') || 0);
+    if (Date.now() - last429 < 60000) { // Wait 1 minute after a 429
+      console.warn('PricingContext: Skipping fetch due to recent rate limit');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log(`PricingContext: Fetching pricing from sheet API... ID: ${idToUse}`);
+      const response = await fetchWithRetry(`/api/pricing/sheet?spreadsheetId=${idToUse}`);
+      
+      if (response.ok) {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          const data = await response.json();
+          setSheetPricing(data);
+          const now = Date.now();
+          setLastFetch(now);
+          safeLocalStorage.setItem('prac_pricing_last_fetch', now.toString());
+          safeLocalStorage.setItem('prac_cached_pricing_sheet', JSON.stringify(data));
+        } else {
+          throw new Error('Invalid response format from server (not JSON)');
+        }
+      } else {
+        if (response.status === 429) {
+          safeLocalStorage.setItem('pricing_last_429', Date.now().toString());
+          setError('Pricing server busy. Using cache.');
+        } else {
+          const text = await response.text();
+          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
+        }
+      }
+    } catch (err: any) {
+      console.error('PricingContext: Sheet fetch error:', err);
+      setError(`Pricing server error: ${err.message}`);
+      
+      // Fallback to cache on error
+      const cached = safeLocalStorage.getItem('prac_cached_pricing_sheet');
+      if (cached && !sheetPricing) {
+        try {
+          setSheetPricing(JSON.parse(cached));
+        } catch (e) {}
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [spreadsheetId]);
+
+  const updateSpreadsheetId = async (id: string) => {
+    if (!id) return;
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('../firebase');
+      await setDoc(doc(db, 'app_settings', 'pricing'), { spreadsheetId: id }, { merge: true });
+      setSpreadsheetId(id);
+      safeLocalStorage.setItem('prac_pricing_id', id);
+      toast.success('Pricing spreadsheet connection updated');
+      fetchPricing(true, id);
+    } catch (err) {
+      console.error('Failed to update spreadsheet ID:', err);
+      toast.error('Failed to update spreadsheet connection');
+    }
+  };
+
   // Initial Data Load
   useEffect(() => {
     const init = async () => {
@@ -236,7 +236,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       spreadsheetId,
       updateSpreadsheetId,
       refreshPricing: () => fetchPricing(true),
-      calculatePrice
+      calculatePrice: calculatePrice
     }}>
       {children}
     </PricingContext.Provider>

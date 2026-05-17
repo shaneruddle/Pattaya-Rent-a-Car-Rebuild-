@@ -253,9 +253,12 @@ async function startServer() {
   app.get("/api/marketing-pages/list", async (req, res) => {
     console.log(`[Marketing List API] Received request from ${req.ip} - ${req.get('user-agent')?.substring(0, 50)}`);
     
-    // Explicit CORS for this sensitive fetch
+    // Explicit CORS and Cache control
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.header("Pragma", "no-cache");
+    res.header("Expires", "0");
 
     if (!firestore) {
       console.error("[Marketing List API] Firestore not initialized yet!");

@@ -291,9 +291,10 @@ Do you wish to proceed with the booking ?`;
 
   const copyDeliveryEmailTemplate = async (enquiry: Booking) => {
     try {
-      // Find template by name "Booking Confirmed with Delivery"
-      const templatesSnap = await getDocs(collection(db, 'email_templates'));
-      const templateDoc = templatesSnap.docs.find(d => d.data().name === 'Booking Confirmed with Delivery');
+      // 1. Try to find by ID first
+      const templateId = 'booking_confirmed_with_delivery';
+      const templateRef = doc(db, 'email_templates', templateId);
+      const templateSnap = await getDoc(templateRef);
       
       let bodyTemplate = `Hi {{customer_name}},
 
@@ -305,8 +306,15 @@ Total Price: {{total_price}} THB
 
 Do you wish to proceed?`;
 
-      if (templateDoc) {
-        bodyTemplate = templateDoc.data().body;
+      if (templateSnap.exists()) {
+        bodyTemplate = templateSnap.data().body;
+      } else {
+        // Fallback: search by name if ID lookup failed (legacy/custom templates)
+        const templatesSnap = await getDocs(collection(db, 'email_templates'));
+        const docByName = templatesSnap.docs.find(d => d.data().name === 'Booking Confirmed with Delivery');
+        if (docByName) {
+          bodyTemplate = docByName.data().body;
+        }
       }
 
       const placeholders = {

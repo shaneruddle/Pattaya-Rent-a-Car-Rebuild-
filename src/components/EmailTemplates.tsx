@@ -119,6 +119,12 @@ export const EmailTemplates: React.FC = () => {
             body: 'Dear {{customer_name}},\n\nThank you for returning the {{vehicle_model}} ({{plate_number}}).\n\nTotal Paid: {{total_price}} THB\n\nWe hope to see you again soon.',
           },
           {
+            id: 'booking_confirmed_with_delivery',
+            name: 'Booking Confirmed with Delivery',
+            subject: 'Booking Confirmed - {{vehicle_model}}',
+            body: '<p>Hi {{customer_name}},</p><p>We are pleased to confirm your booking for <strong>{{vehicle_model}}</strong> with delivery to your location.</p><p><strong>Delivery Address:</strong> {{delivery_address}}</p><p><strong>Total Price:</strong> ฿{{total_price}}</p><p>See you soon!</p>',
+          },
+          {
             id: 'booking_enquiry',
             name: 'Booking Enquiry Confirmation',
             subject: 'Thank you for your enquiry',
@@ -144,9 +150,21 @@ export const EmailTemplates: React.FC = () => {
         setTemplates(initialTemplates);
         setActiveTemplateId(initialTemplates[0].id);
       } else {
-        const fetchedTemplates = templatesSnap.docs.map(doc => doc.data() as EmailTemplate);
+        const fetchedTemplates = templatesSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            id: doc.id
+          } as EmailTemplate;
+        });
         setTemplates(fetchedTemplates);
-        setActiveTemplateId(fetchedTemplates[0]?.id || null);
+        // Try to keep active template if it still exists, otherwise use first
+        if (activeTemplateId) {
+          const stillExists = fetchedTemplates.some(t => t.id === activeTemplateId);
+          if (!stillExists) setActiveTemplateId(fetchedTemplates[0]?.id || null);
+        } else {
+          setActiveTemplateId(fetchedTemplates[0]?.id || null);
+        }
       }
 
       // Fetch global settings
@@ -238,7 +256,11 @@ export const EmailTemplates: React.FC = () => {
   };
 
   const updateTemplateField = (id: string, field: keyof EmailTemplate, value: string) => {
-    setTemplates(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+    setTemplates(prev => {
+      const exists = prev.some(t => t.id === id);
+      if (!exists) return prev;
+      return prev.map(t => t.id === id ? { ...t, [field]: value } : t);
+    });
   };
 
   const copyTag = (tag: string) => {
@@ -459,7 +481,7 @@ export const EmailTemplates: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div key={`editor-${activeTemplate.id}`} className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Subject Line</label>
                     <input
@@ -479,7 +501,11 @@ export const EmailTemplates: React.FC = () => {
                         <ReactQuill
                           theme="snow"
                           value={activeTemplate.body}
-                          onChange={value => updateTemplateField(activeTemplate.id, 'body', value)}
+                          onChange={value => {
+                            if (value !== activeTemplate.body) {
+                              updateTemplateField(activeTemplate.id, 'body', value);
+                            }
+                          }}
                           modules={QUILL_MODULES}
                           formats={QUILL_FORMATS}
                           className="h-[400px] border-none"
