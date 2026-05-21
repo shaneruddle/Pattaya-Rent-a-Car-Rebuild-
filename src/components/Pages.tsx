@@ -245,6 +245,36 @@ export const LongTermHire: React.FC<{ isBikeMode?: boolean }> = ({ isBikeMode })
         createdAt: new Date().toISOString(),
         status: 'new'
       });
+
+      // Notify staff by email — fire-and-forget; email failure does not block the user success state
+      try {
+        const emailResponse = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: 'info@pattayarentacar.com',
+            replyTo: formData.email,
+            subject: `Long-Term Hire Enquiry from ${formData.name}`,
+            html: `
+              <h3>New Long-Term Hire Enquiry</h3>
+              <p><strong>Duration:</strong> ${formData.duration}</p>
+              <p><strong>Car Type:</strong> ${formData.carType}</p>
+              <hr>
+              <p><strong>Name:</strong> ${formData.name}</p>
+              <p><strong>Email:</strong> ${formData.email}</p>
+              <p><strong>Phone:</strong> ${formData.phone}</p>
+              <p><strong>Message:</strong></p>
+              <p>${formData.message.replace(/\n/g, '<br>')}</p>
+            `,
+          }),
+        });
+        if (!emailResponse.ok) {
+          const errorData = await emailResponse.json();
+          console.error('[LongTermHire] Staff email API failed:', errorData);
+        }
+      } catch (emailError) {
+        console.error('[LongTermHire] Staff email send error:', emailError);
+      }
       setIsSuccess(true);
       toast.success(t('longTerm.successTitle'));
     } catch (error) {
