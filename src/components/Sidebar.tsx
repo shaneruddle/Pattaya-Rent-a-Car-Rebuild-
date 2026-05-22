@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Star, Building2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
@@ -13,8 +13,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates';
-  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'marketing_reviews' | 'image_management' | 'email_templates') => void;
+  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates';
+  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   }, [auth.currentUser]);
 
   const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
-  const isMarketingView = ['marketing_blog', 'marketing_calendar', 'marketing_faq', 'marketing_reviews'].includes(currentView);
+  const isMarketingView = ['marketing_blog', 'marketing_calendar', 'marketing_faq'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
@@ -297,20 +297,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <HelpCircle size={14} /> FAQ Management
                             </button>
-                            <button
-                              onClick={() => {
-                                onViewChange('marketing_reviews');
-                                if (isMobile) setIsMobileMenuOpen(false);
-                              }}
-                              className={cn(
-                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                                currentView === 'marketing_reviews' 
-                                  ? "bg-brand-orange text-white shadow-md" 
-                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
-                              )}
-                            >
-                              <Star size={14} /> Review Management
-                            </button>
+
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -712,16 +699,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <HelpCircle size={16} />
                     </button>
-                    <button 
-                      onClick={() => onViewChange('marketing_reviews')}
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'marketing_reviews' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
-                      )}
-                      title="Review Management"
-                    >
-                      <Star size={16} />
-                    </button>
+
                   </motion.div>
                 )}
               </AnimatePresence>
