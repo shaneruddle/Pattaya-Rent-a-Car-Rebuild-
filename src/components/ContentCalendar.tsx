@@ -6,7 +6,6 @@ import {
   Search, 
   TrendingUp, 
   BarChart3, 
-  Sparkles, 
   ChevronLeft, 
   ChevronRight, 
   MoreHorizontal,
@@ -66,24 +65,15 @@ interface SEOQuery {
   position: number;
 }
 
-interface AISuggestion {
-  title: string;
-  targetKeyword: string;
-  rationale: string;
-  estimatedImpact: 'high' | 'medium' | 'low';
-}
 
 const ContentCalendar: React.FC = () => {
   const [view, setView] = useState<'calendar' | 'pipeline'>('calendar');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isIdeasPanelOpen, setIsIdeasPanelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [seoData, setSeoData] = useState<SEOQuery[]>([]);
   const [seoStats, setSeoStats] = useState({ clicks: 0, impressions: 0, ctr: 0, position: 0 });
-  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -154,18 +144,6 @@ const ContentCalendar: React.FC = () => {
     }
   };
 
-  const getAIIdeas = async () => {
-    setLoadingSuggestions(true);
-    setIsIdeasPanelOpen(true);
-    try {
-      const response = await axios.get('/api/searchconsole/suggestions');
-      setSuggestions(response.data);
-    } catch (err: any) {
-      toast.error('Failed to get suggestions. Check your API configuration.');
-    } finally {
-      setLoadingSuggestions(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,24 +162,6 @@ const ContentCalendar: React.FC = () => {
     }
   };
 
-  const addIdeaToCalendar = async (idea: AISuggestion) => {
-    try {
-      await addDoc(collection(db, 'contentCalendar'), {
-        title: idea.title,
-        targetKeyword: idea.targetKeyword,
-        targetUrl: '',
-        publishDate: Timestamp.fromDate(new Date()),
-        status: 'Idea',
-        notes: idea.rationale,
-        createdAt: Timestamp.now(),
-        seoData: {},
-        analyticsData: {}
-      });
-      toast.success(`"${idea.title}" added to ideas`);
-    } catch (err) {
-      toast.error('Failed to add idea');
-    }
-  };
 
   const updateStatus = async (id: string, newStatus: ContentItem['status']) => {
     try {
@@ -402,15 +362,6 @@ const ContentCalendar: React.FC = () => {
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm flex flex-col justify-between">
-          <button 
-            onClick={getAIIdeas}
-            className="w-full h-full flex flex-col items-center justify-center gap-3 bg-brand-orange/5 hover:bg-brand-orange/10 transition-all rounded-2xl group border border-dashed border-brand-orange/30"
-          >
-            <div className="w-10 h-10 bg-brand-orange text-white rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-              <Sparkles size={20} />
-            </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-brand-orange">AI Content Strategy</span>
-          </button>
         </div>
       </div>
 
@@ -701,89 +652,6 @@ const ContentCalendar: React.FC = () => {
 
       {/* AI Ideas Panel */}
       <AnimatePresence>
-        {isIdeasPanelOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-end">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsIdeasPanelOpen(false)} 
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
-            />
-            <motion.div 
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="w-full max-w-xl h-full bg-white relative z-10 shadow-2xl flex flex-col"
-            >
-              <div className="p-8 border-b border-black/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-brand-orange text-white rounded-2xl flex items-center justify-center shadow-lg">
-                    <Sparkles size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold tracking-tight leading-none mb-1">AI Content Strategy</h2>
-                    <p className="text-xs text-black/40 font-medium">Data-driven content opportunities</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setIsIdeasPanelOpen(false)}
-                  className="p-3 bg-black/5 rounded-2xl hover:bg-black/10 transition-colors"
-                >
-                  <ChevronRight size={20} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                {loadingSuggestions ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-12">
-                    <div className="w-16 h-16 border-4 border-brand-orange/20 border-t-brand-orange rounded-full animate-spin mb-6" />
-                    <h3 className="text-lg font-bold mb-2">Analyzing search performance...</h3>
-                    <p className="text-sm text-black/40">Gemini is looking for gaps in your current strategy</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {suggestions.map((idea, idx) => (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        key={idx} 
-                        className="bg-black/[0.02] p-6 rounded-[32px] border border-black/5 relative overflow-hidden group"
-                      >
-                        <div className="absolute top-0 right-0 p-4">
-                          <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg ${
-                            idea.estimatedImpact === 'high' ? 'bg-green-100 text-green-700' :
-                            idea.estimatedImpact === 'medium' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {idea.estimatedImpact} Impact
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-bold text-brand-orange uppercase tracking-widest mb-2 block">
-                          #{idea.targetKeyword}
-                        </span>
-                        <h4 className="font-bold text-lg mb-3 leading-tight group-hover:text-brand-orange transition-colors">
-                          {idea.title}
-                        </h4>
-                        <p className="text-sm text-black/60 font-medium leading-relaxed mb-6">
-                          {idea.rationale}
-                        </p>
-                        <button 
-                          onClick={() => addIdeaToCalendar(idea)}
-                          className="w-full bg-white border border-black/5 text-xs font-bold py-3 rounded-2xl hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
-                        >
-                          <Plus size={14} /> Add to Calendar
-                        </button>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
       </AnimatePresence>
     </div>
   );
