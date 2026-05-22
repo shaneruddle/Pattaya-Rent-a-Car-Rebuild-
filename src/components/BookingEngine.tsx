@@ -46,7 +46,6 @@ import { useLanguage } from '../LanguageContext';
 import { usePricing } from '../contexts/PricingContext';
 import { Helmet } from 'react-helmet-async';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AIAssistant } from './AIAssistant';
 import MarketingPageView from './MarketingPageView';
 import { Language } from '../translations';
 import { LocationPicker } from './LocationPicker';
@@ -1523,7 +1522,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       </div>
 
       <Footer onPageChange={handlePageChange} isBikeMode={isBikeMode} />
-      <AIAssistant />
     </div>
   );
 };

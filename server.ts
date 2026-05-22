@@ -920,51 +920,6 @@ async function startServer() {
     }
   });
 
-  app.get("/api/searchconsole/suggestions", async (req, res) => {
-    try {
-      const siteUrl = "sc-domain:pattayarentacar.com";
-      const endDate = format(new Date(), "yyyy-MM-dd");
-      const startDate = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
-      
-      const topQueries = await getSearchConsoleData(startDate, endDate, siteUrl, ['query'], 50);
-      
-      const apiKey = process.env.GEMINI_API_KEY || '';
-      if (!apiKey) { return res.status(500).json({ error: 'GEMINI_API_KEY not configured' }); }
-
-      const queriesText = topQueries.map((q: any) => `- ${q.keys[0]} (Impressions: ${q.impressions}, Clicks: ${q.clicks})`).join("\n");
-      
-      const prompt = `
-        You are an SEO expert for "Pattaya Rent a Car", a car rental company in Pattaya, Thailand.
-        Based on the following top search queries from Google Search Console, generate 10 content ideas (blog posts or pages) that would help drive more traffic.
-        
-        Top Queries:
-        ${queriesText}
-        
-        Return a JSON array of objects. Each object MUST have:
-        - title: A catchy headlines
-        - targetKeyword: The primary keyword this content targets
-        - rationale: 2 sentences explaining why this will drive traffic
-        - estimatedImpact: "high", "medium", or "low"
-        
-        Format the response as raw JSON only, no markdown markers.
-      `;
-
-      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      const geminiData = await geminiRes.json() as any;
-      const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      const cleanText = text.replace(/```json|```/g, '').trim();
-      const suggestions = JSON.parse(cleanText);
-      
-      res.json(suggestions);
-    } catch (error: any) {
-      console.error("[Search Console Suggestions] Error:", error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   app.post("/api/analytics/pages", async (req, res) => {
     try {

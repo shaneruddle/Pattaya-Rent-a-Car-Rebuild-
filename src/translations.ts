@@ -67,13 +67,6 @@ export const translations = {
       terms: "Terms of Service",
       cookies: "Cookie Policy"
     },
-    aiAssistant: {
-      title: "AI Rental Assistant",
-      greeting: "Hi! I'm your {company_name} assistant. How can I help you today?",
-      placeholder: "Type your question...",
-      error: "Sorry, I'm having trouble connecting. Please try again later.",
-      cta: "Chat with AI"
-    },
     faq: {
       title: "Frequently Asked Questions",
       subtitle: "Everything you need to know about renting a car in Pattaya.",
@@ -528,13 +521,6 @@ export const translations = {
       terms: "ข้อกำหนดการให้บริการ",
       cookies: "นโยบายคุกกี้"
     },
-    aiAssistant: {
-      title: "ผู้ช่วยเช่ารถ AI",
-      greeting: "สวัสดี! ฉันคือผู้ช่วยของ {company_name} วันนี้ให้ฉันช่วยอะไรคุณดี?",
-      placeholder: "พิมพ์คำถามของคุณ...",
-      error: "ขออภัย ฉันมีปัญหาในการเชื่อมต่อ โปรดลองอีกครั้งในภายหลัง",
-      cta: "คุยกับ AI"
-    },
     results: {
       pickup: "รับรถ",
       dropoff: "คืนรถ",
@@ -757,13 +743,6 @@ export const translations = {
       privacy: "Политика конфиденциальности",
       terms: "Условия использования",
       cookies: "Политика использования файлов cookie"
-    },
-    aiAssistant: {
-      title: "AI Ассистент по прокату",
-      greeting: "Привет! Я ваш помощник в {company_name}. Чем я могу вам помочь сегодня?",
-      placeholder: "Введите ваш вопрос...",
-      error: "Извините, возникли проблемы с подключением. Пожалуйста, попробуйте позже.",
-      cta: "Чат с AI"
     },
     results: {
       pickup: "Получение",
@@ -988,13 +967,6 @@ export const translations = {
       terms: "Nutzungsbedingungen",
       cookies: "Cookie-Richtlinie"
     },
-    aiAssistant: {
-      title: "AI Miet-Assistent",
-      greeting: "Hallo! Ich bin Ihr {company_name} Assistent. Wie kann ich Ihnen heute helfen?",
-      placeholder: "Schreiben Sie Ihre Frage...",
-      error: "Entschuldigung, ich habe Verbindungsprobleme. Bitte versuchen Sie es später noch einmal.",
-      cta: "Mit AI chatten"
-    },
     results: {
       pickup: "Abholung",
       dropoff: "Rückgabe",
@@ -1217,13 +1189,6 @@ export const translations = {
       privacy: "隐私政策",
       terms: "服务条款",
       cookies: "Cookie 政策"
-    },
-    aiAssistant: {
-      title: "AI 租车助手",
-      greeting: "您好！我是您的 {company_name} 助手。今天有什么可以帮您的吗？",
-      placeholder: "输入您的问题...",
-      error: "抱歉，连接出现问题。请稍后再试。",
-      cta: "与 AI 聊天"
     },
     results: {
       pickup: "取车",
