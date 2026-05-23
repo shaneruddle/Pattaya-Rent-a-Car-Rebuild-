@@ -17,6 +17,19 @@ interface CompanyConfig {
   openingHours: {
     [key: string]: string;
   };
+  fleetSize: string;
+  social: {
+    facebook: string;
+    instagram: string;
+  };
+  trust: {
+    years: number | '';
+    customers: string;
+    googleRating: number | '';
+    googleReviews: number | '';
+    facebookRating: string;
+    facebookReviews: string;
+  };
 }
 
 export const CompanySettings: React.FC = () => {
@@ -39,7 +52,17 @@ export const CompanySettings: React.FC = () => {
       'Friday': '09:00 - 18:00',
       'Saturday': '09:00 - 18:00',
       'Sunday': '09:00 - 18:00'
-    }
+    },
+    fleetSize: '',
+    social: { facebook: '', instagram: '' },
+    trust: {
+      years: '',
+      customers: '',
+      googleRating: '',
+      googleReviews: '',
+      facebookRating: '',
+      facebookReviews: '',
+    },
   });
 
   useEffect(() => {
@@ -66,7 +89,17 @@ export const CompanySettings: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await setDoc(doc(db, 'app_settings', 'company'), config);
+      const toNum = (v: string | number | '') => v === '' || v === null || v === undefined ? '' : Number(v);
+      const payload = {
+        ...config,
+        trust: {
+          ...config.trust,
+          years:         toNum(config.trust.years),
+          googleRating:  toNum(config.trust.googleRating),
+          googleReviews: toNum(config.trust.googleReviews),
+        },
+      };
+      await setDoc(doc(db, 'app_settings', 'company'), payload, { merge: true });
       toast.success('Company settings updated successfully');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'app_settings/company');
@@ -180,6 +213,107 @@ export const CompanySettings: React.FC = () => {
                 type="email"
                 value={config.email}
                 onChange={e => setConfig({ ...config, email: e.target.value })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Social Links */}
+        <section className="bg-white/40 backdrop-blur-xl border border-white/40 rounded-[32px] p-8 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Globe className="text-brand-orange" size={20} />
+            <h3 className="text-lg font-bold tracking-tight">Social Links</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Facebook URL</label>
+              <input
+                type="text"
+                value={config.social.facebook}
+                onChange={e => setConfig({ ...config, social: { ...config.social, facebook: e.target.value } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Instagram URL</label>
+              <input
+                type="text"
+                value={config.social.instagram}
+                onChange={e => setConfig({ ...config, social: { ...config.social, instagram: e.target.value } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Fleet & Trust Signals */}
+        <section className="bg-white/40 backdrop-blur-xl border border-white/40 rounded-[32px] p-8 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Building2 className="text-brand-orange" size={20} />
+            <h3 className="text-lg font-bold tracking-tight">Fleet &amp; Trust Signals</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Fleet Size</label>
+              <input
+                type="text"
+                value={config.fleetSize}
+                onChange={e => setConfig({ ...config, fleetSize: e.target.value })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Years in Business</label>
+              <input
+                type="text"
+                value={config.trust.years}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, years: e.target.value as any } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Customers Served</label>
+              <input
+                type="text"
+                value={config.trust.customers}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, customers: e.target.value } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Google Rating</label>
+              <input
+                type="text"
+                value={config.trust.googleRating}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, googleRating: e.target.value as any } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Google Reviews</label>
+              <input
+                type="text"
+                value={config.trust.googleReviews}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, googleReviews: e.target.value as any } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Facebook Rating</label>
+              <input
+                type="text"
+                value={config.trust.facebookRating}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, facebookRating: e.target.value } })}
+                className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-black/30 ml-4">Facebook Reviews</label>
+              <input
+                type="text"
+                value={config.trust.facebookReviews}
+                onChange={e => setConfig({ ...config, trust: { ...config.trust, facebookReviews: e.target.value } })}
                 className="w-full bg-white border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all shadow-sm"
               />
             </div>
