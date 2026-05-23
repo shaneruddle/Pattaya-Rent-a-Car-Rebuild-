@@ -23,5 +23,8 @@ steps:
       - '--image=gcr.io/$PROJECT_ID/pattaya-rent-a-car-rebuild:$COMMIT_SHA'
       - '--region=us-west1'
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 images:
   - 'gcr.io/$PROJECT_ID/pattaya-rent-a-car-rebuild:$COMMIT_SHA'
