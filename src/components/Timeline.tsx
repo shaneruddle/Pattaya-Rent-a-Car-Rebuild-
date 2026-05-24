@@ -1369,6 +1369,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     if (t.includes('truck') || t.includes('van')) return { color: 'text-amber-500', bg: 'bg-amber-500', icon: TruckIcon };
     if (t.includes('luxury')) return { color: 'text-rose-500', bg: 'bg-rose-500', icon: CarIconType };
     if (t.includes('bike') || t.includes('motor')) return { color: 'text-indigo-500', bg: 'bg-indigo-500', icon: Bike };
+    if (t.includes('mpv')) return { color: 'text-teal-500', bg: 'bg-teal-500', icon: CarIconType };
     return { color: 'text-gray-500', bg: 'bg-gray-500', icon: CarIconType };
   };
 
