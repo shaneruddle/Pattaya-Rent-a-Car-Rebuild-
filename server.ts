@@ -862,11 +862,12 @@ app.get("/api/pricing/quote", async (req, res) => {
       availMult = availMultInner;
     }
 
-    // Formula: tier x season x availability, clamp UP to per-day floor
+    // Formula: tier x season x availability, clamp UP to per-day floor, then round per-day UP to nearest 50.
     const effectiveDaily = tierRate * seasonMult * availMult;
     const flooredDaily = Math.max(effectiveDaily, cls.floor);
     const floorApplied = flooredDaily > effectiveDaily;
-    const totalPrice = Math.round(flooredDaily * days);
+    const roundedDaily = Math.ceil(flooredDaily / 50) * 50;   // round UP to nearest 50
+    const totalPrice = roundedDaily * days;                    // total derives from rounded per-day (reconciles)
 
     res.json({
       quotable: true,
@@ -885,7 +886,7 @@ app.get("/api/pricing/quote", async (req, res) => {
       bookedPct: bookedPct !== null ? Math.round(bookedPct * 10) / 10 : null,
       availMult,
       effectiveDaily: Math.round(effectiveDaily * 100) / 100,
-      perDay: Math.round(flooredDaily),
+      perDay: roundedDaily,
       floorApplied,
       totalPrice
     });
