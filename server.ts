@@ -379,6 +379,59 @@ async function startServer() {
       res.status(500).json({ error: error.message, code: error.code });
     }
   });
+  // One-time CREATE-ONLY endpoint to seed pricing_config/current. Refuses to overwrite. Remove after use.
+  app.get("/api/debug/pricing-config/create", async (req, res) => {
+    if (!firestore) {
+      return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+    }
+    try {
+      const ref = firestore.collection('pricing_config').doc('current');
+      const existing = await ref.get();
+      if (existing.exists) {
+        return res.status(409).json({ error: "pricing_config/current already exists — refusing to overwrite.", existing: existing.data() });
+      }
+      const config = {
+        thresholds: { weeklyFromDays: 7, monthlyRedirectFromDays: 30 },
+        redirectMessage: "For rentals of 30 days or more, please contact us for a monthly quote.",
+        classes: {
+          "Economy":       { daily: 1500, weekly: 1300, floor: 400 },
+          "Compact Sedan": { daily: 1600, weekly: 1400, floor: 400 },
+          "MPV":           { daily: 2000, weekly: 1750, floor: 700 },
+          "Pickup Truck":  { daily: 2000, weekly: 1750, floor: 700 },
+          "SUV":           { daily: 2500, weekly: 2200, floor: 1000 }
+        },
+        seasonMultipliers: { peak: 1.0, high: 0.9, medium: 0.8, low: 0.7 },
+        defaultSeason: "low",
+        seasons: [
+          { fromMonth: 12, fromDay: 15, toMonth: 1,  toDay: 31, season: "peak"   },
+          { fromMonth: 2,  fromDay: 1,  toMonth: 4,  toDay: 30, season: "high"   },
+          { fromMonth: 5,  fromDay: 1,  toMonth: 5,  toDay: 31, season: "low"    },
+          { fromMonth: 6,  fromDay: 1,  toMonth: 8,  toDay: 31, season: "medium" },
+          { fromMonth: 9,  fromDay: 1,  toMonth: 9,  toDay: 30, season: "low"    },
+          { fromMonth: 10, fromDay: 1,  toMonth: 10, toDay: 31, season: "medium" },
+          { fromMonth: 11, fromDay: 1,  toMonth: 12, toDay: 14, season: "high"   }
+        ],
+        availabilityLadder: [
+          { minBookedPct: 90, mult: 1.0 },
+          { minBookedPct: 80, mult: 0.9 },
+          { minBookedPct: 70, mult: 0.8 },
+          { minBookedPct: 60, mult: 0.7 },
+          { minBookedPct: 50, mult: 0.6 },
+          { minBookedPct: 0,  mult: 0.5 }
+        ],
+        overrides: [],
+        _meta: {
+          createdBy: "pricing-engine-setup",
+          note: "Recurring month-day seasons. Engine quotes daily (1-6 days) and weekly (7-29 days); 30+ days returns redirectMessage. Floors are per-day minimums the dials cannot push below. Motorbike excluded - priced separately."
+        }
+      };
+      await ref.set(config);
+      res.json({ created: true, doc: "pricing_config/current", config });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, code: error.code });
+    }
+  });
+
 
   // Middleware to check if Firestore is ready
   app.use((req, res, next) => {
