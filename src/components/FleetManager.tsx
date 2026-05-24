@@ -42,6 +42,24 @@ import { toast } from 'sonner';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { cn } from '../lib/utils';
 
+// Canonical car-type list. The first six are the real classes.
+// The four below the divider are LEGACY values, kept only so existing
+// cars remain selectable during reclassification. Remove them in Commit 2
+// once no car carries a legacy type.
+export const CAR_TYPES = [
+  'Economy',
+  'Compact Sedan',
+  'Pickup Truck',
+  'MPV',
+  'SUV',
+  'Motorbike',
+  // --- legacy, remove in Commit 2 ---
+  'Sedan',
+  'Truck',
+  'Scooter',
+  'Veloz',
+];
+
 export const FleetManager: React.FC = () => {
   const [cars, setCars] = useState<Car[]>([]);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
@@ -1107,11 +1125,9 @@ Yamaha,New Aerox,Red,4กย 1611`;
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Type</label>
                             <select name="type" defaultValue={selectedCar.type} className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors">
-                              <option value="Economy">Economy</option>
-                              <option value="Sedan">Sedan</option>
-                              <option value="SUV">SUV</option>
-                              <option value="Truck">Truck</option>
-                              <option value="Van">Van</option>
+                              {CAR_TYPES.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
                             </select>
                           </div>
                           <div className="space-y-2">
@@ -1477,7 +1493,11 @@ Yamaha,New Aerox,Red,4กย 1611`;
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Type</label>
-                    <input name="type" placeholder="e.g. Economy, SUV, Scooter" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
+                    <select name="type" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors">
+                      {CAR_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Make</label>
