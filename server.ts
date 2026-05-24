@@ -329,6 +329,57 @@ async function startServer() {
     });
   });
 
+  // Class integrity check: full per-class fleet count for pricing engine (read-only)
+  app.get("/api/debug/fleet/class-counts", async (req, res) => {
+    if (!firestore) {
+      return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+    }
+    try {
+      // Read ALL cars (not limited) so we catch casing drift and blanks across the whole fleet
+      const snapshot = await firestore.collection('cars').get();
+
+      const activeCounts: { [type: string]: number } = {};
+      const inactiveCounts: { [type: string]: number } = {};
+      const problems: { id: string; reason: string; type: any; isActive: any }[] = [];
+
+      snapshot.docs.forEach((doc: any) => {
+        const d = doc.data();
+        const rawType = d.type;
+        const isActive = d.isActive === true;
+
+        if (rawType === undefined || rawType === null || rawType === '') {
+          problems.push({ id: doc.id, reason: 'missing/blank type', type: rawType, isActive: d.isActive });
+          return;
+        }
+        if (typeof rawType !== 'string') {
+          problems.push({ id: doc.id, reason: 'type is not a string', type: rawType, isActive: d.isActive });
+          return;
+        }
+        if (rawType !== rawType.trim()) {
+          problems.push({ id: doc.id, reason: 'leading/trailing whitespace in type', type: JSON.stringify(rawType), isActive: d.isActive });
+        }
+
+        const bucket = isActive ? activeCounts : inactiveCounts;
+        bucket[rawType] = (bucket[rawType] || 0) + 1;
+      });
+
+      const distinctActiveTypes = Object.keys(activeCounts).sort();
+      const distinctInactiveTypes = Object.keys(inactiveCounts).sort();
+
+      res.json({
+        totalCars: snapshot.size,
+        activeClassCounts: activeCounts,
+        inactiveClassCounts: inactiveCounts,
+        distinctActiveTypes,
+        distinctInactiveTypes,
+        problems,
+        problemCount: problems.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, code: error.code });
+    }
+  });
+
   // Middleware to check if Firestore is ready
   app.use((req, res, next) => {
     // Just log if Firestore is not ready yet, but don't block
