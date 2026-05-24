@@ -815,39 +815,51 @@ app.get("/api/pricing/quote", async (req, res) => {
     }
     const seasonMult = cfg.seasonMultipliers[season];
 
+    // Availability window: the occupancy dial only applies to near-term bookings (config-driven).
+    // Outside the window, occupancy reflects "how early it is" not demand, so we disable it (mult = 1.0).
+    const windowDays = (cfg.availabilityWindowDays != null) ? cfg.availabilityWindowDays : 14;
+    const todayMs = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00Z').getTime();
+    const startMs = new Date(fromISO.slice(0,10) + 'T00:00:00Z').getTime();
+    const leadDays = Math.round((startMs - todayMs) / 86400000);
+    const availabilityActive = leadDays <= windowDays;
+
     // Availability (live) — same proven logic as the availability diagnostic
     const rf = dayInt(fromISO), rt = dayInt(toISO);
-    const carsSnap = await firestore.collection('cars')
-      .where('type', '==', carClass).where('isActive', '==', true).get();
-    const classCarIds = new Set<string>();
-    carsSnap.docs.forEach((d: any) => classCarIds.add(d.id));
-    const N = classCarIds.size;
+    let N: number | null = null, B: number | null = null, bookedPct: number | null = null, availMult = 1.0;
+    if (availabilityActive) {
+      const carsSnap = await firestore.collection('cars')
+        .where('type', '==', carClass).where('isActive', '==', true).get();
+      const classCarIds = new Set<string>();
+      carsSnap.docs.forEach((d: any) => classCarIds.add(d.id));
+      N = classCarIds.size;
 
-    // Guard 4: no fleet -> can't quote (avoid divide-by-zero)
-    if (!N || N <= 0) {
-      return res.json({ quotable: false, reason: "no_active_fleet", class: carClass });
-    }
+      // Guard 4: no fleet -> can't quote (avoid divide-by-zero)
+      if (!N || N <= 0) {
+        return res.json({ quotable: false, reason: "no_active_fleet", class: carClass });
+      }
 
-    const fromDayStart = fromISO.slice(0,10) + 'T00:00:00.000Z';
-    const bookingsSnap = await firestore.collection('bookings').where('endDate', '>', fromDayStart).get();
-    const occupiedCarIds = new Set<string>();
-    bookingsSnap.docs.forEach((doc: any) => {
-      const b = doc.data();
-      const cid = b.carId;
-      if (!cid || cid === '' || cid === 'unassigned') return;
-      if (!classCarIds.has(cid)) return;
-      const occupying = b.isMaintenance === true || b.status === 'Paid' || b.status === 'Pending';
-      if (!occupying) return;
-      if (!b.startDate || !b.endDate) return;
-      if (!(dayInt(b.startDate) < rt && dayInt(b.endDate) > rf)) return;
-      occupiedCarIds.add(cid);
-    });
-    const B = Math.min(occupiedCarIds.size, N);
-    const bookedPct = (B / N) * 100;
+      const fromDayStart = fromISO.slice(0,10) + 'T00:00:00.000Z';
+      const bookingsSnap = await firestore.collection('bookings').where('endDate', '>', fromDayStart).get();
+      const occupiedCarIds = new Set<string>();
+      bookingsSnap.docs.forEach((doc: any) => {
+        const b = doc.data();
+        const cid = b.carId;
+        if (!cid || cid === '' || cid === 'unassigned') return;
+        if (!classCarIds.has(cid)) return;
+        const occupying = b.isMaintenance === true || b.status === 'Paid' || b.status === 'Pending';
+        if (!occupying) return;
+        if (!b.startDate || !b.endDate) return;
+        if (!(dayInt(b.startDate) < rt && dayInt(b.endDate) > rf)) return;
+        occupiedCarIds.add(cid);
+      });
+      B = Math.min(occupiedCarIds.size, N);
+      bookedPct = (B / N) * 100;
 
-    let availMult = cfg.availabilityLadder[cfg.availabilityLadder.length - 1].mult;
-    for (const r of cfg.availabilityLadder) {
-      if (bookedPct >= r.minBookedPct) { availMult = r.mult; break; }
+      let availMultInner = cfg.availabilityLadder[cfg.availabilityLadder.length - 1].mult;
+      for (const r of cfg.availabilityLadder) {
+        if (bookedPct >= r.minBookedPct) { availMultInner = r.mult; break; }
+      }
+      availMult = availMultInner;
     }
 
     // Formula: tier x season x availability, clamp UP to per-day floor
@@ -866,9 +878,11 @@ app.get("/api/pricing/quote", async (req, res) => {
       tierRate,
       season,
       seasonMult,
+      availabilityActive,
+      leadDays,
       fleetSize_N: N,
       occupiedCount_B: B,
-      bookedPct: Math.round(bookedPct * 10) / 10,
+      bookedPct: bookedPct !== null ? Math.round(bookedPct * 10) / 10 : null,
       availMult,
       effectiveDaily: Math.round(effectiveDaily * 100) / 100,
       perDay: Math.round(flooredDaily),
