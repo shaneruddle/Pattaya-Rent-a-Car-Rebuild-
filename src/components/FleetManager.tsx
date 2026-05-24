@@ -42,10 +42,8 @@ import { toast } from 'sonner';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { cn } from '../lib/utils';
 
-// Canonical car-type list. The first six are the real classes.
-// The four below the divider are LEGACY values, kept only so existing
-// cars remain selectable during reclassification. Remove them in Commit 2
-// once no car carries a legacy type.
+// Canonical car-type list. Motorbike is in the fleet but priced separately
+// (not via the pricing engine). These are the only valid car type values.
 export const CAR_TYPES = [
   'Economy',
   'Compact Sedan',
@@ -53,11 +51,6 @@ export const CAR_TYPES = [
   'MPV',
   'SUV',
   'Motorbike',
-  // --- legacy, remove in Commit 2 ---
-  'Sedan',
-  'Truck',
-  'Scooter',
-  'Veloz',
 ];
 
 export const FleetManager: React.FC = () => {
