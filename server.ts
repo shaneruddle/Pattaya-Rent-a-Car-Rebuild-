@@ -380,6 +380,99 @@ async function startServer() {
     }
   });
 
+// Read-only availability diagnostic for the pricing engine. Computes occupancy for a class + date range. Writes nothing.
+app.get("/api/debug/pricing/availability", async (req, res) => {
+  if (!firestore) {
+    return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+  }
+  const carClass = req.query.class as string;
+  const fromISO = req.query.from as string;
+  const toISO = req.query.to as string;
+  if (!carClass || !fromISO || !toISO) {
+    return res.status(400).json({ error: "Required query params: class, from (YYYY-MM-DD), to (YYYY-MM-DD)" });
+  }
+  try {
+    // Date-only helpers: same-day return = available, strict boundary.
+    const dayInt = (iso: string) => {
+      const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+      return y * 10000 + m * 100 + d;
+    };
+    const rf = dayInt(fromISO);
+    const rt = dayInt(toISO);
+
+    // Phase 1: active car IDs of this class (this is N).
+    const carsSnap = await firestore.collection('cars')
+      .where('type', '==', carClass)
+      .where('isActive', '==', true)
+      .get();
+    const classCarIds = new Set<string>();
+    carsSnap.docs.forEach((d: any) => classCarIds.add(d.id));
+    const N = classCarIds.size;
+
+    // Phase 2: candidate bookings — endDate strictly after the request's start day.
+    // Use start-of-day for fromDate in the query so we don't drop same-day-boundary bookings before code-side strict check.
+    const fromDayStart = fromISO.slice(0, 10) + 'T00:00:00.000Z';
+    const bookingsSnap = await firestore.collection('bookings')
+      .where('endDate', '>', fromDayStart)
+      .get();
+
+    // Phase 3: filter in code — overlap (date-only strict), occupying status, assigned car, class membership.
+    const occupied: { [carId: string]: any[] } = {};
+    let scanned = 0;
+    bookingsSnap.docs.forEach((doc: any) => {
+      const b = doc.data();
+      scanned++;
+      const carId = b.carId;
+      if (!carId || carId === '' || carId === 'unassigned') return;       // unassigned enquiry
+      if (!classCarIds.has(carId)) return;                                // not this class
+      const occupyingStatus = b.isMaintenance === true || b.status === 'Paid' || b.status === 'Pending';
+      if (!occupyingStatus) return;                                       // Completed/Cancelled/other
+      if (!b.startDate || !b.endDate) return;                             // malformed
+      const bs = dayInt(b.startDate);
+      const be = dayInt(b.endDate);
+      const overlaps = bs < rt && be > rf;                                // date-only, strict
+      if (!overlaps) return;
+      if (!occupied[carId]) occupied[carId] = [];
+      occupied[carId].push({
+        bookingId: doc.id,
+        status: b.status,
+        isMaintenance: b.isMaintenance === true,
+        startDate: b.startDate,
+        endDate: b.endDate
+      });
+    });
+
+    const occupiedCarIds = Object.keys(occupied);
+    const B = Math.min(occupiedCarIds.length, N);
+    const bookedPct = N > 0 ? (B / N) * 100 : 0;
+
+    // Ladder lookup (read from pricing_config for consistency).
+    const cfgSnap = await firestore.collection('pricing_config').doc('current').get();
+    const ladder = cfgSnap.exists ? cfgSnap.data().availabilityLadder : null;
+    let multiplier = null;
+    if (ladder) {
+      for (const rung of ladder) {
+        if (bookedPct >= rung.minBookedPct) { multiplier = rung.mult; break; }
+      }
+    }
+
+    res.json({
+      class: carClass,
+      from: fromISO,
+      to: toISO,
+      fleetSize_N: N,
+      occupiedCount_B: B,
+      bookedPct: Math.round(bookedPct * 10) / 10,
+      availabilityMultiplier: multiplier,
+      occupiedCars: occupied,          // carId -> the bookings that occupy it (so you can verify by eye)
+      classCarIds: Array.from(classCarIds),
+      diagnostics: { bookingsScanned: scanned }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message, code: error.code });
+  }
+});
+
   // Middleware to check if Firestore is ready
   app.use((req, res, next) => {
     // Just log if Firestore is not ready yet, but don't block
