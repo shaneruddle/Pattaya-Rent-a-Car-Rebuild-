@@ -343,15 +343,36 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNewEngine, visibleClassesKey, quoteFrom, quoteTo]);
 
-const calculateTotal = (car: WebsiteCar) => {
+// Old sheet-based total (unchanged logic, now an inner helper used as fallback)
+  const sheetCalculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
     if (!dateKey) return 0;
-    
-    // @ts-ignore - calculatePrice is in the context
+    // @ts-ignore – calculatePrice is in the context
     const price = calculatePrice ? calculatePrice(car, dateKey, totalDays) : null;
     if (price !== null) return price;
-
     return (car.pricePerDay || 1200) * totalDays;
+  };
+
+  // Numeric total. When the new engine is on: quotable -> totalPrice; monthly redirect -> 0 (display shows message);
+  // not-loaded / error / not-configured -> fall back to the sheet total so the display never breaks.
+  const calculateTotal = (car: WebsiteCar) => {
+    if (!useNewEngine) return sheetCalculateTotal(car);
+    const q = getQuoteForCar(car);
+    if (q === null) return sheetCalculateTotal(car);
+    if (q.quotable === true) return q.totalPrice;
+    if (q.reason === 'monthly_redirect') return 0;
+    return sheetCalculateTotal(car);
+  };
+
+  // What to DISPLAY for a car's price: a formatted price, or the monthly-redirect message.
+  const getPriceDisplay = (car: WebsiteCar): string => {
+    if (useNewEngine) {
+      const q = getQuoteForCar(car);
+      if (q && q.quotable === false && q.reason === 'monthly_redirect') {
+        return 'Contact us for monthly rates';
+      }
+    }
+    return 'THB ' + calculateTotal(car).toLocaleString();
   };
 
   const getDailyRate = (car: WebsiteCar) => {
@@ -376,7 +397,7 @@ const calculateTotal = (car: WebsiteCar) => {
         endDate: format(selectedRange.to, "yyyy-MM-dd") + 'T' + dropOffTime,
         status: 'Pending',
         notes: formData.comments,
-        amount: calculateTotal(selectedCar),
+        amount: (useNewEngine && (() => { const q = getQuoteForCar(selectedCar); return q && q.quotable === false && q.reason === 'monthly_redirect'; })()) ? null : calculateTotal(selectedCar),
         deliveryAddress: formData.requireDelivery ? formData.deliveryAddress : '',
         deliveryLocation: formData.requireDelivery ? formData.deliveryLocation : null,
         deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : '',
@@ -1181,7 +1202,7 @@ const calculateTotal = (car: WebsiteCar) => {
                         <div className="space-y-4">
                           <div>
                             <p className="text-[10px] font-bold text-black/20 uppercase tracking-widest mb-1">{t('car.total', { days: totalDays })}</p>
-                            <p className="text-5xl font-bold text-black tracking-tighter font-mono">THB {calculateTotal(car).toLocaleString()}</p>
+                            <p className="text-5xl font-bold text-black tracking-tighter font-mono">{getPriceDisplay(car)}</p>
                           </div>
                           <button 
                             onClick={() => {
@@ -1338,7 +1359,7 @@ const calculateTotal = (car: WebsiteCar) => {
                       isBikeMode ? "bg-brand-blue/5 border-brand-blue/10" : "bg-brand-orange/5 border-brand-orange/10"
                     )}>
                       <p className={cn("text-3xl font-bold tracking-tighter mb-2", isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{totalDays} {t('results.days')}</p>
-                      <p className="text-5xl font-bold tracking-tighter font-mono">THB {calculateTotal(selectedCar).toLocaleString()}</p>
+                      <p className="text-5xl font-bold tracking-tighter font-mono">{getPriceDisplay(selectedCar)}</p>
                     </div>
 
                     <div className="space-y-6">
