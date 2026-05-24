@@ -189,6 +189,7 @@ export interface WebsiteCar {
   slug?: string;
   priceGridVehicle?: string;
   category?: 'Car' | 'Motorbike';
+  type?: string; // canonical pricing class: Economy | Compact Sedan | Pickup Truck | MPV | SUV (used by the new pricing engine)
 }
 
 export interface SystemLog {
