@@ -364,15 +364,16 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     return sheetCalculateTotal(car);
   };
 
-  // What to DISPLAY for a car's price: a formatted price, or the monthly-redirect message.
-  const getPriceDisplay = (car: WebsiteCar): string => {
+    // What to DISPLAY for a car's price: either a formatted price or the monthly-redirect message.
+  // Returns { kind, text } so the render sites can style price vs message differently.
+  const getPriceDisplay = (car: WebsiteCar): { kind: 'price' | 'message'; text: string } => {
     if (useNewEngine) {
       const q = getQuoteForCar(car);
       if (q && q.quotable === false && q.reason === 'monthly_redirect') {
-        return 'Contact us for monthly rates';
+        return { kind: 'message', text: 'Contact us for monthly rates' };
       }
     }
-    return 'THB ' + calculateTotal(car).toLocaleString();
+    return { kind: 'price', text: 'THB ' + calculateTotal(car).toLocaleString() };
   };
 
   const getDailyRate = (car: WebsiteCar) => {
@@ -1202,7 +1203,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         <div className="space-y-4">
                           <div>
                             <p className="text-[10px] font-bold text-black/20 uppercase tracking-widest mb-1">{t('car.total', { days: totalDays })}</p>
-                            <p className="text-5xl font-bold text-black tracking-tighter font-mono">{getPriceDisplay(car)}</p>
+                            {(() => { const pd = getPriceDisplay(car); return (
+                      <p className={pd.kind === 'message'
+                        ? "text-2xl font-bold text-black tracking-tight"
+                        : "text-5xl font-bold text-black tracking-tighter font-mono"}>{pd.text}</p>
+                    ); })()}
                           </div>
                           <button 
                             onClick={() => {
@@ -1359,7 +1364,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       isBikeMode ? "bg-brand-blue/5 border-brand-blue/10" : "bg-brand-orange/5 border-brand-orange/10"
                     )}>
                       <p className={cn("text-3xl font-bold tracking-tighter mb-2", isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{totalDays} {t('results.days')}</p>
-                      <p className="text-5xl font-bold tracking-tighter font-mono">{getPriceDisplay(selectedCar)}</p>
+                      {(() => { const pd = getPriceDisplay(selectedCar); return (
+                          <p className={pd.kind === 'message'
+                            ? "text-2xl font-bold tracking-tight"
+                            : "text-5xl font-bold tracking-tighter font-mono"}>{pd.text}</p>
+                        ); })()}
                     </div>
 
                     <div className="space-y-6">
