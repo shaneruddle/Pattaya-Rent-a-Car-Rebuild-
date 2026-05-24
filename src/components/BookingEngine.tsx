@@ -72,7 +72,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   console.log('BookingEngine: Rendering');
   const { t, language, setLanguage } = useLanguage();
   const { config, loading: configLoading } = useCompanyConfig();
-  const { sheetPricing, loading: pricingLoading, calculatePrice } = usePricing();
+  const { sheetPricing, loading: pricingLoading, calculatePrice, useNewEngine, classPrices, classPricesLoading, fetchClassPrices, getQuoteForCar } = usePricing();
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -328,7 +328,22 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     return true;
   });
 
-  const calculateTotal = (car: WebsiteCar) => {
+    // --- New pricing engine: fetch per-class quotes when dates or visible classes change (flag-gated) ---
+  // Derive a STABLE key from the distinct classes + dates so the effect doesn't loop on filteredCars' changing array identity.
+  const visibleClasses = Array.from(new Set(filteredCars.map(c => c.type).filter(Boolean) as string[])).sort();
+  const visibleClassesKey = visibleClasses.join(',');
+  const quoteFrom = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : '';
+  const quoteTo = selectedRange.to ? format(selectedRange.to, "yyyy-MM-dd") : '';
+
+  useEffect(() => {
+    if (!useNewEngine) return;                       // flag off -> do nothing
+    if (!quoteFrom || !quoteTo) return;              // need dates
+    if (visibleClasses.length === 0) return;         // need at least one class
+    fetchClassPrices(visibleClasses, quoteFrom, quoteTo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNewEngine, visibleClassesKey, quoteFrom, quoteTo]);
+
+const calculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
     if (!dateKey) return 0;
     
