@@ -46,10 +46,12 @@ import { cn } from '../lib/utils';
 // (not via the pricing engine). These are the only valid car type values.
 export const CAR_TYPES = [
   'Economy',
+  'Budget Economy',
   'Compact Sedan',
   'Pickup Truck',
   'MPV',
   'SUV',
+  'Budget SUV',
   'Motorbike',
 ];
 
