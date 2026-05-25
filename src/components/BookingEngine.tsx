@@ -649,6 +649,35 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         <meta property="og:description" content={seo.description} />
       </Helmet>
       {/* Header */}
+      {view === 'results' ? (
+        <header className="sticky top-0 z-[60] bg-warm-bg/80 backdrop-blur-lg border-b border-black/5">
+          <div className="max-w-7xl mx-auto px-4 h-20 flex items-center">
+            {isBikeMode ? (
+              <StorageImage
+                path="PRAB-Logo-1.png"
+                alt="Pattaya Rent A Bike"
+                className="h-10 cursor-pointer"
+                onClick={() => {
+                  setView('landing');
+                  setIsBikeMode(false);
+                }}
+                fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
+              />
+            ) : (
+              <img
+                src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
+                alt="Pattaya Rent A Car"
+                className="h-10 cursor-pointer"
+                onClick={() => {
+                  setView('landing');
+                  setIsBikeMode(false);
+                }}
+                referrerPolicy="no-referrer"
+              />
+            )}
+          </div>
+        </header>
+      ) : (
       <header className="sticky top-0 z-[60] bg-warm-bg/80 backdrop-blur-lg border-b border-black/5">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-12">
@@ -866,6 +895,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           )}
         </AnimatePresence>
       </header>
+      )}
 
       {/* Main Content */}
       <div className="flex-1">
@@ -1566,7 +1596,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
       </div>
 
-      <Footer onPageChange={handlePageChange} isBikeMode={isBikeMode} />
+      {view !== 'results' && <Footer onPageChange={handlePageChange} isBikeMode={isBikeMode} />}
     </div>
   );
 };
