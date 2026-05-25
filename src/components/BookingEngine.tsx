@@ -347,7 +347,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const sheetCalculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
     if (!dateKey) return 0;
-    // @ts-ignore – calculatePrice is in the context
+    // @ts-ignore â calculatePrice is in the context
     const price = calculatePrice ? calculatePrice(car, dateKey, totalDays) : null;
     if (price !== null) return price;
     return (car.pricePerDay || 1200) * totalDays;
@@ -768,20 +768,20 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <Globe size={14} className="text-black/40" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">
                   {language === 'en' ? 'English' : 
-                   language === 'th' ? 'ไทย' : 
-                   language === 'ru' ? 'Русский' : 
+                   language === 'th' ? 'à¹à¸à¸¢' : 
+                   language === 'ru' ? 'Ð ÑÑÑÐºÐ¸Ð¹' : 
                    language === 'de' ? 'Deutsch' : 
-                   language === 'zh' ? '中文' : 'English'}
+                   language === 'zh' ? 'ä¸­æ' : 'English'}
                 </span>
                 <ChevronDown size={12} className="text-black/40" />
               </div>
               <div className="absolute right-0 mt-2 w-48 glass-modal rounded-2xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] p-2">
                 {[
                   { code: 'en', label: 'English' },
-                  { code: 'th', label: 'ไทย' },
-                  { code: 'ru', label: 'Русский' },
+                  { code: 'th', label: 'à¹à¸à¸¢' },
+                  { code: 'ru', label: 'Ð ÑÑÑÐºÐ¸Ð¹' },
                   { code: 'de', label: 'Deutsch' },
-                  { code: 'zh', label: '中文' }
+                  { code: 'zh', label: 'ä¸­æ' }
                 ].map((lang) => (
                   <button
                     key={lang.code}
@@ -996,43 +996,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                     </button>
                   </div>
 
-                  <AnimatePresence>
-                    {showCalendar && (
-                      <div className="fixed inset-0 z-[9999] flex items-end md:items-center justify-center p-0 md:p-4">
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          onClick={() => setShowCalendar(false)}
-                          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                        />
-                        <motion.div 
-                          ref={calendarRef}
-                          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                          className={cn(
-                            "relative z-10 w-full md:w-[700px] max-w-full md:max-w-[95vw]",
-                            "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem]",
-                            "flex flex-col h-[85vh] md:h-auto md:max-h-[85vh] overflow-hidden"
-                          )}
-                        >
-                          <DatePickerCustom 
-                            selectedRange={selectedRange}
-                            onRangeChange={setSelectedRange}
-                            pickUpTime={pickUpTime}
-                            onPickUpTimeChange={setPickUpTime}
-                            dropOffTime={dropOffTime}
-                            onDropOffTimeChange={setDropOffTime}
-                            isBikeMode={isBikeMode}
-                            onClose={() => setShowCalendar(false)}
-                            onApply={() => { setShowCalendar(false); handlePageChange('results'); }}
-                            useFilteredTimes={true}
-                          />
-                        </motion.div>
-                      </div>
-                    )}
-                  </AnimatePresence>
 
                   <div className="mt-16">
                     <h2 className="text-xl font-bold text-black/40 uppercase tracking-[0.2em]">
@@ -1053,7 +1016,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         <main className="max-w-7xl mx-auto px-4 py-12">
           {/* Summary Bar */}
           <div className="glass-card rounded-[2.5rem] p-8 mb-16 flex flex-wrap items-center justify-between gap-8">
-            <div className="flex flex-wrap items-center gap-12 md:gap-20">
+            <div className="flex flex-wrap items-center gap-12 md:gap-20 cursor-pointer hover:opacity-70 transition-opacity" onClick={() => setShowCalendar(true)}>
               <div className="flex items-center gap-6">
                 <CalendarIcon className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} size={28} />
                 <div>
@@ -1082,7 +1045,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             </div>
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => handlePageChange(isBikeMode ? 'rent-a-bike' : 'landing')}
+                onClick={() => setShowCalendar(true)}
                 className="px-8 py-3 bg-black/5 text-black/60 font-bold uppercase tracking-widest text-[10px] rounded-full hover:bg-black/10 transition-colors"
               >
                 {t('results.modifySearch')}
@@ -1595,6 +1558,46 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Date picker overlay - available on all views */}
+                  <AnimatePresence>
+                    {showCalendar && (
+                      <div className="fixed inset-0 z-[9999] flex items-end md:items-center justify-center p-0 md:p-4">
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={() => setShowCalendar(false)}
+                          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        />
+                        <motion.div 
+                          ref={calendarRef}
+                          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                          className={cn(
+                            "relative z-10 w-full md:w-[700px] max-w-full md:max-w-[95vw]",
+                            "bg-white dark:bg-[#1A1A1A] shadow-2xl rounded-t-[2.5rem] md:rounded-[2.5rem]",
+                            "flex flex-col h-[85vh] md:h-auto md:max-h-[85vh] overflow-hidden"
+                          )}
+                        >
+                          <DatePickerCustom 
+                            selectedRange={selectedRange}
+                            onRangeChange={setSelectedRange}
+                            pickUpTime={pickUpTime}
+                            onPickUpTimeChange={setPickUpTime}
+                            dropOffTime={dropOffTime}
+                            onDropOffTimeChange={setDropOffTime}
+                            isBikeMode={isBikeMode}
+                            onClose={() => setShowCalendar(false)}
+                            onApply={() => { setShowCalendar(false); handlePageChange('results'); }}
+                            useFilteredTimes={true}
+                          />
+                        </motion.div>
+                      </div>
+                    )}
+                  </AnimatePresence>
+
 
       </div>
 
