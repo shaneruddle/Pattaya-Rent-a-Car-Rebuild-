@@ -540,8 +540,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     } else if (newView === 'blog') {
       navigate('/blog');
     } else if (newView === 'landing') {
+      setView('landing');
+      setIsBikeMode(false);
       navigate('/');
     } else if (newView === 'rent-a-bike') {
+      setView('rent-a-bike');
+      setIsBikeMode(true);
       navigate('/rent-a-bike');
     } else if (newView === 'long-term') {
       navigate('/long-term-rental');
@@ -1083,9 +1087,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               >
                 {t('results.modifySearch')}
               </button>
-              <div className="px-5 py-3 bg-black/5 rounded-full flex items-center gap-2 text-[10px] font-bold text-black/40 uppercase tracking-widest">
-                THB <ChevronDown size={14} />
-              </div>
+
             </div>
           </div>
 
