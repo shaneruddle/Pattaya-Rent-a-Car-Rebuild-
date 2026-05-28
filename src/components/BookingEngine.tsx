@@ -427,7 +427,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         // 1. Send Confirmation to Customer using template
         const startDate = selectedRange.from;
         const endDate = selectedRange.to;
-        await sendTemplatedEmail('booking_enquiry', formData.email, {
+        await sendTemplatedEmail('customer_auto_enquiry_response', formData.email, {
           '{{customer_name}}': `${formData.firstName} ${formData.lastName}`,
           '{{customer_email}}': formData.email,
           '{{customer_phone}}': formData.mobile,
