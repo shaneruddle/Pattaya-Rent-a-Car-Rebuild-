@@ -657,27 +657,19 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         <header className="sticky top-0 z-[60] bg-warm-bg/80 backdrop-blur-lg border-b border-black/5">
           <div className="max-w-7xl mx-auto px-4 h-20 flex items-center">
             {isBikeMode ? (
-              <StorageImage
+              <a href="https://pattayarentabike.com" rel="noopener"><StorageImage
                 path="PRAB-Logo-1.png"
                 alt="Pattaya Rent A Bike"
                 className="h-10 cursor-pointer"
-                onClick={() => {
-                  setView('landing');
-                  setIsBikeMode(false);
-                }}
                 fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
-              />
+              /></a>
             ) : (
-              <img
+              <a href="https://pattayarentacar.com" rel="noopener"><img
                 src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                 alt="Pattaya Rent A Car"
                 className="h-10 cursor-pointer"
-                onClick={() => {
-                  setView('landing');
-                  setIsBikeMode(false);
-                }}
                 referrerPolicy="no-referrer"
-              />
+              /></a>
             )}
           </div>
         </header>
@@ -686,27 +678,19 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-12">
             {isBikeMode ? (
-              <StorageImage 
+              <a href="https://pattayarentabike.com" rel="noopener"><StorageImage 
                 path="PRAB-Logo-1.png"
                 alt="Pattaya Rent A Bike"
                 className="h-10 cursor-pointer"
-                onClick={() => {
-                  setView('landing');
-                  setIsBikeMode(false);
-                }}
                 fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
-              />
+              /></a>
             ) : (
-              <img 
+              <a href="https://pattayarentacar.com" rel="noopener"><img 
                 src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                 alt="Pattaya Rent A Car"
                 className="h-10 cursor-pointer"
-                onClick={() => {
-                  setView('landing');
-                  setIsBikeMode(false);
-                }}
                 referrerPolicy="no-referrer"
-              />
+              /></a>
             )}
             <nav className="hidden lg:flex items-center gap-8">
               <button 
