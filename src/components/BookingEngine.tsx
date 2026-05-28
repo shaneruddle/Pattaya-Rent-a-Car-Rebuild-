@@ -627,18 +627,23 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           <p className="text-black/60 mb-10 leading-relaxed">
             {t('bookingModal.successMessage')}
           </p>
-          <button 
-            onClick={() => {
-              setIsSuccess(false);
-              setView('landing');
-            }}
-            className={cn(
-              "w-full text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
-              isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
-            )}
-          >
-            {t('bookingModal.backToHome')}
-          </button>
+          <div className="flex flex-col gap-3 mt-2">
+            <button
+              onClick={() => setIsSuccess(false)}
+              className={cn(
+                "w-full text-white px-8 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
+              )}
+            >
+              Continue Browsing
+            </button>
+            <button
+              onClick={() => { window.location.href = 'https://pattayarentacar.com'; }}
+              className="w-full text-black/40 px-8 py-3 rounded-full font-bold uppercase tracking-widest text-xs hover:text-black/70 transition-colors"
+            >
+              Return to pattayarentacar.com
+            </button>
+          </div>
         </motion.div>
       </div>
     );
