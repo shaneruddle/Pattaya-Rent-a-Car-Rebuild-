@@ -1,6 +1,4 @@
 import DOMPurify from 'dompurify';
-import { db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 /**
  * Sanitizes HTML content while allowing basic tags for email styling.
@@ -178,81 +176,44 @@ const DEFAULT_TEMPLATES: Record<string, { subject: string, body: string }> = {
 /**
  * Fetches and sends a templated email
  */
+/**
+ * Sends a templated email by delegating template read + render to the server (admin SDK).
+ * The server reads email_templates/<templateId> via firebase-admin (bypasses Firestore rules),
+ * substitutes placeholders, formats HTML, and sends.
+ *
+ * On server error (missing template, Firestore error, send failure) the server returns 500
+ * with console.error. Client logs [TEMPLATE EMAIL FAILED] loudly and returns false.
+ * Callers check the return value: false → set emailSuccess = false → warning toast fires.
+ */
 export const sendTemplatedEmail = async (
-  templateId: string, 
-  to: string, 
+  templateId: string,
+  to: string,
   placeholders: Record<string, any>,
   replyTo?: string
 ) => {
   try {
-    let template;
-    
-    try {
-      const templateDoc = await getDoc(doc(db, 'email_templates', templateId));
-      if (templateDoc.exists()) {
-        template = templateDoc.data();
-      }
-    } catch (fsError) {
-      console.warn(`Firestore lookup failed for template ${templateId}, using fallback:`, fsError);
-    }
-
-    if (!template) {
-      console.warn(`Template ${templateId} not found in Firestore, using hardcoded default.`);
-      template = DEFAULT_TEMPLATES[templateId];
-    }
-
-    if (!template) {
-      throw new Error(`Template ${templateId} not found and no default available.`);
-    }
-
-    const subject = processTemplate(template.subject, placeholders);
-    
-    // Fetch company config for dynamic replyTo and signature if needed
-    let companyConfig;
-    try {
-      const configDoc = await getDoc(doc(db, 'app_settings', 'company'));
-      if (configDoc.exists()) {
-        companyConfig = configDoc.data();
-      }
-    } catch (e) {
-      console.warn('Failed to fetch company config for email:', e);
-    }
-
-    const bodyWithPlaceholders = processTemplate(template.body, placeholders);
-    
-    // In many emails, users just type "hello\n\nworld", so we format newlines
-    // but if they put <a> or other tags, we keep them.
-    // We sanitize to ensure safety and inline styles for compatibility.
-    const htmlBody = prepareHtmlForEmail(sanitizeEmailHtml(formatNewlines(bodyWithPlaceholders)));
-
-    // Wrap in a basic container if needed, or just send
-    const finalHtml = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.4; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px;">
-        ${htmlBody}
-      </div>
-    `;
-
     const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to,
-        subject,
-        html: finalHtml,
-        replyTo: replyTo || (companyConfig?.email ?? 'info@pattayarentacar.com'),
-        skipFinalToOverride: true
+        templateId,
+        placeholders,
+        replyTo,
+        skipFinalToOverride: true,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.details || error.error || 'Failed to send email');
+      const errBody = await response.json().catch(() => ({}));
+      console.error(`[TEMPLATE EMAIL FAILED] templateId="${templateId}" status=${response.status}:`, errBody);
+      return false;
     }
 
     return true;
   } catch (error) {
-    console.error(`Error sending template email [${templateId}]:`, error);
-    throw error;
+    console.error(`[TEMPLATE EMAIL FAILED] templateId="${templateId}" (network/fetch error):`, error);
+    return false;
   }
 };
 
