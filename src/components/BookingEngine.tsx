@@ -427,7 +427,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         // 1. Send Confirmation to Customer using template
         const startDate = selectedRange.from;
         const endDate = selectedRange.to;
-        await sendTemplatedEmail('customer_auto_enquiry_response', formData.email, {
+        const customerEmailOk = await sendTemplatedEmail('customer_auto_enquiry_response', formData.email, {
           '{{customer_name}}': `${formData.firstName} ${formData.lastName}`,
           '{{customer_email}}': formData.email,
           '{{customer_phone}}': formData.mobile,
@@ -441,6 +441,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{delivery_address}}': formData.requireDelivery ? formData.deliveryAddress : '',
           '{{comments}}': formData.comments || ''
         });
+        if (!customerEmailOk) emailSuccess = false;
         console.log('BookingEngine: Customer confirmation triggered');
 
         // 2. Send Notification to Staff
