@@ -1188,11 +1188,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         <div className="space-y-4">
                           <div>
                             <p className="text-[10px] font-bold text-black/20 uppercase tracking-widest mb-1">{t('car.total', { days: totalDays })}</p>
-                            {(() => { const pd = getPriceDisplay(car); return (
-                      <p className={pd.kind === 'message'
-                        ? "text-2xl font-bold text-black tracking-tight"
-                        : "text-5xl font-bold text-black tracking-tighter font-mono"}>{pd.text}</p>
-                    ); })()}
+                            {useNewEngine && classPricesLoading
+                              ? <div className="h-10 w-36 rounded-lg bg-black/10 animate-pulse" />
+                              : (() => { const pd = getPriceDisplay(car); return (
+                                  <p className={pd.kind === 'message'
+                                    ? "text-2xl font-bold text-black tracking-tight"
+                                    : "text-5xl font-bold text-black tracking-tighter font-mono"}>{pd.text}</p>
+                                ); })()
+                            }
                           </div>
                           <button 
                             onClick={() => {
@@ -1349,11 +1352,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       isBikeMode ? "bg-brand-blue/5 border-brand-blue/10" : "bg-brand-orange/5 border-brand-orange/10"
                     )}>
                       <p className={cn("text-3xl font-bold tracking-tighter mb-2", isBikeMode ? "text-brand-blue" : "text-brand-orange")}>{totalDays} {t('results.days')}</p>
-                      {(() => { const pd = getPriceDisplay(selectedCar); return (
-                          <p className={pd.kind === 'message'
-                            ? "text-2xl font-bold tracking-tight"
-                            : "text-5xl font-bold tracking-tighter font-mono"}>{pd.text}</p>
-                        ); })()}
+                      {useNewEngine && classPricesLoading
+                        ? <div className="h-10 w-36 rounded-lg bg-black/10 animate-pulse" />
+                        : (() => { const pd = getPriceDisplay(selectedCar); return (
+                            <p className={pd.kind === 'message'
+                              ? "text-2xl font-bold tracking-tight"
+                              : "text-5xl font-bold tracking-tighter font-mono"}>{pd.text}</p>
+                          ); })()
+                      }
                     </div>
 
                     <div className="space-y-6">
