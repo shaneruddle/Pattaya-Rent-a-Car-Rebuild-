@@ -897,7 +897,7 @@ app.get("/api/pricing/quote", async (req, res) => {
 
   // Email API
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, replyTo, fromName, skipFinalToOverride } = req.body;
+    const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders } = req.body;
     
     // Fetch company name and email from Firestore if not provided
     let dynamicFromName = fromName;
@@ -916,6 +916,100 @@ app.get("/api/pricing/quote", async (req, res) => {
 
     const gmailUser = process.env.GMAIL_USER || "info@pattayarentacar.com";
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+    // ── Server-side template render (admin SDK) ─────────────────────────────────
+    // templateId present → read email_templates/<id> via admin SDK, render, send, return early.
+    // templateId absent  → fall through to the existing subject/html path (unchanged).
+    if (templateId) {
+      let tmpl: { subject: string; body: string } | undefined;
+      try {
+        const templateDoc = await firestore.collection('email_templates').doc(String(templateId)).get();
+        if (!templateDoc.exists) {
+          console.error(`[Email] Template "${templateId}" not found in Firestore.`);
+          return res.status(500).json({ error: `Template "${templateId}" not found in Firestore.` });
+        }
+        tmpl = templateDoc.data() as { subject: string; body: string };
+        if (!tmpl.subject || !tmpl.body) {
+          console.error(`[Email] Template "${templateId}" is missing subject or body fields.`);
+          return res.status(500).json({ error: `Template "${templateId}" is malformed (missing subject or body).` });
+        }
+      } catch (tmplErr: any) {
+        console.error(`[Email] Firestore error reading template "${templateId}":`, tmplErr);
+        return res.status(500).json({ error: `Failed to load template "${templateId}"`, details: tmplErr.message });
+      }
+
+      // Placeholder substitution — mirrors client processTemplate (no {{photos}} array case needed)
+      const safePhMap: Record<string, string> = (placeholders as Record<string, string>) ?? {};
+      const renderTmpl = (str: string): string => {
+        let out = str;
+        for (const [key, value] of Object.entries(safePhMap)) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          out = out.replace(new RegExp(escaped, 'g'), value ?? '');
+        }
+        return out;
+      };
+
+      const renderedSubject = renderTmpl(tmpl.subject);
+      const rawBody = renderTmpl(tmpl.body);
+
+      // Format newlines — mirrors client formatNewlines
+      const formattedBody = (() => {
+        if (!rawBody) return '';
+        if (/<(p|br|div|span|h[1-6]|ul|li)[\s>]/i.test(rawBody)) return rawBody;
+        return rawBody.replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
+      })();
+
+      // Inline <p> styles — mirrors client prepareHtmlForEmail
+      // (DOMPurify skipped: templates are staff-authored and sanitized on save)
+      const pStyle = 'margin-bottom: 4px; min-height: 1.2em;';
+      const styledBody = formattedBody
+        .replace(/<p([^>]*?)>/g, (_m: string, attrs: string) => {
+          if (attrs.includes('margin-bottom: 4px')) return _m;
+          if (attrs.includes('style=')) return `<p${attrs.replace(/style="([^"]*)"/, `style="$1 ${pStyle}"`)}>`;
+          return `<p style="${pStyle}"${attrs}>`;
+        })
+        .replace(/<p(\s[^>]*)?\s*>\s*&nbsp;\s*<\/p>/gi, `<p style="${pStyle}">&nbsp;</p>`);
+
+      // Wrapper div — verbatim copy of client sendTemplatedEmail finalHtml wrapper
+      const renderedHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.4; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px;">
+        ${styledBody}
+      </div>
+    `;
+
+      // Routing guard — same ternary logic as existing finalTo below
+      const tmplFinalTo = !to ? 'info@pattayarentacar.com'
+        : skipFinalToOverride ? to
+        : renderedSubject.toLowerCase().includes('enquiry') ? 'info@pattayarentacar.com'
+        : to;
+
+      // Use already-fetched dynamicReplyTo / dynamicFromName from above
+      const tmplReplyTo = replyTo || dynamicReplyTo || gmailUser;
+      const tmplFromName = fromName || dynamicFromName || 'Pattaya Rent a Car';
+
+      if (!gmailPass) {
+        console.log(`[Email Mock/Template] To: ${tmplFinalTo}, Subject: ${renderedSubject}`);
+        return res.json({ success: true, message: 'Simulation success (template)' });
+      }
+
+      console.log(`[Email] Template "${templateId}" — sending to ${tmplFinalTo}...`);
+      try {
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
+        const info = await transporter.sendMail({
+          from: `"${tmplFromName}" <${gmailUser}>`,
+          to: tmplFinalTo,
+          replyTo: tmplReplyTo,
+          subject: renderedSubject,
+          html: renderedHtml,
+        });
+        console.log(`[Email] Template "${templateId}" sent OK:`, info.messageId);
+        return res.json({ success: true, messageId: info.messageId });
+      } catch (sendErr: any) {
+        console.error(`[Email] Template "${templateId}" send failed:`, sendErr);
+        return res.status(500).json({ error: 'Failed to send template email', details: sendErr.message });
+      }
+    }
+    // ── End template branch ─────────────────────────────────────────────────────
 
     if (!gmailPass) {
       console.log("[Email] GMAIL_APP_PASSWORD not found, simulating email send");
