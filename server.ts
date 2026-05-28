@@ -897,7 +897,7 @@ app.get("/api/pricing/quote", async (req, res) => {
 
   // Email API
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, replyTo, fromName } = req.body;
+    const { to, subject, html, replyTo, fromName, skipFinalToOverride } = req.body;
     
     // Fetch company name and email from Firestore if not provided
     let dynamicFromName = fromName;
@@ -934,8 +934,12 @@ app.get("/api/pricing/quote", async (req, res) => {
         }
       });
 
-      // Force enquiry emails and default emails to info@pattayarentacar.com
-      const finalTo = (subject?.toLowerCase().includes('enquiry') || !to) ? "info@pattayarentacar.com" : to;
+            // Route: empty to → info@ always; skipFinalToOverride → use to directly; enquiry subject → info@; else → to
+      const finalTo = !to
+        ? "info@pattayarentacar.com"
+        : (!skipFinalToOverride && subject?.toLowerCase().includes('enquiry'))
+          ? "info@pattayarentacar.com"
+          : to;
 
       const mailOptions = {
         from: `"${dynamicFromName || 'Company'}" <${gmailUser}>`,
