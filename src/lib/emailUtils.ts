@@ -158,6 +158,11 @@ const DEFAULT_TEMPLATES: Record<string, { subject: string, body: string }> = {
     subject: 'Thank you for your enquiry',
     body: '<p>Dear {{customer_name}},</p><p>Thank you for your enquiry for a <strong>{{vehicle_model}}</strong>.</p><p><strong>Rental Period:</strong> {{return_date}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>We have received your request and will get back to you as soon as possible.</p><p>Best regards,</p>',
   } as any,
+  'customer_auto_enquiry_response': {
+    name: 'Booking Enquiry - Customer Confirmation',
+    subject: 'Thank you for your enquiry – {{vehicle_model}}',
+    body: '<p>Dear {{customer_name}},</p><p>Thank you for your enquiry about the <strong>{{vehicle_model}}</strong>. We have received your request and will be in touch shortly.</p><p><strong>Pickup:</strong> {{pickup_date}} at {{pickup_time}}<br><strong>Return:</strong> {{return_date}} at {{return_time}}<br><strong>Total Price:</strong> {{total_price}} THB</p><p>If you have any questions, please feel free to contact us.</p><p>Best regards,<br>Pattaya Rent a Car</p>',
+  } as any,
   'website_enquiry': {
     name: 'Website Enquiry Confirmation',
     subject: 'We have received your message',
@@ -234,7 +239,8 @@ export const sendTemplatedEmail = async (
         to,
         subject,
         html: finalHtml,
-        replyTo: replyTo || (companyConfig?.email ?? 'info@pattayarentacar.com')
+        replyTo: replyTo || (companyConfig?.email ?? 'info@pattayarentacar.com'),
+        skipFinalToOverride: true
       }),
     });
 
