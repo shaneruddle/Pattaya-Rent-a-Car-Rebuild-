@@ -39,7 +39,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // --- New pricing engine (parallel path, gated by feature flag) ---
   const [useNewEngine, setUseNewEngine] = useState(false);            // feature flag, read from app_settings on mount
   const [classPrices, setClassPrices] = useState<Record<string, any>>({});  // class -> quote result object
-  const [classPricesLoading, setClassPricesLoading] = useState(false);
+  const [classPricesLoading, setClassPricesLoading] = useState(true);
 
   const calculatePrice = useCallback((car: WebsiteCar | { priceGridVehicle?: string, name?: string }, dateString: string, durationDays: number | null): number | null => {
     if (!dateString || durationDays === null || durationDays <= 0) return null;
