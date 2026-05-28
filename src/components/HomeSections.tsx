@@ -491,21 +491,19 @@ export const Footer: React.FC<{ onPageChange?: (view: string) => void; isBikeMod
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20 mb-32">
           <div className="space-y-10">
             {isBikeMode ? (
-              <StorageImage 
+              <a href="https://pattayarentabike.com" rel="noopener"><StorageImage 
                 path="PRAB-Logo-1.png"
                 alt={`${config.companyName} Logo`}
                 className="w-44 cursor-pointer hover:opacity-80 transition-opacity"
-                onClick={() => onPageChange?.('landing')}
                 fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
-              />
+              /></a>
             ) : (
-              <img 
+              <a href="https://pattayarentacar.com" rel="noopener"><img 
                 src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
                 alt={`${config.companyName} Logo`}
                 className={cn("w-44 cursor-pointer hover:opacity-80 transition-opacity brightness-0 invert")}
-                onClick={() => onPageChange?.('landing')}
                 referrerPolicy="no-referrer"
-              />
+              /></a>
             )}
             <p className="text-white/40 text-sm leading-relaxed font-medium">
               {t('footer.description')}
