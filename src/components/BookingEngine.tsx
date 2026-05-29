@@ -513,6 +513,19 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       }
 
       setIsSuccess(true);
+      // Fire conversion pageview for GA4 → Google Ads import
+      if (typeof window !== 'undefined' && (window as any).gtag) {
+        const originalPath = window.location.pathname + window.location.search;
+        window.history.pushState({}, '', '/enquiry-success');
+        (window as any).gtag('event', 'page_view', {
+          page_path: '/enquiry-success',
+          page_title: 'Enquiry Success',
+          page_location: window.location.href
+        });
+        setTimeout(() => {
+          window.history.replaceState({}, '', originalPath);
+        }, 500);
+      }
       setShowEnquiryModal(false);
       
       if (emailSuccess) {
