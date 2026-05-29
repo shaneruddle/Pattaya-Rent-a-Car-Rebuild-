@@ -484,6 +484,8 @@ function AppContent() {
           <Route path="/fleet" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
           <Route path="/vehicles/*" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
           <Route path="/:slug" element={<BookingEngine onLoginClick={() => setShowLogin(true)} />} />
+          <Route path="/enquiry-success" element={null} />
+          <Route path="/thank_you_page" element={null} />
           {/* Catch-all for 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
