@@ -551,7 +551,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           const requiredAccounts = ["Cash Car", "Kbank Auto", "Kbank Shane", "KTB Auto"];
           
           if (accountsData.length === 0) {
-            fetchData();
+            console.warn('[Finance] accounts snapshot returned empty — NOT auto-seeding to prevent duplicate creation during reconnect storms. If accounts collection is genuinely empty, seed manually via dev tools or admin action.');
             return;
           }
 
