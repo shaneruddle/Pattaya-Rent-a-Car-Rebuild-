@@ -197,6 +197,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -384,6 +385,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCar) return;
+
+    // Honeypot bot check — silently succeed if filled, do NOT fire conversion
+    if (honeypot) {
+      setIsSuccess(true);
+      setShowEnquiryModal(false);
+      return;
+    }
 
     setIsSubmitting(true);
     console.log('BookingEngine: Starting submission...', formData);
@@ -1412,6 +1420,24 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <div className="border-t border-black/5 pt-12">
                   <h3 className="text-3xl font-bold mb-10 tracking-tight">{t('bookingModal.title')}</h3>
                   <form onSubmit={handleBookingSubmit} className="space-y-6">
+                    {/* Honeypot field — hidden from humans, bots fill it */}
+                    <input
+                      type="text"
+                      name="website"
+                      autoComplete="off"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.target.value)}
+                      style={{
+                        position: 'absolute',
+                        left: '-9999px',
+                        width: '1px',
+                        height: '1px',
+                        opacity: 0,
+                        pointerEvents: 'none',
+                      }}
+                    />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <input 
                         type="text" 
