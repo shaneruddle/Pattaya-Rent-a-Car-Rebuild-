@@ -897,7 +897,13 @@ app.get("/api/pricing/quote", async (req, res) => {
 
   // Email API
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders } = req.body;
+    const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website} = req.body;
+
+    // Honeypot check — silently return success if bait field filled
+    if (website) {
+      console.log('[Honeypot] Blocked spam submission from /api/send-email');
+      return res.status(200).json({ success: true });
+    }
     
     // Fetch company name and email from Firestore if not provided
     let dynamicFromName = fromName;
