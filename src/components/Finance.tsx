@@ -594,6 +594,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       unsubscribeAuth();
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeVehicleFinance) unsubscribeVehicleFinance();
     };
   }, []);
 
