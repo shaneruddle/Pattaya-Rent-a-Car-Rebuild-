@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
+import { upsertCustomer } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -184,48 +185,26 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
 
       // Handle CRM update/creation
       if (selectedEnquiry.email) {
-        const customersRef = collection(db, 'customers');
-        const q = query(customersRef, where('email', '==', selectedEnquiry.email));
-        const snapshot = await getDocs(q);
-        
-        const customerData: any = {
-          firstName: selectedEnquiry.customerName.split(' ')[0] || 'Customer',
-          lastName: selectedEnquiry.customerName.split(' ').slice(1).join(' ') || '',
+        const customerResult = await upsertCustomer({
+          firstName: selectedEnquiry.customerName.split(' ')[0] || '',
+          lastName: selectedEnquiry.customerName.split(' ').slice(1).join(' '),
           email: selectedEnquiry.email,
           mobileNumber: selectedEnquiry.mobileNumber || '',
-          updatedAt: serverTimestamp()
-        };
+          source: 'enquiry_converted',
+        });
 
-        // If enquiry has a delivery location, save it to the customer profile
+        // Legacy: write delivery location to customer.location for Timeline pre-fill UX
         if (formData.deliveryLocation) {
-          customerData.location = {
-            lat: formData.deliveryLocation.lat,
-            lng: formData.deliveryLocation.lng,
-            address: formData.deliveryAddress || 'Delivery Location'
-          };
-        }
-
-        if (snapshot.empty) {
-          // Create new customer
-          await addDoc(customersRef, {
-            ...customerData,
-            createdAt: serverTimestamp()
+          await updateDoc(doc(db, 'customers', customerResult.customerId), {
+            location: {
+              lat: formData.deliveryLocation.lat,
+              lng: formData.deliveryLocation.lng,
+              address: formData.deliveryAddress || 'Delivery Location',
+            },
           });
-          toast.success('New customer created in CRM');
-        } else {
-          // Update existing customer
-          const customerId = snapshot.docs[0].id;
-          const existingData = snapshot.docs[0].data();
-          
-          // Only update location if it's not already set or if we have a new one
-          const updatePayload: any = { ...customerData };
-          if (!formData.deliveryLocation && existingData.location) {
-            delete updatePayload.location;
-          }
-
-          await updateDoc(doc(db, 'customers', customerId), updatePayload);
-          toast.success('Customer profile updated in CRM');
         }
+
+        toast.success(customerResult.created ? 'New customer created in CRM' : 'Customer profile updated in CRM');
       }
 
       toast.success('Enquiry converted to booking successfully');

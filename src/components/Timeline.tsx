@@ -6,6 +6,7 @@ import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { upsertCustomer } from '../lib/customerService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
@@ -1222,46 +1223,40 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
         toast.success('Booking updated');
         if (onRefresh) onRefresh();
-      } else {
+        } else {
         // Check if customer exists in CRM
         if (dataToSave.email) {
-          const customerQuery = query(collection(db, 'customers'), where('email', '==', dataToSave.email));
-          const customerSnapshot = await getDocs(customerQuery);
-          
-          if (customerSnapshot.empty) {
-            // Log new customer to CRM
-            const names = (dataToSave.customerName || '').split(' ');
-            const firstName = names[0] || 'New';
-            const lastName = names.slice(1).join(' ') || 'Customer';
-            
-            try {
-              await addDoc(collection(db, 'customers'), {
-                firstName,
-                lastName,
-                email: dataToSave.email,
-                mobileNumber: dataToSave.mobileNumber || '',
-                createdAt: new Date().toISOString(),
-                location: dataToSave.deliveryLocation ? {
-                  ...dataToSave.deliveryLocation,
-                  address: dataToSave.deliveryAddress
-                } : undefined
-              });
-              toast.success('New customer added to CRM');
-            } catch (err) {
-              console.error("Error adding customer to CRM:", err);
-            }
-          } else {
-            // Update existing customer location if provided
+          const names = (dataToSave.customerName || '').split(' ');
+          const firstName = names[0] || '';
+          const lastName = names.slice(1).join(' ');
+
+          try {
+            const customerResult = await upsertCustomer({
+              firstName,
+              lastName,
+              email: dataToSave.email,
+              mobileNumber: dataToSave.mobileNumber || '',
+              source: 'staff_booking',
+            });
+
+            // Legacy: write delivery location to customer.location for Timeline pre-fill UX
             if (dataToSave.deliveryLocation) {
-              const customerDoc = customerSnapshot.docs[0];
-              await updateDoc(doc(db, 'customers', customerDoc.id), {
+              await updateDoc(doc(db, 'customers', customerResult.customerId), {
                 location: {
                   ...dataToSave.deliveryLocation,
-                  address: dataToSave.deliveryAddress
-                }
+                  address: dataToSave.deliveryAddress,
+                },
               });
             }
+
+            if (customerResult.created) {
+              toast.success('New customer added to CRM');
+            }
+          } catch (err) {
+            console.error("Error upserting customer:", err);
+            toast.error('Failed to add customer to CRM');
           }
+        }
         }
 
         const docRef = await addDoc(collection(db, 'bookings'), dataToSave);
@@ -1910,25 +1905,29 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         </div>
                       </div>
                       <button
-                        onClick={async () => {
-                          const names = (editingBooking.customerName || '').split(' ');
-                          const firstName = names[0] || 'New';
-                          const lastName = names.slice(1).join(' ') || 'Customer';
-                          
-                          try {
-                            await addDoc(collection(db, 'customers'), {
-                              firstName,
-                              lastName,
-                              email: editingBooking.email,
-                              mobileNumber: editingBooking.mobileNumber || '',
-                              createdAt: new Date().toISOString()
-                            });
-                            toast.success('Customer added to CRM');
-                          } catch (err) {
-                            console.error("Error adding customer to CRM:", err);
-                            toast.error('Failed to add customer');
-                          }
-                        }}
+            onClick={async () => {
+              const names = (editingBooking.customerName || '').split(' ');
+              const firstName = names[0] || '';
+              const lastName = names.slice(1).join(' ');
+
+              try {
+                const result = await upsertCustomer({
+                  firstName,
+                  lastName,
+                  email: editingBooking.email,
+                  mobileNumber: editingBooking.mobileNumber || '',
+                  source: 'crm_manual',
+                });
+                if (result.created) {
+                  toast.success('Customer added to CRM');
+                } else {
+                  toast.success('Customer already in CRM — enriched with booking details');
+                }
+              } catch (err) {
+                console.error("Error adding customer to CRM:", err);
+                toast.error('Failed to add customer');
+              }
+            }}
                         className="h-10 px-6 bg-brand-orange text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-brand-orange/90 transition-all shadow-md shadow-brand-orange/20"
                       >
                         Add to CRM

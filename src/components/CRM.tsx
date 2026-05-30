@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, where, writeBatch, getCountFromServer } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, updateDoc, deleteDoc, doc, where, getCountFromServer } from 'firebase/firestore';
+import { upsertCustomer, updateCustomer, findExistingByEmail, isValidEmailFormat, CustomerInput } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, auth, logSystemActivity } from '../firebase';
 import { Customer, Booking, Car } from '../types';
 import { format, parseISO, isValid } from 'date-fns';
@@ -301,7 +302,9 @@ export const CRM: React.FC = () => {
         
         // Map common CSV headers to our Customer type
         const seenEmails = new Set<string>();
-        const existingEmails = new Set(customers.map(c => c.email.toLowerCase()));
+        const existingEmails = new Set(
+          customers.map(c => c.email?.toLowerCase()).filter((e): e is string => Boolean(e))
+        );
         let skippedDuplicates = 0;
         let skippedInvalid = 0;
 
@@ -363,46 +366,46 @@ export const CRM: React.FC = () => {
         }
 
         toast.promise(async () => {
-          const { writeBatch, db } = await import('../firebase');
-          const { collection, doc, serverTimestamp } = await import('firebase/firestore');
-          
-          const chunks = [];
-          for (let i = 0; i < validData.length; i += 500) {
-            chunks.push(validData.slice(i, i + 500));
-          }
-
-          let totalImported = 0;
-          for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            console.log(`Importing chunk ${i + 1}/${chunks.length} (${chunk.length} customers)...`);
-            const batch = writeBatch(db);
-            const customersRef = collection(db, 'customers');
-            
-            chunk.forEach(customer => {
-              const newDocRef = doc(customersRef);
-              batch.set(newDocRef, {
-                ...customer,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              });
+        let totalImported = 0;
+        let totalSkipped = 0;
+        let totalErrors = 0;
+        for (const customer of validData) {
+          try {
+            const result = await upsertCustomer({
+              firstName: customer.firstName,
+              lastName: customer.lastName,
+              email: customer.email,
+              mobileNumber: customer.mobileNumber || undefined,
+              address: customer.address || undefined,
+              addressHotel: customer.addressHotel || undefined,
+              dob: customer.dob || undefined,
+              drivingLicence: customer.drivingLicence || undefined,
+              bikeLicenceExpiry: customer.bikeLicenceExpiry || undefined,
+              carLicenceExpiry: customer.carLicenceExpiry || undefined,
+              notes: customer.notes || undefined,
+              uniqueId: customer.uniqueId || undefined,
+              source: 'csv_import',
+              marketingConsent: true,
             });
-            
-            await batch.commit();
-            totalImported += chunk.length;
-            console.log(`Successfully committed chunk ${i + 1}. Total imported: ${totalImported}`);
+            if (result.created) totalImported++;
+            else totalSkipped++;
+          } catch (err) {
+            console.error('CSV import row failed:', customer.email, err);
+            totalErrors++;
           }
-          
-          await logSystemActivity(
-            'CSV Import',
-            `Imported ${totalImported} customers via CSV`,
-            'CRM',
-            { count: totalImported }
-          );
+        }
 
-          return totalImported;
+        await logSystemActivity(
+          'CSV Import',
+          `Imported ${totalImported} new, ${totalSkipped} enriched, ${totalErrors} errors via CSV`,
+          'CRM',
+          { imported: totalImported, skipped: totalSkipped, errors: totalErrors }
+        );
+
+        return { imported: totalImported, skipped: totalSkipped, errors: totalErrors };
         }, {
           loading: 'Importing customers...',
-          success: (count) => `Successfully imported ${count} customers!`,
+        success: (result) => `Imported ${result.imported} new, ${result.skipped} already existed. ${result.errors ? result.errors + ' errors.' : ''}`,
           error: (err) => `Failed to import customers: ${err.message}`
         });
 
@@ -415,68 +418,99 @@ export const CRM: React.FC = () => {
     });
   };
 
-  const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    const customerData = {
-      firstName: formData.get('firstName') as string,
-      lastName: formData.get('lastName') as string,
-      email: formData.get('email') as string,
-      mobileNumber: formData.get('mobileNumber') as string,
-      address: formData.get('address') as string,
-      addressHotel: formData.get('addressHotel') as string,
-      dob: formData.get('dob') as string,
-      drivingLicence: formData.get('drivingLicence') as string,
-      bikeLicenceExpiry: formData.get('bikeLicenceExpiry') as string,
-      carLicenceExpiry: formData.get('carLicenceExpiry') as string,
-      notes: formData.get('notes') as string,
-      creationDate: formData.get('creationDate') as string || (isAdding ? new Date().toISOString() : selectedCustomer?.creationDate),
-      updatedAt: new Date().toISOString(),
-      uniqueId: formData.get('uniqueId') as string,
-      location: {
-        lat: formLocation?.lat || 0,
-        lng: formLocation?.lng || 0,
-        address: formData.get('locationAddress') as string
-      }
-    };
+const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  const formData = new FormData(e.currentTarget);
 
-    try {
-      if (isAdding) {
-        // Check if email already exists
-        const existing = customers.find(c => (c.email || '').toLowerCase() === (customerData.email || '').toLowerCase());
+  const firstName = (formData.get('firstName') as string || '').trim();
+  const lastName = (formData.get('lastName') as string || '').trim();
+  const email = (formData.get('email') as string || '').trim();
+  const mobileNumber = (formData.get('mobileNumber') as string || '').trim();
+
+  if (email && !isValidEmailFormat(email)) {
+    toast.error('Please enter a valid email address');
+    return;
+  }
+
+  const input: CustomerInput = {
+    firstName,
+    lastName,
+    email: email || undefined,
+    mobileNumber: mobileNumber || undefined,
+    address: (formData.get('address') as string || '').trim() || undefined,
+    addressHotel: (formData.get('addressHotel') as string || '').trim() || undefined,
+    dob: (formData.get('dob') as string || '').trim() || undefined,
+    drivingLicence: (formData.get('drivingLicence') as string || '').trim() || undefined,
+    bikeLicenceExpiry: (formData.get('bikeLicenceExpiry') as string || '').trim() || undefined,
+    carLicenceExpiry: (formData.get('carLicenceExpiry') as string || '').trim() || undefined,
+    notes: (formData.get('notes') as string || '').trim() || undefined,
+    source: 'crm_manual',
+  };
+
+  if (formLocation && (formLocation.lat !== 0 || formLocation.lng !== 0)) {
+    input.homeLocation = {
+      lat: formLocation.lat,
+      lng: formLocation.lng,
+      address: (formData.get('locationAddress') as string || '').trim() || undefined,
+    };
+  }
+
+  try {
+    if (isAdding) {
+      if (email) {
+        const existing = await findExistingByEmail(email);
         if (existing) {
-          toast.error('A customer with this email already exists');
+          const openExisting = window.confirm(
+            `A customer with email ${email} already exists: ${existing.data.firstName} ${existing.data.lastName || ''}\n\nClick OK to open the existing record for editing.\nClick Cancel to stay on this form.`
+          );
+          if (openExisting) {
+            setSelectedCustomer(existing.data);
+            setIsAdding(false);
+            setIsEditing(true);
+          }
           return;
         }
-        const docRef = await addDoc(collection(db, 'customers'), customerData);
-        
-        await logSystemActivity(
-          'New Customer',
-          `Created new customer ${customerData.firstName} ${customerData.lastName}`,
-          'CRM',
-          { customerId: docRef.id, email: customerData.email }
-        );
-
-        toast.success('Customer added successfully');
-        setIsAdding(false);
-      } else if (selectedCustomer) {
-        await updateDoc(doc(db, 'customers', selectedCustomer.id), customerData);
-        
-        await logSystemActivity(
-          'Update Customer',
-          `Updated customer ${customerData.firstName} ${customerData.lastName}`,
-          'CRM',
-          { customerId: selectedCustomer.id, email: customerData.email }
-        );
-
-        toast.success('Customer updated successfully');
-        setIsEditing(false);
       }
-    } catch (error) {
-      handleFirestoreError(error, isAdding ? OperationType.CREATE : OperationType.UPDATE, 'customers');
+
+      const result = await upsertCustomer(input);
+      await logSystemActivity(
+        'New Customer',
+        `Created new customer ${input.firstName} ${input.lastName || ''}`,
+        'CRM',
+        { customerId: result.customerId, email: input.email }
+      );
+      toast.success('Customer added successfully');
+      setIsAdding(false);
+    } else if (selectedCustomer) {
+      const updates: Record<string, any> = {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email || '',
+        mobileNumber: input.mobileNumber || '',
+      };
+      if (input.address !== undefined) updates.address = input.address;
+      if (input.addressHotel !== undefined) updates.addressHotel = input.addressHotel;
+      if (input.dob !== undefined) updates.dob = input.dob;
+      if (input.drivingLicence !== undefined) updates.drivingLicence = input.drivingLicence;
+      if (input.bikeLicenceExpiry !== undefined) updates.bikeLicenceExpiry = input.bikeLicenceExpiry;
+      if (input.carLicenceExpiry !== undefined) updates.carLicenceExpiry = input.carLicenceExpiry;
+      if (input.notes !== undefined) updates.notes = input.notes;
+      if (input.homeLocation) updates.homeLocation = input.homeLocation;
+
+      await updateCustomer(selectedCustomer.id, updates);
+      await logSystemActivity(
+        'Update Customer',
+        `Updated customer ${input.firstName} ${input.lastName || ''}`,
+        'CRM',
+        { customerId: selectedCustomer.id, email: input.email }
+      );
+      toast.success('Customer updated successfully');
+      setIsEditing(false);
     }
-  };
+  } catch (error) {
+    handleFirestoreError(error, isAdding ? OperationType.CREATE : OperationType.UPDATE, 'customers');
+  }
+};
 
   const handleDeleteCustomer = async (id: string) => {
     const customer = customers.find(c => c.id === id);
@@ -729,21 +763,6 @@ export const CRM: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleSaveCustomer} className="space-y-8">
-                    <div className="grid grid-cols-2 gap-8">
-                      <div className="space-y-2.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Unique ID</label>
-                        <input name="uniqueId" defaultValue={selectedCustomer?.uniqueId} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" placeholder="e.g. CUST-001" />
-                      </div>
-                      <div className="space-y-2.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Creation Date</label>
-                        <input 
-                          name="creationDate" 
-                          type="datetime-local" 
-                          defaultValue={safeFormatForInput(selectedCustomer?.creationDate || (selectedCustomer as any)?.createdAt, isAdding)} 
-                          className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" 
-                        />
-                      </div>
-                    </div>
 
                     {!isAdding && selectedCustomer?.updatedAt && (
                       <div className="space-y-2.5">

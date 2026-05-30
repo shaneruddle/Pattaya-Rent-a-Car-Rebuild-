@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, storage, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { sendTemplatedEmail } from '../lib/emailUtils';
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { upsertCustomer } from '../lib/customerService';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Booking, Customer, Rental } from '../types';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
@@ -274,14 +275,17 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       // 2. Create or Update Customer if needed
       let customerId = selectedCustomer?.id;
       if (!customerId) {
-        const customerRef = await addDoc(collection(db, 'customers'), {
-          firstName: formData.customerName.split(' ')[0],
+        const customerResult = await upsertCustomer({
+          firstName: formData.customerName.split(' ')[0] || '',
           lastName: formData.customerName.split(' ').slice(1).join(' '),
           email: formData.customerEmail,
           mobileNumber: formData.customerPhone,
-          createdAt: new Date().toISOString()
+          source: 'staff_rental',
         });
-        customerId = customerRef.id;
+        customerId = customerResult.customerId;
+        if (customerResult.created) {
+          toast.success('New customer added to CRM');
+        }
       }
 
       // 3. Create Rental Record
@@ -420,7 +424,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
   const filteredCustomers = customers.filter(c => 
     `${c.firstName} ${c.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   ).slice(0, 5);
 
   return (

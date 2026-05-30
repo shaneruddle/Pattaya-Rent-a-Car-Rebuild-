@@ -32,7 +32,7 @@ export interface Customer {
   id: string;
   firstName: string;
   lastName?: string;
-  email: string;
+  email?: string;
   mobileNumber?: string;
   address?: string;
   addressHotel?: string;
@@ -49,6 +49,17 @@ export interface Customer {
     lng: number;
     address?: string;
   };
+    homeLocation?: {
+      lat: number;
+      lng: number;
+      address?: string;
+    };
+    // Fields added by Cloud Function / customerService.ts
+    createdAt?: any;          // Firestore Timestamp on new docs, undefined on legacy
+    marketingConsent?: boolean;
+    source?: string;
+    totalSpent?: number;
+    lastRentalDate?: any;     // Firestore Timestamp or null
 }
 
 export interface VehicleLog {
