@@ -1257,20 +1257,18 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
             toast.error('Failed to add customer to CRM');
           }
         }
-        }
-
-        const docRef = await addDoc(collection(db, 'bookings'), dataToSave);
+          const docRef = await addDoc(collection(db, 'bookings'), dataToSave);
         
-        const car = cars.find(c => c.id === dataToSave.carId);
-        await logSystemActivity(
-          'New Booking (Timeline)',
-          `Created new booking for ${dataToSave.customerName} (${car?.name || 'Unknown Car'})`,
-          'Bookings',
-          { bookingId: docRef.id, customerName: dataToSave.customerName }
-        );
+          const car = cars.find(c => c.id === dataToSave.carId);
+          await logSystemActivity(
+            'New Booking (Timeline)',
+            `Created new booking for ${dataToSave.customerName} (${car?.name || 'Unknown Car'})`,
+            'Bookings',
+            { bookingId: docRef.id, customerName: dataToSave.customerName }
+          );
 
-        toast.success('Booking created');
-      }
+          toast.success('Booking created');
+        }
       
       if (onRefresh) {
         onRefresh();
