@@ -906,24 +906,30 @@ app.get("/api/pricing/quote", async (req, res) => {
       return res.status(200).json({ success: true });
     }
 
-        // Write marketing site enquiries to Firestore so they appear in LiveEnquiries
-        if (enquiryEmail && enquiryType) {
-                try {
-                          await firestore.collection('enquiries').add({
-                                      name:      enquiryName  || '',
-                                      email:     enquiryEmail.toLowerCase().trim(),
-                                      phone:     enquiryPhone || '',
-                                      message:   enquiryNote  || '',
-                                      formType:  enquiryType,
-                                      source:    'marketing-site',
-                                      status:    'new',
-                                      createdAt: FieldValue.serverTimestamp(),
-                          });
-                          console.log(`[Enquiry] Firestore write OK: ${enquiryEmail} (${enquiryType})`);
-                } catch (firestoreErr: any) {
-                          console.error('[Enquiry] Firestore write failed (email send continues):', firestoreErr.message);
-                }
-        }
+// Write marketing site enquiries to bookings collection so they appear in LiveEnquiries
+            if (enquiryEmail && enquiryType) {
+                          try {
+                                            const now = new Date().toISOString();
+                                            await firestore.collection('bookings').add({
+                                                                  customerName:     enquiryName  || '',
+                                                                  email:            enquiryEmail.toLowerCase().trim(),
+                                                                  mobileNumber:     enquiryPhone || '',
+                                                                  notes:            enquiryNote  || '',
+                                                                  requestedCarType: enquiryType === 'long-term' ? 'Long-Term Hire' : 'General Enquiry',
+                                                                  carId:            '',
+                                                                  status:           'Enquiry',
+                                                                  source:           'marketing-site',
+                                                                  startDate:        now,
+                                                                  endDate:          now,
+                                                                  amount:           0,
+                                                                  deposit:          0,
+                                                                  createdAt:        FieldValue.serverTimestamp(),
+                                            });
+                                            console.log(`[Enquiry] Bookings write OK: ${enquiryEmail} (${enquiryType})`);
+                          } catch (firestoreErr: any) {
+                                            console.error('[Enquiry] Bookings write failed (email send continues):', firestoreErr.message);
+                          }
+            }
     // Fetch company name and email from Firestore if not provided
     let dynamicFromName = fromName;
     let dynamicReplyTo = replyTo;
