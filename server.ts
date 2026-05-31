@@ -897,14 +897,33 @@ app.get("/api/pricing/quote", async (req, res) => {
 
   // Email API
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website} = req.body;
+    const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website,
+                  enquiryName, enquiryEmail, enquiryPhone, enquiryType, enquiryNote } = req.body;
 
     // Honeypot check — silently return success if bait field filled
     if (website) {
       console.log('[Honeypot] Blocked spam submission from /api/send-email');
       return res.status(200).json({ success: true });
     }
-    
+
+        // Write marketing site enquiries to Firestore so they appear in LiveEnquiries
+        if (enquiryEmail && enquiryType) {
+                try {
+                          await firestore.collection('enquiries').add({
+                                      name:      enquiryName  || '',
+                                      email:     enquiryEmail.toLowerCase().trim(),
+                                      phone:     enquiryPhone || '',
+                                      message:   enquiryNote  || '',
+                                      formType:  enquiryType,
+                                      source:    'marketing-site',
+                                      status:    'new',
+                                      createdAt: FieldValue.serverTimestamp(),
+                          });
+                          console.log(`[Enquiry] Firestore write OK: ${enquiryEmail} (${enquiryType})`);
+                } catch (firestoreErr: any) {
+                          console.error('[Enquiry] Firestore write failed (email send continues):', firestoreErr.message);
+                }
+        }
     // Fetch company name and email from Firestore if not provided
     let dynamicFromName = fromName;
     let dynamicReplyTo = replyTo;
