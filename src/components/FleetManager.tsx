@@ -362,6 +362,12 @@ export const FleetManager: React.FC = () => {
         user: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown',
         description: `${type} processed for expiry date: ${safeFormatDate(expiryDate, 'dd MMM yyyy')}`
       });
+      await logSystemActivity(
+        'Quick Vehicle Log',
+        `${type} processed for ${selectedCar?.name || 'vehicle'} (${selectedCar?.plateNumber || ''})`,
+        'Fleet',
+        { carId: selectedCar?.id, carName: selectedCar?.name, logType: type }
+      );
       toast.success(`${type} logged successfully`);
     } catch (error) {
       toast.error('Failed to log renewal');
@@ -617,67 +623,67 @@ Yamaha,GT,Blue,7348
 Yamaha,GT,Red,7361
 Yamaha,GT,Black,6116
 Yamaha,N-Max,Red,796
-Yamaha,N-Max,Blue,2 กษ 800
+Yamaha,N-Max,Blue,2 à¸à¸© 800
 Yamaha,N-Max,White,7703
 Yamaha,N-Max,White,7691
-Yamaha,GT,Black,8กญ 2511
+Yamaha,GT,Black,8à¸à¸ 2511
 Yamaha,N-Max,White,2082
-Yamaha,GT,Gray,1กศ 604
-Yamaha,GT,Black,2กศ 9267
+Yamaha,GT,Gray,1à¸à¸¨ 604
+Yamaha,GT,Black,2à¸à¸¨ 9267
 Honda,New PCX,Grey,316
-Yamaha,N-Max,Red,2กอ 8094
-Yamaha,GT,Black,1 กศ 3386
-Yamaha,GT,,Red1 กฮ 3387
+Yamaha,N-Max,Red,2à¸à¸­ 8094
+Yamaha,GT,Black,1 à¸à¸¨ 3386
+Yamaha,GT,,Red1 à¸à¸® 3387
 Yamaha,GT,Blue,7924
 Yamaha,OLD GT,Silver,9329
 Yamaha,N_Max,Blue,9308
 Yamaha,N_Max,White,779
-Honda,PCX,Silver,2 กข 91
-Honda,PCX,Black,1 กถ 4425
+Honda,PCX,Silver,2 à¸à¸ 91
+Honda,PCX,Black,1 à¸à¸ 4425
 Honda,PCX,Red,3284
-Yamaha,New GT,Red,3 กศ 9332
-Yamaha,New GT,Red,3 กศ 9335
+Yamaha,New GT,Red,3 à¸à¸¨ 9332
+Yamaha,New GT,Red,3 à¸à¸¨ 9335
 Yamaha,New GT,Red,9334
-Yamaha,New GT,Red,3 กศ 9330
-Yamaha,New GT,Red,3 กศ 9336
+Yamaha,New GT,Red,3 à¸à¸¨ 9330
+Yamaha,New GT,Red,3 à¸à¸¨ 9336
 Yamaha,New GT,Gray,9328
-Yamaha,New GT,Gray,3กศ 9324
-Yamaha,New GT,Gray,3กศ 9323
+Yamaha,New GT,Gray,3à¸à¸¨ 9324
+Yamaha,New GT,Gray,3à¸à¸¨ 9323
 Yamaha,New GT,Gray,9327
-Yamaha,New GT,Green,3กศ 9329
-Yamaha,New GT,Red,3กส 6811
-Yamaha,New GT,Red,3กศ 9333
+Yamaha,New GT,Green,3à¸à¸¨ 9329
+Yamaha,New GT,Red,3à¸à¸ª 6811
+Yamaha,New GT,Red,3à¸à¸¨ 9333
 Yamaha,New GT,Gray,7066
 Yamaha,New GT,Red,7067
 Yamaha,New GT,Grey,7069
 Yamaha,New GT,Red,9176
 Yamaha,New GT,Gray,9179
-Yamaha,New GT,Gray,4กญ 9180
+Yamaha,New GT,Gray,4à¸à¸ 9180
 Yamaha,New GT,Green,9183
 Yamaha,New GT,Green,9729
 Yamaha,New GT,Green,9175
-Yamaha,New GT,Grey,4กญ 9172
+Yamaha,New GT,Grey,4à¸à¸ 9172
 Yamaha,New GT,Grey,9182
 Yamaha,New GT,Green,9174
 Yamaha,New GT,Grey,9173
-Yamaha,New GT,Grey,4กญ 9178
+Yamaha,New GT,Grey,4à¸à¸ 9178
 Yamaha,New GT,Green,9181
 Yamaha,New GT,Grey,9171
 Yamaha,New GT,Red,9177
 Yamaha,New Aerox,Red,5788
 Yamaha,New Aerox,Red,5790
 Yamaha,New Aerox,Blue,5787
-Yamaha,New Aerox,Blue,3 กอ 5791
+Yamaha,New Aerox,Blue,3 à¸à¸­ 5791
 Yamaha,New Aerox,Red,5792
 Yamaha,New Aerox,Red,162
 Yamaha,New Aerox,Red,4535
-Yamaha,New Aerox,,BLUE4 กข1922
+Yamaha,New Aerox,,BLUE4 à¸à¸1922
 Yamaha,New Aerox,Purple,8929
-Yamaha,New Aerox,,4กย 1608
-Yamaha,New Aerox,,4กย 1612
-Yamaha,New Aerox,Red,4กย 1610
-Yamaha,New Aerox,Grey,4กย 1609
-Yamaha,New Aerox,Red,4กย 1611`;
+Yamaha,New Aerox,,4à¸à¸¢ 1608
+Yamaha,New Aerox,,4à¸à¸¢ 1612
+Yamaha,New Aerox,Red,4à¸à¸¢ 1610
+Yamaha,New Aerox,Grey,4à¸à¸¢ 1609
+Yamaha,New Aerox,Red,4à¸à¸¢ 1611`;
 
     const lines = bikesData.split('\n');
     let count = 0;
@@ -947,7 +953,7 @@ Yamaha,New Aerox,Red,4กย 1611`;
                             </div>
                             <div className="flex flex-col">
                               <span className="text-[#1A1A1A]/60 uppercase tracking-widest text-[10px] font-bold">
-                                {selectedCar.category} • {selectedCar.type}
+                                {selectedCar.category} â¢ {selectedCar.type}
                               </span>
                               <span className="text-[#1A1A1A]/40 text-[9px] font-medium uppercase tracking-widest mt-0.5">Vehicle ID: {selectedCar.id.slice(0, 8)}</span>
                             </div>
@@ -1326,7 +1332,7 @@ Yamaha,New Aerox,Red,4กย 1611`;
                                       <div className="flex justify-between items-start mb-2">
                                         <div>
                                           <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">{log.type}</span>
-                                          <p className="text-sm font-medium text-[#1A1A1A]/60 mt-0.5">{safeFormatDate(log.date, 'dd MMM yyyy • HH:mm')}</p>
+                                          <p className="text-sm font-medium text-[#1A1A1A]/60 mt-0.5">{safeFormatDate(log.date, 'dd MMM yyyy â¢ HH:mm')}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="text-[10px] font-bold uppercase tracking-widest bg-white/60 border border-white/80 px-2.5 py-1 rounded-full text-[#1A1A1A]/60 shadow-sm">By {log.user}</span>
@@ -1476,7 +1482,7 @@ Yamaha,New Aerox,Red,4กย 1611`;
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Plate Number</label>
-                    <input name="plateNumber" placeholder="e.g. 1กข 1234" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
+                    <input name="plateNumber" placeholder="e.g. 1à¸à¸ 1234" className="w-full bg-white/40 border-b-2 border-white/60 py-2 focus:border-brand-orange outline-none font-bold text-[#1A1A1A] transition-colors" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">Category</label>
