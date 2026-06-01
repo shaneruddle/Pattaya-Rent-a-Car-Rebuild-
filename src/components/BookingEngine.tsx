@@ -348,7 +348,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const sheetCalculateTotal = (car: WebsiteCar) => {
     const dateKey = selectedRange.from ? format(selectedRange.from, "yyyy-MM-dd") : null;
     if (!dateKey) return 0;
-    // @ts-ignore â calculatePrice is in the context
+    // @ts-ignore Ã¢ÂÂ calculatePrice is in the context
     const price = calculatePrice ? calculatePrice(car, dateKey, totalDays) : null;
     if (price !== null) return price;
     return (car.pricePerDay || 1200) * totalDays;
@@ -386,7 +386,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     e.preventDefault();
     if (!selectedCar) return;
 
-    // Honeypot bot check — silently succeed if filled, do NOT fire conversion
+    // Honeypot bot check â silently succeed if filled, do NOT fire conversion
     if (honeypot) {
       setIsSuccess(true);
       setShowEnquiryModal(false);
@@ -445,7 +445,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{return_date}}': format(endDate, 'dd MMM yyyy'),
           '{{return_time}}': dropOffTime,
           '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`,
-          '{{total_price}}': bookingData.amount.toLocaleString(),
+          '{{total_price}}': (bookingData.amount || 0).toLocaleString(),
           '{{delivery_address}}': formData.requireDelivery ? formData.deliveryAddress : '',
           '{{comments}}': formData.comments || ''
         });
@@ -459,7 +459,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           body: JSON.stringify({
             to: config.email,
             replyTo: formData.email,
-            subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
+            subject: `${!bookingData.amount ? "[MONTHLY ENQUIRY] " : ""}New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
             html: `
               <h3>New Booking Enquiry</h3>
               <p><strong>Vehicle:</strong> ${selectedCar.name}</p>
@@ -468,7 +468,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               <p><strong>Mobile:</strong> ${bookingData.mobileNumber}</p>
               <p><strong>Dates:</strong> ${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}</p>
               <p><strong>Times:</strong> ${pickUpTime} to ${dropOffTime}</p>
-              <p><strong>Total Amount:</strong> THB ${bookingData.amount.toLocaleString()}</p>
+              <p><strong>Total Amount:</strong> THB ${(bookingData.amount || 0).toLocaleString()}${!bookingData.amount ? " (Monthly – price TBC)" : ""}</p>
               ${bookingData.deliveryAddress ? `
                 <hr />
                 <h4>Delivery Requested</h4>
@@ -511,7 +511,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           to: config.email,
           replyTo: formData.email,
           message: {
-            subject: `New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
+            subject: `${!bookingData.amount ? "[MONTHLY ENQUIRY] " : ""}New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
             html: `Enquiry received from ${bookingData.customerName} for ${selectedCar.name}. Check dashboard for details.`
           },
         });
@@ -521,7 +521,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       }
 
       setIsSuccess(true);
-      // Fire conversion pageview for GA4 → Google Ads import
+      // Fire conversion pageview for GA4 â Google Ads import
       if (typeof window !== 'undefined' && (window as any).gtag) {
         const originalPath = window.location.pathname + window.location.search;
         window.history.pushState({}, '', '/enquiry-success');
@@ -779,20 +779,20 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <Globe size={14} className="text-black/40" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">
                   {language === 'en' ? 'English' : 
-                   language === 'th' ? 'à¹à¸à¸¢' : 
-                   language === 'ru' ? 'Ð ÑÑÑÐºÐ¸Ð¹' : 
+                   language === 'th' ? 'Ã Â¹ÂÃ Â¸ÂÃ Â¸Â¢' : 
+                   language === 'ru' ? 'ÃÂ ÃÂÃÂÃÂÃÂºÃÂ¸ÃÂ¹' : 
                    language === 'de' ? 'Deutsch' : 
-                   language === 'zh' ? 'ä¸­æ' : 'English'}
+                   language === 'zh' ? 'Ã¤Â¸Â­Ã¦ÂÂ' : 'English'}
                 </span>
                 <ChevronDown size={12} className="text-black/40" />
               </div>
               <div className="absolute right-0 mt-2 w-48 glass-modal rounded-2xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] p-2">
                 {[
                   { code: 'en', label: 'English' },
-                  { code: 'th', label: 'à¹à¸à¸¢' },
-                  { code: 'ru', label: 'Ð ÑÑÑÐºÐ¸Ð¹' },
+                  { code: 'th', label: 'Ã Â¹ÂÃ Â¸ÂÃ Â¸Â¢' },
+                  { code: 'ru', label: 'ÃÂ ÃÂÃÂÃÂÃÂºÃÂ¸ÃÂ¹' },
                   { code: 'de', label: 'Deutsch' },
-                  { code: 'zh', label: 'ä¸­æ' }
+                  { code: 'zh', label: 'Ã¤Â¸Â­Ã¦ÂÂ' }
                 ].map((lang) => (
                   <button
                     key={lang.code}
@@ -1420,7 +1420,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                 <div className="border-t border-black/5 pt-12">
                   <h3 className="text-3xl font-bold mb-10 tracking-tight">{t('bookingModal.title')}</h3>
                   <form onSubmit={handleBookingSubmit} className="space-y-6">
-                    {/* Honeypot field — hidden from humans, bots fill it */}
+                    {/* Honeypot field â hidden from humans, bots fill it */}
                     <input
                       type="text"
                       name="website"
