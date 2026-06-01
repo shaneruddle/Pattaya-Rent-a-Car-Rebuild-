@@ -16,9 +16,18 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
   const [loading, setLoading] = useState(initialLogs.length === 0);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [staffFilter, setStaffFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
   const logContainerRef = useRef<HTMLDivElement>(null);
+
+  const STAFF_MEMBERS = [
+    { label: 'All Staff', value: 'all' },
+    { label: 'Shane', value: 'info@pattayarentacar.com' },
+    { label: 'Gift', value: 'gift@pattayarentacar.com' },
+    { label: 'Rak', value: 'rak@pattayarentacar.com' },
+    { label: 'Pen', value: 'pen@pattayarentacar.com' },
+  ];
 
   const fetchLogs = async () => {
     if (!auth.currentUser) return;
@@ -57,10 +66,11 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
         (log.user?.toLowerCase() || '').includes(searchLower);
 
       const matchesCategory = categoryFilter === 'all' || log.category === categoryFilter;
+      const matchesStaff = staffFilter === 'all' || (log.user?.toLowerCase() || '') === staffFilter.toLowerCase();
 
-      return matchesSearch && matchesCategory;
+      return matchesSearch && matchesCategory && matchesStaff;
     });
-  }, [logs, searchTerm, categoryFilter]);
+  }, [logs, searchTerm, categoryFilter, staffFilter]);
 
   const sortedLogs = useMemo(() => {
     return [...filteredLogs].sort((a, b) => {
@@ -88,7 +98,7 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter]);
+  }, [searchTerm, categoryFilter, staffFilter]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-warm-bg overflow-hidden">
@@ -130,6 +140,19 @@ export const Logs: React.FC<LogsProps> = ({ logs: initialLogs = [] }) => {
               <option value="all">All Categories</option>
               {categories.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          {/* Staff filter */}
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30" size={14} />
+            <select
+              value={staffFilter}
+              onChange={e => setStaffFilter(e.target.value)}
+              className="pl-8 pr-4 py-2 bg-white/60 border border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/20 transition-all appearance-none cursor-pointer"
+            >
+              {STAFF_MEMBERS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
           </div>
