@@ -48,6 +48,8 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [formData, setFormData] = useState<Partial<Booking>>({});
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [carSearch, setCarSearch] = useState('');
+  const [carDropdownOpen, setCarDropdownOpen] = useState(false);
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -483,7 +485,7 @@ However, we can offer the following alternative...`,
                         </div>
                         <div>
                           <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Estimated Total</p>
-                          <p className="text-xs font-bold text-brand-orange">฿{(enquiry.amount || 0).toLocaleString()}</p>
+                          <p className="text-xs font-bold text-brand-orange">à¸¿{(enquiry.amount || 0).toLocaleString()}</p>
                         </div>
                       </div>
                       {(() => {
@@ -509,7 +511,7 @@ However, we can offer the following alternative...`,
                                 </div>
                                 <div>
                                   <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Per Day</p>
-                                  <p className="text-xs font-bold text-black/60">฿{perDay.toLocaleString()}/day</p>
+                                  <p className="text-xs font-bold text-black/60">à¸¿{perDay.toLocaleString()}/day</p>
                                 </div>
                               </div>
                             )}
@@ -702,18 +704,54 @@ However, we can offer the following alternative...`,
                         <h3 className="text-sm font-bold uppercase tracking-widest text-brand-orange">Assign Vehicle</h3>
                       </div>
                       <div className="grid grid-cols-1 gap-4">
-                        <select
-                          className="w-full bg-white border-none p-4 rounded-2xl text-sm focus:ring-2 focus:ring-brand-orange outline-none transition-all font-bold"
-                          value={formData.carId}
-                          onChange={e => setFormData({ ...formData, carId: e.target.value })}
-                        >
-                          <option value="">Select a car...</option>
-                          {cars.map(car => (
-                            <option key={car.id} value={car.id}>
-                              {car.name} ({car.plateNumber}) - {car.type}
-                            </option>
-                          ))}
-                        </select>
+                        {/* Searchable car combobox */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className="w-full bg-white border-none p-4 rounded-2xl text-sm focus:ring-2 focus:ring-brand-orange outline-none transition-all font-bold"
+                        placeholder="Search cars..."
+                        value={carSearch || (formData.carId ? (cars.find(c => c.id === formData.carId)?.name ?? '') : '')}
+                        onChange={e => {
+                          setCarSearch(e.target.value);
+                          setCarDropdownOpen(true);
+                          if (!e.target.value) setFormData({ ...formData, carId: '' });
+                        }}
+                        onFocus={() => setCarDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setCarDropdownOpen(false), 150)}
+                      />
+                      {carDropdownOpen && (
+                        <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-lg border border-black/10 max-h-52 overflow-y-auto">
+                          {cars
+                            .filter(car =>
+                              !carSearch ||
+                              car.name.toLowerCase().includes(carSearch.toLowerCase()) ||
+                              car.plateNumber?.toLowerCase().includes(carSearch.toLowerCase()) ||
+                              car.type?.toLowerCase().includes(carSearch.toLowerCase())
+                            )
+                            .map(car => (
+                              <div
+                                key={car.id}
+                                className={`px-4 py-2 text-sm cursor-pointer hover:bg-brand-orange/10 ${formData.carId === car.id ? 'bg-brand-orange/20 font-bold' : ''}`}
+                                onMouseDown={() => {
+                                  setFormData({ ...formData, carId: car.id });
+                                  setCarSearch('');
+                                  setCarDropdownOpen(false);
+                                }}
+                              >
+                                {car.name} ({car.plateNumber}) – {car.type}
+                              </div>
+                            ))}
+                          {cars.filter(car =>
+                            !carSearch ||
+                            car.name.toLowerCase().includes(carSearch.toLowerCase()) ||
+                            car.plateNumber?.toLowerCase().includes(carSearch.toLowerCase()) ||
+                            car.type?.toLowerCase().includes(carSearch.toLowerCase())
+                          ).length === 0 && (
+                            <div className="px-4 py-2 text-sm text-black/40">No cars found</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                         <p className="text-[10px] text-brand-orange/60 font-bold uppercase tracking-widest ml-4 italic">
                           Requested: {selectedEnquiry.requestedCarType}
                         </p>
