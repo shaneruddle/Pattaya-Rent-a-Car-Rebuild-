@@ -330,7 +330,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       // 4. Update Booking Status if exists
       if (selectedBooking) {
         await updateDoc(doc(db, 'bookings', selectedBooking.id), {
-          status: 'Paid',
+          status: formData.totalPaid < formData.totalCharge ? 'Pending' : 'Paid',
           paymentStatus: formData.totalPaid < formData.totalCharge ? 'pending' : 'paid'
         });
       }
