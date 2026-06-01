@@ -681,7 +681,10 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
-                        <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                        <div className="flex items-center gap-1">
+                    <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                    {customer.emailInvalid && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1 rounded shrink-0">BAD EMAIL</span>}
+                  </div>
                       </div>
                       <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
                     </div>
@@ -711,7 +714,10 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm text-[#141414] truncate">{(customer.firstName + ' ' + (customer.lastName || '')).toUpperCase()}</p>
-                      <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                      <div className="flex items-center gap-1">
+                    <p className="text-[10px] text-[#141414]/50 uppercase tracking-widest truncate mt-0.5">{customer.email}</p>
+                    {customer.emailInvalid && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1 rounded shrink-0">BAD EMAIL</span>}
+                  </div>
                     </div>
                     <ChevronRight size={16} className={cn("text-[#141414]/20 transition-transform", selectedCustomer?.id === customer.id ? "rotate-90 text-brand-orange" : "")} />
                   </div>
@@ -790,7 +796,7 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                     <div className="grid grid-cols-2 gap-8">
                       <div className="space-y-2.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Email Address *</label>
-                        <input name="email" type="email" defaultValue={selectedCustomer?.email} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" required />
+                        <input name="email" type="email" defaultValue={selectedCustomer?.email} className="w-full bg-white/40 border-b-2 border-white/60 px-4 py-3 rounded-t-xl focus:border-brand-orange focus:bg-white/60 outline-none font-bold transition-all" pattern="[^@\s]+@[^@\s]+\.[^@\s]+" title="Please enter a valid email address" required />
                       </div>
                       <div className="space-y-2.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/60 ml-1">Mobile Number</label>
