@@ -486,6 +486,36 @@ However, we can offer the following alternative...`,
                           <p className="text-xs font-bold text-brand-orange">฿{(enquiry.amount || 0).toLocaleString()}</p>
                         </div>
                       </div>
+                      {(() => {
+                        const start = new Date(enquiry.startDate);
+                        const end = new Date(enquiry.endDate);
+                        const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const perDay = days > 0 && enquiry.amount ? Math.round(enquiry.amount / days) : null;
+                        return days > 0 ? (
+                          <>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-black/5 rounded-lg flex items-center justify-center text-black/40">
+                                <Clock size={16} />
+                              </div>
+                              <div>
+                                <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Duration</p>
+                                <p className="text-xs font-bold text-black">{days} {days === 1 ? 'day' : 'days'}</p>
+                              </div>
+                            </div>
+                            {perDay && (
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-black/5 rounded-lg flex items-center justify-center text-black/40">
+                                  <DollarSign size={16} />
+                                </div>
+                                <div>
+                                  <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Per Day</p>
+                                  <p className="text-xs font-bold text-black/60">฿{perDay.toLocaleString()}/day</p>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
