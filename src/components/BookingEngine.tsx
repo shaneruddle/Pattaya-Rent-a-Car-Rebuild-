@@ -521,20 +521,22 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       }
 
       setIsSuccess(true);
-      // Fire conversion pageview for GA4 â Google Ads import
-      if (typeof window !== 'undefined' && (window as any).gtag) {
-        const originalPath = window.location.pathname + window.location.search;
-        window.history.pushState({}, '', '/enquiry-success');
-        (window as any).gtag('event', 'page_view', {
-          page_path: '/enquiry-success',
-          page_title: 'Enquiry Success',
-          page_location: window.location.href
-        });
-        setTimeout(() => {
-          window.history.replaceState({}, '', originalPath);
-        }, 500);
-      }
-      setShowEnquiryModal(false);
+      // Fire purchase conversion for GA4 + Google Ads
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+          (window as any).gtag('event', 'purchase', {
+            transaction_id: docRef.id,
+            value: bookingData.amount || 0,
+            currency: 'THB',
+            items: [{
+              item_id: bookingData.carId,
+              item_name: bookingData.requestedCarType,
+              quantity: 1,
+              price: bookingData.amount || 0
+            }]
+          });
+        }
+
+              setShowEnquiryModal(false);
       
       if (emailSuccess) {
         toast.success("Enquiry submitted successfully!");
