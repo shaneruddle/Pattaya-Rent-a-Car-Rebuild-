@@ -485,7 +485,7 @@ However, we can offer the following alternative...`,
                         </div>
                         <div>
                           <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Estimated Total</p>
-                          <p className="text-xs font-bold text-brand-orange">à¸¿{(enquiry.amount || 0).toLocaleString()}</p>
+                          <p className="text-xs font-bold text-brand-orange">THB{(enquiry.amount || 0).toLocaleString()}</p>
                         </div>
                       </div>
                       {(() => {
@@ -511,7 +511,7 @@ However, we can offer the following alternative...`,
                                 </div>
                                 <div>
                                   <p className="text-[8px] font-bold uppercase tracking-widest text-black/30">Per Day</p>
-                                  <p className="text-xs font-bold text-black/60">à¸¿{perDay.toLocaleString()}/day</p>
+                                  <p className="text-xs font-bold text-black/60">THB{perDay.toLocaleString()}/day</p>
                                 </div>
                               </div>
                             )}
