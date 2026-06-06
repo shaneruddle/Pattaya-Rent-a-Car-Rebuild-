@@ -534,6 +534,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               price: bookingData.amount || 0
             }]
           });
+          // Fire Google Ads conversion event
+            (window as any).gtag('event', 'conversion', {
+              'send_to': 'AW-806173499/7VRPCJeR6f8YELv2tIAD',
+              'value': bookingData.amount || 0,
+              'currency': 'THB',
+              'transaction_id': docRef.id
+            });
         }
 
               setShowEnquiryModal(false);
