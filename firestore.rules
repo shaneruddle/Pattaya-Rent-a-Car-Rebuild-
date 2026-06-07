@@ -209,5 +209,12 @@ service cloud.firestore {
     match /test/connection {
       allow get: if true;
     }
+
+    // Hotel Partnership Pages
+    match /hotels/{slug} {
+      allow get, list: if resource.data.published == true || isStaff();
+      allow write: if isStaff();
+    }
+
   }
 }
