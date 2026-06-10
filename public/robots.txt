@@ -1,5 +1,14 @@
 User-agent: *
 Allow: /
+Disallow: /about/
+Disallow: /blog/
+Disallow: /contact/
+Disallow: /faq/
+Disallow: /locations/
+Disallow: /vehicle/
+Disallow: /services/
+Disallow: /pages/
+Disallow: /search/
 Disallow: /api/
 
-Sitemap: https://www.pattayarentacar.com/sitemap.xml
+Sitemap: https://pattayarentacar.com/sitemap.xml
