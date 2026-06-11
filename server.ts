@@ -6,8 +6,6 @@ import { fileURLToPath } from "url";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
-import * as XLSX from "xlsx";
-import { format, parse, isValid } from "date-fns";
 import admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -211,12 +209,6 @@ function handleFirestoreError(error: any, operation: string, path: string) {
   console.error(`Firestore Error [${operation}] on ${currentProjectId}/${currentDatabaseId}:`, JSON.stringify(errorInfo, null, 2));
   throw new Error(JSON.stringify(errorInfo));
 }
-
-// Cache for pricing data
-let pricingCacheMap: { [spreadsheetId: string]: { data: any, lastFetchTime: number } } = {};
-let isFetching = false;
-let currentFetchPromise: Promise<any> | null = null;
-const CACHE_DURATION = 1000 * 60 * 30; // 30 minutes cache for pricing data
 
 // Global crash handlers to prevent silent restarts
 process.on('unhandledRejection', (reason, promise) => {
@@ -603,161 +595,7 @@ app.get("/api/debug/pricing/availability", async (req, res) => {
     }
   });
 
-  async function fetchAllPricingData(spreadsheetId: string, retries = 12): Promise<any> {
-    if (currentFetchPromise) {
-      console.log('Using existing fetch promise for pricing data');
-      return currentFetchPromise;
-    }
-
-    const fetchTask = async (currentRetries: number): Promise<any> => {
-      const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
-      console.log(`Fetching spreadsheet from: ${url} (Retries left: ${currentRetries})`);
-      
-      try {
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          }
-        });
-
-        if (!response.ok) {
-          const status = response.status;
-          const text = status !== 404 ? await response.text() : 'Not Found';
-          throw new Error(`Server returned ${status}: ${text.substring(0, 100)}`);
-        }
-
-        const buffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type') || '';
-        console.log(`Successfully downloaded spreadsheet (${buffer.byteLength} bytes), Content-Type: ${contentType}`);
-        
-        if (contentType && !contentType.includes('spreadsheetml') && !contentType.includes('application/octet-stream') && !contentType.includes('application/vnd.ms-excel') && !contentType.includes('application/zip')) {
-          // If we get HTML, it's likely a login page or error page
-          if (contentType.includes('text/html')) {
-            const html = Buffer.from(buffer).toString('utf8');
-            if (html.includes('Service Login') || html.includes('Sign in')) {
-              throw new Error('The spreadsheet is not public. Please ensure "Anyone with the link" can view it.');
-            }
-          }
-          throw new Error(`Invalid content type: ${contentType}. Expected a spreadsheet.`);
-        }
-
-        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
-        
-        const allData: { [carType: string]: { headers: number[], data: { [date: string]: number[] } } } = {};
-
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-          
-          if (rows.length < 2) continue;
-
-          // Parse headers (durations) - Row 0, starting from index 1
-          const headers = rows[0].slice(1).map(h => parseFloat(h)).filter(h => !isNaN(h));
-          
-          // Parse data rows
-          const data: { [date: string]: number[] } = {};
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            const dateVal = row[0];
-            if (!dateVal) continue;
-            
-            let parsedDate: Date | null = null;
-            if (typeof dateVal === 'number') {
-              // Excel date to JS date
-              parsedDate = new Date((dateVal - 25569) * 86400 * 1000);
-            } else if (typeof dateVal === 'string') {
-              const formats = ["dd/MM/yyyy", "d/M/yyyy", "MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd"];
-              for (const fmt of formats) {
-                const d = parse(dateVal.trim(), fmt, new Date());
-                if (isValid(d)) {
-                  parsedDate = d;
-                  break;
-                }
-              }
-            }
-
-            if (parsedDate && isValid(parsedDate)) {
-              const key = format(parsedDate, "yyyy-MM-dd");
-              const rates = row.slice(1).map(r => parseFloat(r)).filter(r => !isNaN(r));
-              if (rates.length > 0) {
-                data[key] = rates;
-              }
-            }
-          }
-
-          allData[sheetName.toLowerCase()] = { headers, data };
-        }
-
-        return allData;
-      } catch (error: any) {
-        console.error(`Pricing fetch failed: [${error.name || error.code || 'NO_CODE'}] ${error.message}`);
-        
-        const isTimeout = error.name === 'AbortError' || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout');
-        const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' || 
-                              error.code === 'ERR_STREAM_PREMATURE_CLOSE' || 
-                              error.code === 'ERR_BAD_RESPONSE' ||
-                              error.code === 'ERR_NETWORK' ||
-                              error.message?.toLowerCase().includes('premature close') || 
-                              error.message?.toLowerCase().includes('aborted') ||
-                              error.message?.toLowerCase().includes('stream has been aborted') ||
-                              error.message?.toLowerCase().includes('fetch failed');
-        
-        const status = error.response?.status || (error.message?.includes('Server returned ') ? parseInt(error.message.split('Server returned ')[1]) : null);
-        const isRateLimit = status === 429 || status === 503;
-        const is404 = status === 404;
-
-        if (currentRetries > 0 && !is404 && (isTimeout || isNetworkError || isRateLimit)) {
-          const delay = Math.min(10000, Math.pow(2, 6 - currentRetries) * 1000);
-          console.warn(`Fetch error (${error.message}), retrying in ${delay}ms... ${currentRetries} attempts left`);
-          await new Promise(r => setTimeout(r, delay));
-          return fetchTask(currentRetries - 1);
-        }
-        throw error;
-      }
-    };
-
-    currentFetchPromise = fetchTask(retries);
-    try {
-      const result = await currentFetchPromise;
-      return result;
-    } finally {
-      currentFetchPromise = null;
-    }
-  }
-
-  app.get("/api/pricing/sheet", async (req, res) => {
-    const spreadsheetId = (req.query.spreadsheetId as string) || '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
-
-    // Simple cache check with ID keying
-    const cached = pricingCacheMap[spreadsheetId];
-    if (cached && (Date.now() - cached.lastFetchTime < CACHE_DURATION)) {
-      return res.json(cached.data);
-    }
-
-    if (isFetching) {
-      // If already fetching, wait a bit or return error to avoid overloading
-      return res.status(503).json({ error: 'Pricing data is currently being updated. Please try again in a few seconds.' });
-    }
-
-    try {
-      isFetching = true;
-      console.log(`Fetching pricing data for spreadsheet: ${spreadsheetId}`);
-      const data = await fetchAllPricingData(spreadsheetId);
-      pricingCacheMap[spreadsheetId] = {
-        data,
-        lastFetchTime: Date.now()
-      };
-      console.log('Pricing data fetched successfully');
-      res.json(data);
-    } catch (error: any) {
-      console.error('Error fetching pricing sheet:', error.message || error);
-      res.status(500).json({ error: error.message || 'Failed to fetch pricing data' });
-    } finally {
-      isFetching = false;
-    }
-  });
-
-// Parallel pricing engine quote endpoint. Reads pricing_config/current, computes occupancy live, applies tier x season x availability with floor. Does NOT affect /api/pricing/sheet or the live frontend.
+// Pricing engine quote endpoint. Reads pricing_config/current, computes occupancy live, applies tier x season x availability with floor.
 app.get("/api/pricing/quote", async (req, res) => {
   if (!firestore) {
     return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
@@ -1122,41 +960,6 @@ app.get("/api/pricing/quote", async (req, res) => {
       }
     });
   });
-
-  // Pre-fetch pricing data on startup with a longer delay and better error handling
-  setTimeout(async () => {
-    // Inspection disabled to avoid PERMISSION_DENIED noise in logs
-    logInit('[Debug] Startup inspection skipped to avoid permission noise.');
-
-    let spreadsheetId = '1-RHwQ4LumsxPR1CXXtQjQb6cJ4v98x6GA2RiLE9OkTo';
-    try {
-      if (firestore) {
-        const configDoc = await firestore.collection('app_settings').doc('pricing').get();
-        if (configDoc.exists) {
-          const customId = configDoc.data().spreadsheetId;
-          if (customId) {
-            spreadsheetId = customId;
-            logInit(`[Init] Using custom pricing spreadsheet: ${spreadsheetId}`);
-          }
-        }
-      }
-    } catch (e) {
-      logInit(`[Init] Failed to fetch custom spreadsheet ID: ${e.message}`);
-    }
-
-    fetchAllPricingData(spreadsheetId)
-      .then(data => {
-        pricingCacheMap[spreadsheetId] = {
-          data,
-          lastFetchTime: Date.now()
-        };
-        logInit('[Init] Pricing data pre-fetched successfully');
-      })
-      .catch(err => {
-        logInit(`[Init] Pricing pre-fetch failed: ${err.message}`);
-        // Silently fail pre-fetch, it will retry on first request if needed
-      });
-  }, 10000); // Increased delay to 10s to ensure Firestore is fully ready
 
   // Google Places Proxy for Review Manager
   app.post("/api/places/details", async (req, res) => {
