@@ -632,6 +632,12 @@ app.get("/api/pricing/quote", async (req, res) => {
       return res.json({ quotable: false, reason: "invalid_dates", days });
     }
 
+    // Guard 2b: minimum rental length (config-driven; absent or 0 -> no minimum)
+    const minDays = cfg.thresholds.minRentalDays || 0;
+    if (minDays > 0 && days < minDays) {
+      return res.json({ quotable: false, reason: "below_min_days", days, minDays });
+    }
+
     // Guard 3: 30+ days -> redirect, no quote
     if (days >= cfg.thresholds.monthlyRedirectFromDays) {
       return res.json({ quotable: false, reason: "monthly_redirect", days, message: cfg.redirectMessage });

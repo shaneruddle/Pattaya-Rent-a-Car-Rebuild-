@@ -355,7 +355,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     if (q === null) return fallbackTotal(car);
     if (q.quotable === true) return q.totalPrice;
     if (q.reason === 'monthly_redirect') return 0;
+    if (q.reason === 'below_min_days') return 0;
     return fallbackTotal(car);
+  };
+
+  // True when the current quote for this car is blocked by the minimum rental period.
+  const isBelowMinDays = (car: WebsiteCar) => {
+    const q = getQuoteForCar(car);
+    return !!(q && q.quotable === false && q.reason === 'below_min_days');
   };
 
     // What to DISPLAY for a car's price: either a formatted price or the monthly-redirect message.
@@ -364,6 +371,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     const q = getQuoteForCar(car);
     if (q && q.quotable === false && q.reason === 'monthly_redirect') {
       return { kind: 'message', text: 'Contact us for monthly rates' };
+    }
+    if (q && q.quotable === false && q.reason === 'below_min_days') {
+      return { kind: 'message', text: `Minimum rental is ${q.minDays || 2} days` };
     }
     return { kind: 'price', text: 'THB ' + calculateTotal(car).toLocaleString() };
   };
@@ -376,6 +386,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCar) return;
+
+    // Below minimum rental period: submission blocked (price display already shows the minimum message)
+    if (isBelowMinDays(selectedCar)) return;
 
     // Honeypot bot check â silently succeed if filled, do NOT fire conversion
     if (honeypot) {
@@ -1223,8 +1236,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                               setSelectedCar(car);
                               setShowEnquiryModal(true);
                             }}
+                            disabled={isBelowMinDays(car)}
                             className={cn(
-                              "w-full text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                              "w-full text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed",
                               isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
                             )}
                           >
