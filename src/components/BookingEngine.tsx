@@ -355,6 +355,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     if (q === null) return fallbackTotal(car);
     if (q.quotable === true) return q.totalPrice;
     if (q.reason === 'monthly_redirect') return 0;
+    if (q.reason === 'below_min_days') return 0;
     return fallbackTotal(car);
   };
 
@@ -364,6 +365,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     const q = getQuoteForCar(car);
     if (q && q.quotable === false && q.reason === 'monthly_redirect') {
       return { kind: 'message', text: 'Contact us for monthly rates' };
+    }
+    if (q && q.quotable === false && q.reason === 'below_min_days') {
+      return { kind: 'message', text: `Minimum rental is ${q.minDays || 2} days` };
     }
     return { kind: 'price', text: 'THB ' + calculateTotal(car).toLocaleString() };
   };
@@ -397,7 +401,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         endDate: format(selectedRange.to, "yyyy-MM-dd") + 'T' + dropOffTime,
         status: 'Pending',
         notes: formData.comments,
-        amount: ((() => { const q = getQuoteForCar(selectedCar); return q && q.quotable === false && q.reason === 'monthly_redirect'; })()) ? null : calculateTotal(selectedCar),
+        amount: ((() => { const q = getQuoteForCar(selectedCar); return q && q.quotable === false && (q.reason === 'monthly_redirect' || q.reason === 'below_min_days'); })()) ? null : calculateTotal(selectedCar),
         deliveryAddress: formData.requireDelivery ? formData.deliveryAddress : '',
         deliveryLocation: formData.requireDelivery ? formData.deliveryLocation : null,
         deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : '',
