@@ -359,6 +359,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     return fallbackTotal(car);
   };
 
+  // True when the current quote for this car is blocked by the minimum rental period.
+  const isBelowMinDays = (car: WebsiteCar) => {
+    const q = getQuoteForCar(car);
+    return !!(q && q.quotable === false && q.reason === 'below_min_days');
+  };
+
     // What to DISPLAY for a car's price: either a formatted price or the monthly-redirect message.
   // Returns { kind, text } so the render sites can style price vs message differently.
   const getPriceDisplay = (car: WebsiteCar): { kind: 'price' | 'message'; text: string } => {
@@ -381,6 +387,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     e.preventDefault();
     if (!selectedCar) return;
 
+    // Below minimum rental period: submission blocked (price display already shows the minimum message)
+    if (isBelowMinDays(selectedCar)) return;
+
     // Honeypot bot check â silently succeed if filled, do NOT fire conversion
     if (honeypot) {
       setIsSuccess(true);
@@ -401,7 +410,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         endDate: format(selectedRange.to, "yyyy-MM-dd") + 'T' + dropOffTime,
         status: 'Pending',
         notes: formData.comments,
-        amount: ((() => { const q = getQuoteForCar(selectedCar); return q && q.quotable === false && (q.reason === 'monthly_redirect' || q.reason === 'below_min_days'); })()) ? null : calculateTotal(selectedCar),
+        amount: ((() => { const q = getQuoteForCar(selectedCar); return q && q.quotable === false && q.reason === 'monthly_redirect'; })()) ? null : calculateTotal(selectedCar),
         deliveryAddress: formData.requireDelivery ? formData.deliveryAddress : '',
         deliveryLocation: formData.requireDelivery ? formData.deliveryLocation : null,
         deliveryNotes: formData.requireDelivery ? formData.deliveryNotes : '',
@@ -1227,8 +1236,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                               setSelectedCar(car);
                               setShowEnquiryModal(true);
                             }}
+                            disabled={isBelowMinDays(car)}
                             className={cn(
-                              "w-full text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                              "w-full text-white px-12 py-4 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed",
                               isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
                             )}
                           >
