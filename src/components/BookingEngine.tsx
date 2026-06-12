@@ -184,11 +184,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [selectedCar, setSelectedCar] = useState<WebsiteCar | null>(null);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
   const [showImportantInfoModal, setShowImportantInfoModal] = useState(false);
+  const [utmParams, setUtmParams] = useState({ source: '', medium: '', campaign: '' });
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     mobile: '',
+    nationality: '',
     comments: '',
     requireDelivery: false,
     deliveryAddress: '',
@@ -300,6 +302,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     };
   }, []);
 
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setUtmParams({
+      source:   p.get('utm_source')   || '',
+      medium:   p.get('utm_medium')   || '',
+      campaign: p.get('utm_campaign') || '',
+    });
+  }, []);
+
   const getFullDate = (date: Date, time: string) => {
     const d = new Date(date);
     const [h, m] = time.split(':').map(Number);
@@ -403,6 +414,10 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       const bookingData = {
         carId: '',
         requestedCarType: selectedCar.name,
+        nationality:      formData.nationality || null,
+        utmSource:        utmParams.source     || null,
+        utmMedium:        utmParams.medium     || null,
+        utmCampaign:      utmParams.campaign   || null,
         customerName: `${formData.firstName} ${formData.lastName}`,
         mobileNumber: formData.mobile,
         email: formData.email,
@@ -1486,6 +1501,29 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       value={formData.mobile}
                       onChange={e => setFormData({...formData, mobile: e.target.value})}
                     />
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Nationality</label>
+                      <select
+                        value={formData.nationality}
+                        onChange={e => setFormData({ ...formData, nationality: e.target.value })}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-orange"
+                      >
+                        <option value="">Select nationality...</option>
+                        <option value="Thai">Thai</option>
+                        <option value="British">British</option>
+                        <option value="American">American</option>
+                        <option value="Australian">Australian</option>
+                        <option value="German">German</option>
+                        <option value="French">French</option>
+                        <option value="Russian">Russian</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="Indian">Indian</option>
+                        <option value="Scandinavian">Scandinavian</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
                     <textarea 
                       placeholder={t('bookingModal.comments')} 
                       className="w-full px-6 py-4 bg-black/5 rounded-2xl focus:outline-none focus:bg-black/10 transition-all font-bold uppercase tracking-widest text-[10px] h-40 resize-none"
