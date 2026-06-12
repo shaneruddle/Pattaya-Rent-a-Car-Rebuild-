@@ -14,6 +14,7 @@ import https from "https";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
 import cors from "cors";
+import { growthCollectorApp } from "./src/agent/growthDataCollector.js";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -1363,12 +1364,13 @@ app.get("/api/pricing/quote", async (req, res) => {
         res.sendFile(path.join(process.cwd(), 'index.html'));
       });
     }
+      // Growth agent routes
+      app.use(growthCollectorApp);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+  });}
 
 startServer().catch(err => {
   console.error("CRITICAL: Failed to start server:", err);
