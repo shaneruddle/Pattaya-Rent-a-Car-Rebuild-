@@ -98,7 +98,12 @@
           }
         },
         "deliveryNotes": { "type": "string", "description": "Internal notes for the delivery." },
-        "returnNote": { "type": "string", "description": "Specific notes for when the car is returned." }
+        "returnNote": { "type": "string", "description": "Specific notes for when the car is returned." },
+        "nationality": { "type": "string", "description": "Customer's nationality." },
+        "utmSource": { "type": "string", "description": "UTM source param captured from booking URL (e.g. google, facebook)." },
+        "utmMedium": { "type": "string", "description": "UTM medium param (e.g. cpc, organic, social)." },
+        "utmCampaign": { "type": "string", "description": "UTM campaign name." },
+        "bookingSource": { "type": "string", "description": "Staff-assigned booking channel: google_ads | google_organic | facebook | direct | referral | walk_in | other." }
       },
       "required": ["carId", "customerName", "startDate", "endDate", "status"]
     },
