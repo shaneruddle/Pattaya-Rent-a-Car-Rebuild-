@@ -742,7 +742,8 @@ app.get("/api/pricing/quote", async (req, res) => {
   // Email API
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website,
-                  enquiryName, enquiryEmail, enquiryPhone, enquiryType, enquiryNote } = req.body;
+                  enquiryName, enquiryEmail, enquiryPhone, enquiryType, enquiryNote,
+                  enquiryNationality, enquiryUtmSource, enquiryUtmMedium, enquiryUtmCampaign } = req.body;
 
     // Honeypot check — silently return success if bait field filled
     if (website) {
@@ -768,6 +769,10 @@ app.get("/api/pricing/quote", async (req, res) => {
                                                                   amount:           0,
                                                                   deposit:          0,
                                                                   createdAt:        FieldValue.serverTimestamp(),
+                                                                  nationality:      enquiryNationality || null,
+                                                                  utmSource:        enquiryUtmSource   || null,
+                                                                  utmMedium:        enquiryUtmMedium   || null,
+                                                                  utmCampaign:      enquiryUtmCampaign || null,
                                             });
                                             console.log(`[Enquiry] Bookings write OK: ${enquiryEmail} (${enquiryType})`);
                           } catch (firestoreErr: any) {
