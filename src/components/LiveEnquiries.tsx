@@ -26,7 +26,9 @@ import {
   Loader2,
   DollarSign,
   ShieldCheck,
-  Copy
+  Copy,
+  Globe,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -443,6 +445,16 @@ However, we can offer the following alternative...`,
                         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
                           <Mail size={12} /> {enquiry.email || 'No email'}
                         </div>
+                        {enquiry.nationality && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
+                            <Globe size={12} /> {enquiry.nationality}
+                          </div>
+                        )}
+                        {(enquiry.utmSource || enquiry.bookingSource) && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange/60">
+                            <Zap size={12} /> {enquiry.bookingSource || enquiry.utmSource}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -796,6 +808,56 @@ However, we can offer the following alternative...`,
                     </div>
                   </div>
 
+                  {/* Nationality & Source */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Nationality</label>
+                      <select
+                        className="w-full bg-black/5 border-none p-4 rounded-2xl text-sm focus:bg-black/10 outline-none transition-all font-bold"
+                        value={formData.nationality || ''}
+                        onChange={e => setFormData(p => ({ ...p, nationality: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        <option value="Thai">Thai</option>
+                        <option value="British">British</option>
+                        <option value="American">American</option>
+                        <option value="Australian">Australian</option>
+                        <option value="German">German</option>
+                        <option value="French">French</option>
+                        <option value="Russian">Russian</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="Indian">Indian</option>
+                        <option value="Scandinavian">Scandinavian</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Booking Source</label>
+                      <select
+                        className="w-full bg-black/5 border-none p-4 rounded-2xl text-sm focus:bg-black/10 outline-none transition-all font-bold"
+                        value={formData.bookingSource || ''}
+                        onChange={e => setFormData(p => ({ ...p, bookingSource: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        <option value="google_ads">Google Ads</option>
+                        <option value="google_organic">Google Organic</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="direct">Direct</option>
+                        <option value="referral">Referral</option>
+                        <option value="walk_in">Walk In</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  {(formData.utmSource || formData.utmMedium || formData.utmCampaign) && (
+                    <div className="flex flex-wrap gap-2 px-1">
+                      {formData.utmSource && <span className="text-[10px] font-bold uppercase tracking-widest text-brand-orange/60 bg-brand-orange/10 px-2 py-1 rounded-full">src: {formData.utmSource}</span>}
+                      {formData.utmMedium && <span className="text-[10px] font-bold uppercase tracking-widest text-brand-orange/60 bg-brand-orange/10 px-2 py-1 rounded-full">med: {formData.utmMedium}</span>}
+                      {formData.utmCampaign && <span className="text-[10px] font-bold uppercase tracking-widest text-brand-orange/60 bg-brand-orange/10 px-2 py-1 rounded-full">cmp: {formData.utmCampaign}</span>}
+                    </div>
+                  )}
                   {/* Comments */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Customer Comments</label>
