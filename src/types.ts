@@ -97,6 +97,11 @@ export interface Booking {
   maintenanceDescription?: string;
   paymentStatus?: 'paid' | 'pending';
   createdAt?: any;
+  nationality?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  bookingSource?: string; // staff-assigned channel label
 }
 
 export interface Rental {
