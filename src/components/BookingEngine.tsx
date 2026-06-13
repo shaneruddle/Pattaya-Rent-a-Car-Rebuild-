@@ -1,3 +1,4 @@
+import { getStoredUTMParams } from '../utils/utmCapture';
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logSystemActivity, storage } from '../firebase';
@@ -184,7 +185,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [selectedCar, setSelectedCar] = useState<WebsiteCar | null>(null);
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
   const [showImportantInfoModal, setShowImportantInfoModal] = useState(false);
-  const [utmParams, setUtmParams] = useState({ source: '', medium: '', campaign: '' });
+  const [utmParams, setUtmParams] = useState({ source: '', medium: '', campaign: '', content: '', term: '' });
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -303,11 +304,13 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   }, []);
 
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
+    const utm = getStoredUTMParams();
     setUtmParams({
-      source:   p.get('utm_source')   || '',
-      medium:   p.get('utm_medium')   || '',
-      campaign: p.get('utm_campaign') || '',
+      source:   utm.utm_source   || '',
+      medium:   utm.utm_medium   || '',
+      campaign: utm.utm_campaign || '',
+      content:  utm.utm_content || '',
+      term:     utm.utm_term    || '',
     });
   }, []);
 
@@ -418,6 +421,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         utmSource:        utmParams.source     || null,
         utmMedium:        utmParams.medium     || null,
         utmCampaign:      utmParams.campaign   || null,
+        utmContent:       utmParams.content    || null,
+        utmTerm:          utmParams.term       || null,
         customerName: `${formData.firstName} ${formData.lastName}`,
         mobileNumber: formData.mobile,
         email: formData.email,

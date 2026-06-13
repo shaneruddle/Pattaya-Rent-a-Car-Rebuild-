@@ -34,6 +34,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactGA from 'react-ga4';
+import { captureUTMParams } from './utils/utmCapture';
 import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck } from 'lucide-react';
 import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
@@ -137,6 +138,11 @@ function AppContent() {
     const email = (user?.email || '').toLowerCase().trim();
     return email.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
+
+  // Capture UTM params on mount (persists to sessionStorage for enquiry attribution)
+  useEffect(() => {
+    captureUTMParams();
+  }, []);
 
   // Track page views for public (unauthenticated) visitors on every route change
   const location = useLocation();
