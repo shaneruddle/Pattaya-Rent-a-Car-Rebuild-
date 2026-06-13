@@ -1335,6 +1335,7 @@ app.get("/api/pricing/quote", async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.status(204).end();
   });
+    app.use(growthExecutorApp);
     app.use(vite.middlewares);
     app.get('*', async (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.includes('.')) {
@@ -1382,7 +1383,6 @@ app.get("/api/pricing/quote", async (req, res) => {
 app.use(growthCollectorApp);
 app.use(growthAnalyserApp);
 app.use(growthOutcomeScorerApp);
-app.use(growthExecutorApp);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
