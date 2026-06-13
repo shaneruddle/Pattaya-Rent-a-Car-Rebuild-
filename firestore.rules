@@ -216,5 +216,21 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+        // -------------------------------------------------------------------------
+        // 7. AGENT GROWTH COLLECTIONS (staff read, knowledge write)
+        // -------------------------------------------------------------------------
+
+        match /agent_weeks/{docId} {
+          allow read: if isStaff();
+        }
+        match /agent_actions/{docId} {
+          allow read: if isStaff();
+        }
+        match /agent_knowledge/{docId} {
+          allow read, write: if isStaff();
+        }
+        match /agent_metrics/{docId} {
+          allow read: if isStaff();
+        }
   }
 }
