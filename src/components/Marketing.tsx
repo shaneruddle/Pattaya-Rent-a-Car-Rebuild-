@@ -3,11 +3,12 @@ import { BlogManager } from './BlogManager';
 import { PagesManager } from './PagesManager';
 import { MarketingFAQ } from './MarketingFAQ';
 import ContentCalendar from './ContentCalendar';
-import { FileText, MessageSquare, Calendar, Layout } from 'lucide-react';
+import GrowthDashboard from './GrowthDashboard';
+import { FileText, MessageSquare, Calendar, Layout, TrendingUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export const Marketing: React.FC<{ defaultTab?: 'blog' | 'pages' | 'faq' | 'calendar' }> = ({ defaultTab = 'blog' }) => {
-  const [activeTab, setActiveTab] = useState<'blog' | 'pages' | 'faq' | 'calendar'>(defaultTab);
+export const Marketing: React.FC<{ defaultTab?: 'blog' | 'pages' | 'faq' | 'calendar' | 'growth' }> = ({ defaultTab = 'blog' }) => {
+  const [activeTab, setActiveTab] = useState<'blog' | 'pages' | 'faq' | 'calendar' | 'growth'>(defaultTab);
 
   // Sync state if prop changes from sidebar navigation
   React.useEffect(() => {
@@ -70,6 +71,20 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'pages' | 'faq' | 'cale
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange" />
           )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('growth')}
+          className={cn(
+            "h-16 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative shrink-0",
+            activeTab === 'growth' ? "text-brand-orange" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]"
+          )}
+        >
+          <TrendingUp size={16} />
+          Growth Agent
+          {activeTab === 'growth' && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange" />
+          )}
+        </button>
       </div>
 
       {/* Content Area */}
@@ -80,6 +95,8 @@ export const Marketing: React.FC<{ defaultTab?: 'blog' | 'pages' | 'faq' | 'cale
           <PagesManager />
         ) : activeTab === 'calendar' ? (
           <ContentCalendar />
+) : activeTab === 'growth' ? (
+          <GrowthDashboard />
         ) : (
           <MarketingFAQ />
         )}
