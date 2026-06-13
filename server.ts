@@ -1326,6 +1326,15 @@ app.get("/api/pricing/quote", async (req, res) => {
       server: { middlewareMode: true },
       appType: "spa",
     });
+  // CORS preflight for growth executor — must be BEFORE vite.middlewares
+  const GROWTH_CMS_ORIGIN = 'https://admin-pattayarentacar.web.app';
+  app.options('/api/growth/execute', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.status(204).end();
+  });
     app.use(vite.middlewares);
     app.get('*', async (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.includes('.')) {
