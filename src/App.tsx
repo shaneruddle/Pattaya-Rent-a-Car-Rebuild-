@@ -138,6 +138,17 @@ function AppContent() {
     return email.endsWith('@pattayarentacar.com') || email === 'info@pattayarentacar.com';
   }, [user]);
 
+  // Track page views for public (unauthenticated) visitors on every route change
+  const location = useLocation();
+  useEffect(() => {
+    if (!loading && !user) {
+      ReactGA.send({
+        hitType: "pageview",
+        page: location.pathname + location.search,
+      });
+    }
+  }, [location, loading, user]);
+
   // Track page views on view change - only for staff and when authenticated
   useEffect(() => {
     const ga_id = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FHJNX2F1T';

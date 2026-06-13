@@ -6,11 +6,10 @@ import ReactGA from 'react-ga4';
 import App from './App.tsx';
 import './index.css';
 
-// Initialize GA4
+// Initialize GA4  pageview tracking is handled in App.tsx via useLocation
 const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FHJNX2F1T';
 if (GA_ID) {
   ReactGA.initialize(GA_ID);
-  ReactGA.send({ hitType: "pageview", page: window.location.pathname });
 }
 
 console.log('main.tsx: Starting application');
