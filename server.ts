@@ -17,6 +17,7 @@ import cors from "cors";
 import { growthCollectorApp } from "./src/agent/growthDataCollector.js";
 import { growthAnalyserApp } from "./src/agent/growthAnalyser.js";
 import { growthOutcomeScorerApp } from "./src/agent/growthOutcomeScorer.js";
+import { growthExecutorApp } from "./src/agent/growthExecutor.js";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -1370,6 +1371,7 @@ app.get("/api/pricing/quote", async (req, res) => {
       app.use(growthCollectorApp);
             app.use(growthAnalyserApp);
             app.use(growthOutcomeScorerApp);
+    app.use(growthExecutorApp);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
