@@ -1257,6 +1257,7 @@ app.get("/api/pricing/quote", async (req, res) => {
   });
 
   // Catch-all for unhandled API routes
+  app.use(growthExecutorApp);
   app.all("/api/*", (req, res) => {
     console.log(`Unhandled API Request: ${req.method} ${req.path}`);
     res.status(404).json({ error: "API route not found", path: req.path, method: req.method });
@@ -1335,7 +1336,6 @@ app.get("/api/pricing/quote", async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.status(204).end();
   });
-    app.use(growthExecutorApp);
     app.use(vite.middlewares);
     app.get('*', async (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.includes('.')) {
