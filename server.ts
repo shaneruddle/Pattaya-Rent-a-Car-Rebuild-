@@ -1367,12 +1367,13 @@ app.get("/api/pricing/quote", async (req, res) => {
         res.sendFile(path.join(process.cwd(), 'index.html'));
       });
     }
-      // Growth agent routes
-      app.use(growthCollectorApp);
-            app.use(growthAnalyserApp);
-            app.use(growthOutcomeScorerApp);
-    app.use(growthExecutorApp);
   }
+
+// Growth agent routes
+app.use(growthCollectorApp);
+app.use(growthAnalyserApp);
+app.use(growthOutcomeScorerApp);
+app.use(growthExecutorApp);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
