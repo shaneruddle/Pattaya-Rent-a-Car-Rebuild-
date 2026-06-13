@@ -24,12 +24,18 @@ const db = getFirestore();
 
 const CMS_ORIGIN = 'https://admin-pattayarentacar.web.app';
 
+// ---------------------------------------------------------------------------
+// Auth helper
+// ---------------------------------------------------------------------------
 async function verifyIdToken(authHeader: string | undefined): Promise<string> {
   if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing auth token');
   const decoded = await admin.auth().verifyIdToken(authHeader.slice(7));
   return decoded.uid;
 }
 
+// ---------------------------------------------------------------------------
+// Main executor
+// ---------------------------------------------------------------------------
 async function executeTask(taskId: string): Promise<string> {
   const taskRef = db.collection('agent_tasks').doc(taskId);
   const taskSnap = await taskRef.get();
@@ -42,9 +48,11 @@ async function executeTask(taskId: string): Promise<string> {
 
   const { weekId, actionIndex, action: actionText, channel } = task;
 
+  // Get full action context from agent_actions doc
   const actionsSnap = await db.collection('agent_actions').doc(weekId).get();
   const fullAction = actionsSnap.data()?.actions?.[actionIndex] ?? null;
 
+  // Knowledge context for the prompt
   const knowledgeSnap = await db.collection('agent_knowledge').get();
   const knowledgeStr = knowledgeSnap.docs
     .map(d => `[${d.data().category || 'general'}] ${d.data().content}`)
@@ -52,17 +60,20 @@ async function executeTask(taskId: string): Promise<string> {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-  let result: string;
   if (channel === 'seo' || channel === 'content') {
-    result = await executeSeoContentAction(client, actionText, fullAction, channel, knowledgeStr);
+    const result = await executeSeoContentAction(client, actionText, fullAction, channel, knowledgeStr);
+    await taskRef.update({ status: 'done', result, executedAt: Timestamp.now() });
+    return result;
   } else {
-    result = await generateBrief(client, actionText, fullAction, channel, knowledgeStr);
+    const coworkPrompt = await generateCoworkPrompt(client, actionText, fullAction, channel, knowledgeStr);
+    await taskRef.update({ status: 'cowork_ready', coworkPrompt, executedAt: Timestamp.now() });
+    return coworkPrompt;
   }
-
-  await taskRef.update({ status: 'done', result, executedAt: Timestamp.now() });
-  return result;
 }
 
+// ---------------------------------------------------------------------------
+// SEO / Content execution
+// ---------------------------------------------------------------------------
 async function executeSeoContentAction(
   client: Anthropic,
   actionText: string,
@@ -75,7 +86,12 @@ async function executeSeoContentAction(
     max_tokens: 256,
     messages: [{
       role: 'user',
-      content: `Action for pattayarentacar.com: "${actionText}"\n\nIdentify: (1) pageType: location | vehicle_guide | new_blog_post | brief_only\n(2) slug if applicable (e.g. "jomtien", "toyota-fortuner")\n\nReturn JSON only: {"pageType":"...","slug":"..."}`,
+      content: `Action for pattayarentacar.com: "${actionText}"
+
+Identify: (1) pageType: location | vehicle_guide | new_blog_post | brief_only
+(2) slug if applicable (e.g. "jomtien", "toyota-fortuner")
+
+Return JSON only: {"pageType":"...","slug":"..."}`,
     }],
   });
 
@@ -96,9 +112,12 @@ async function executeSeoContentAction(
   if (intent.pageType === 'new_blog_post') {
     return createBlogPostDraft(client, actionText, knowledgeStr);
   }
-  return generateBrief(client, actionText, fullAction, channel, knowledgeStr);
+  return generateCoworkPrompt(client, actionText, fullAction, channel, knowledgeStr);
 }
 
+// ---------------------------------------------------------------------------
+// Location page SEO draft
+// ---------------------------------------------------------------------------
 async function updateLocationDraft(
   client: Anthropic,
   slug: string,
@@ -110,6 +129,7 @@ async function updateLocationDraft(
   if (!snap.exists) {
     return `Location "${slug}" not found in CMS. Manual action required: ${actionText}`;
   }
+
   const data = snap.data()!;
   const en = data.translations?.en || {};
 
@@ -118,7 +138,21 @@ async function updateLocationDraft(
     max_tokens: 1024,
     messages: [{
       role: 'user',
-      content: `Improve SEO for Pattaya Rent a Car location page: ${slug}\n\nBusiness: Car rental in Pattaya, Thailand.\nKnowledge: ${knowledgeStr}\n\nAction: ${actionText}\n\nCurrent (English):\n- H1: ${en.h1 || ''}\n- Intro: ${en.intro || ''}\n- Meta title: ${data.seo?.metaTitle || ''}\n- Meta desc: ${data.seo?.metaDescription || ''}\n\nReturn JSON only (metaTitle ≤60 chars, metaDescription ≤160 chars):\n{"metaTitle":"...","metaDescription":"...","h1":"...","intro":"..."}`,
+      content: `Improve SEO for Pattaya Rent a Car location page: ${slug}
+
+Business: Car rental in Pattaya, Thailand.
+Knowledge: ${knowledgeStr}
+
+Action: ${actionText}
+
+Current (English):
+- H1: ${en.h1 || ''}
+- Intro: ${en.intro || ''}
+- Meta title: ${data.seo?.metaTitle || ''}
+- Meta desc: ${data.seo?.metaDescription || ''}
+
+Return JSON only (metaTitle ≤60 chars, metaDescription ≤160 chars):
+{"metaTitle":"...","metaDescription":"...","h1":"...","intro":"..."}`,
     }],
   });
 
@@ -135,9 +169,12 @@ async function updateLocationDraft(
     updatedAt: Timestamp.now(),
   });
 
-  return `Draft written to location "${slug}". Review at /locations/${slug}. Suggested: "${improved.h1}" / "${improved.metaTitle}". Apply manually when ready.`;
+  return `Draft written to location "${slug}". Review at /locations/${slug} — look for the Agent Draft panel. Suggested: "${improved.h1}" / "${improved.metaTitle}". Apply manually when ready.`;
 }
 
+// ---------------------------------------------------------------------------
+// Vehicle guide SEO draft
+// ---------------------------------------------------------------------------
 async function updateVehicleGuideDraft(
   client: Anthropic,
   slug: string,
@@ -149,6 +186,7 @@ async function updateVehicleGuideDraft(
   if (!snap.exists) {
     return `Vehicle guide "${slug}" not found in CMS. Manual action required: ${actionText}`;
   }
+
   const data = snap.data()!;
   const en = data.translations?.en || {};
 
@@ -157,7 +195,22 @@ async function updateVehicleGuideDraft(
     max_tokens: 1024,
     messages: [{
       role: 'user',
-      content: `Improve SEO for Pattaya Rent a Car vehicle guide: ${slug} (${data.make} ${data.model})\n\nBusiness: Car rental in Pattaya, Thailand.\nKnowledge: ${knowledgeStr}\n\nAction: ${actionText}\n\nCurrent (English):\n- Title: ${en.title || ''}\n- H1: ${en.h1 || ''}\n- Intro: ${en.intro || ''}\n- Meta title: ${data.seo?.metaTitle || ''}\n- Meta desc: ${data.seo?.metaDescription || ''}\n\nReturn JSON only (metaTitle ≤60 chars, metaDescription ≤160 chars):\n{"metaTitle":"...","metaDescription":"...","title":"...","h1":"...","intro":"..."}`,
+      content: `Improve SEO for Pattaya Rent a Car vehicle guide: ${slug} (${data.make} ${data.model})
+
+Business: Car rental in Pattaya, Thailand.
+Knowledge: ${knowledgeStr}
+
+Action: ${actionText}
+
+Current (English):
+- Title: ${en.title || ''}
+- H1: ${en.h1 || ''}
+- Intro: ${en.intro || ''}
+- Meta title: ${data.seo?.metaTitle || ''}
+- Meta desc: ${data.seo?.metaDescription || ''}
+
+Return JSON only (metaTitle ≤60 chars, metaDescription ≤160 chars):
+{"metaTitle":"...","metaDescription":"...","title":"...","h1":"...","intro":"..."}`,
     }],
   });
 
@@ -177,6 +230,9 @@ async function updateVehicleGuideDraft(
   return `Draft written to vehicle guide "${slug}". Review at /vehicle-guides/${slug}. Meta title → "${improved.metaTitle}". Apply manually when ready.`;
 }
 
+// ---------------------------------------------------------------------------
+// New blog post draft
+// ---------------------------------------------------------------------------
 async function createBlogPostDraft(
   client: Anthropic,
   actionText: string,
@@ -187,7 +243,22 @@ async function createBlogPostDraft(
     max_tokens: 3000,
     messages: [{
       role: 'user',
-      content: `Write a blog post draft for Pattaya Rent a Car (pattayarentacar.com).\n\nTarget: tourists, expats, business travellers renting cars in Pattaya, Thailand.\nKnowledge: ${knowledgeStr}\n\nAction/Topic: ${actionText}\n\nReturn JSON only:\n{\n  "slug": "kebab-case-slug",\n  "metaTitle": "≤60 chars",\n  "metaDescription": "≤160 chars",\n  "h1": "Compelling H1",\n  "intro": "2-3 sentence intro",\n  "body": "Full HTML body using <h2>, <p>, <ul> tags. 600-800 words."\n}`,
+      content: `Write a blog post draft for Pattaya Rent a Car (pattayarentacar.com).
+
+Target: tourists, expats, business travellers renting cars in Pattaya, Thailand.
+Knowledge: ${knowledgeStr}
+
+Action/Topic: ${actionText}
+
+Return JSON only:
+{
+  "slug": "kebab-case-slug",
+  "metaTitle": "≤60 chars",
+  "metaDescription": "≤160 chars",
+  "h1": "Compelling H1",
+  "intro": "2-3 sentence intro",
+  "body": "Full HTML body using <h2>, <p>, <ul> tags. 600-800 words."
+}`,
     }],
   });
 
@@ -216,7 +287,10 @@ async function createBlogPostDraft(
   return `Blog post draft created: "${draft.h1}". Review at /blog/${slug} (status: draft). Publish when ready.`;
 }
 
-async function generateBrief(
+// ---------------------------------------------------------------------------
+// Cowork prompt generator (ads / conversion / technical / other)
+// ---------------------------------------------------------------------------
+async function generateCoworkPrompt(
   client: Anthropic,
   actionText: string,
   fullAction: any,
@@ -224,25 +298,60 @@ async function generateBrief(
   knowledgeStr: string,
 ): Promise<string> {
   const msg = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
     messages: [{
       role: 'user',
-      content: `Write a concise implementation brief for this ${channel} action for Pattaya Rent a Car.\n\nAction: ${actionText}\nContext: ${fullAction?.reasoning || ''}\nKnowledge: ${knowledgeStr}\n\n3-5 specific sentences. What to do, where, and why. No fluff.`,
+      content: `You are generating a Cowork task prompt for Pattaya Rent a Car's growth agent system.
+
+The prompt will be pasted directly into a Claude Cowork session that has:
+- Read/write access to the GitHub repo "Pattaya-Rent-a-Car-Rebuild-" (React/TypeScript frontend + Express/Node backend)
+- Firebase/Firestore access for the PRAC project
+- Deployment: push to main branch → Cloud Build → Cloud Run (us-west1) — no manual steps needed
+- Google Chrome browsing capability to check live sites
+- The user is Shane, the business owner
+
+Task details:
+- Action: ${actionText}
+- Channel: ${channel}
+- Reasoning: ${fullAction?.reasoning || 'N/A'}
+- Expected impact: ${fullAction?.expectedImpact || 'N/A'}
+- Metrics that triggered this: ${fullAction?.metrics ? JSON.stringify(fullAction.metrics) : 'N/A'}
+
+Business knowledge context:
+${knowledgeStr}
+
+Write a complete, self-contained Cowork prompt in markdown with exactly these sections:
+
+## Cowork Task: [short descriptive title]
+
+**Background:** Why this task was identified and what problem it solves (2-3 sentences).
+
+**Task:** Step-by-step instructions — exact file paths, code changes, API calls, or browser actions.
+
+**Deploy:** State whether a code deploy is required (push to main → Cloud Build → Cloud Run us-west1) or if this is config/CMS-only.
+
+**Report back:** Exact instruction on what to paste into the Growth Dashboard result field when done.`,
     }],
   });
 
-  return msg.content[0].type === 'text' ? msg.content[0].text : actionText;
+  return msg.content[0].type === 'text' ? msg.content[0].text : `Manual task required: ${actionText}`;
 }
 
+// ---------------------------------------------------------------------------
+// Express app
+// ---------------------------------------------------------------------------
 const app = express();
 
-app.use('/api/growth/execute', cors({
+const corsOptions = {
   origin: CMS_ORIGIN,
   methods: ['POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-}));
+};
+
+app.options('/api/growth/execute', cors(corsOptions));
+app.use('/api/growth/execute', cors(corsOptions));
 
 app.use(express.json());
 
