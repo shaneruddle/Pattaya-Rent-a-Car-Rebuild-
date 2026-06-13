@@ -15,6 +15,7 @@ import fetch from "node-fetch";
 import nodemailer from "nodemailer";
 import cors from "cors";
 import { growthCollectorApp } from "./src/agent/growthDataCollector.js";
+import { growthAnalyserApp } from "./src/agent/growthAnalyser.js";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -1366,6 +1367,7 @@ app.get("/api/pricing/quote", async (req, res) => {
     }
       // Growth agent routes
       app.use(growthCollectorApp);
+            app.use(growthAnalyserApp);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
