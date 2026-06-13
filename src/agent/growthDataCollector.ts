@@ -24,8 +24,7 @@ import fetch from "node-fetch";
 const PROJECT_ID = "pattaya-rent-a-car-rebuild";
 const GA4_PROPERTY_ID = "311694159";
 const SC_SITE_URL = "sc-domain:pattayarentacar.com";
-const OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
-const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET || "";
+const OAUTH_CLIENT_ID = "700448424476-9fsmqpo3qsmud5qomll84kn2gjfndqk7.apps.googleusercontent.com";
 
 // ── Init ───────────────────────────────────────────────────────────────────
 if (!admin.apps.length) {
@@ -139,9 +138,10 @@ async function fetchSearchConsoleData(
     weekEnd: string,
     refreshToken: string
   ) {
+    const oauthClientSecret = await getSecret("google-oauth-client-secret");
     const oauth2Client = new google.auth.OAuth2(
-          OAUTH_CLIENT_ID || "407408718192.apps.googleusercontent.com",
-          OAUTH_CLIENT_SECRET || ""
+          OAUTH_CLIENT_ID,
+          oauthClientSecret
         );
     oauth2Client.setCredentials({ refresh_token: refreshToken });
 
