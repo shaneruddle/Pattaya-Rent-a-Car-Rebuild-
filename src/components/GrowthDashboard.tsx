@@ -14,9 +14,7 @@ import {
   serverTimestamp,
   where,
 } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { db, auth } from '@/firebase';
 import {
   TrendingUp,
   Zap,
@@ -325,7 +323,7 @@ export default function GrowthDashboard() {
                 </p>
               </div>
             </div>
-            <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] font-bold uppercase tracking-widest">Analysed</Badge>
+            <span className="bg-emerald-100 text-emerald-700 border-0 text-[10px] font-bold uppercase tracking-widest">Analysed</span>
           </div>
           {latestAnalysed.summary && (
             <p className="mt-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">{latestAnalysed.summary}</p>
@@ -502,8 +500,7 @@ export default function GrowthDashboard() {
                               value={pasteResults[action.index] ?? ''}
                               onChange={e => setPasteResults(prev => ({ ...prev, [action.index]: e.target.value }))}
                             />
-                            <Button
-                              size="sm"
+                            <button
                               className="h-7 px-3 text-[10px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white"
                               onClick={() => handleSubmitResult(action)}
                               disabled={!pasteResults[action.index]?.trim() || submittingResult === action.index}
@@ -513,7 +510,7 @@ export default function GrowthDashboard() {
                                 : <CheckCircle2 size={11} className="mr-1" />
                               }
                               Save Result to Memory
-                            </Button>
+                            </button>
                           </div>
                         </div>
                       )}
@@ -536,9 +533,7 @@ export default function GrowthDashboard() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
+                          <button
                             className="h-7 px-3 text-[10px] font-bold uppercase tracking-widest border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                             onClick={() => handleApprove(action)}
                             disabled={isApproving}
@@ -548,17 +543,15 @@ export default function GrowthDashboard() {
                               : <ThumbsUp size={11} className="mr-1" />
                             }
                             Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          </button>
+                          <button
                             className="h-7 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                             onClick={() => handleIgnore(action)}
                             disabled={isApproving}
                           >
                             <ThumbsDown size={11} className="mr-1" />
                             Ignore
-                          </Button>
+                          </button>
                         </div>
                       )}
                     </div>
