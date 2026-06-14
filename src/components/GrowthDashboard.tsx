@@ -139,6 +139,12 @@ export default function GrowthDashboard() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [expandedKnowledge, setExpandedKnowledge] = useState(false);
   const [latestWeekId, setLatestWeekId] = useState<string | null>(null);
+  const [liveGsc, setLiveGsc] = useState<{
+    period: { startDate: string; endDate: string };
+    totals: { clicks: number; impressions: number; ctr: number; position: number };
+    topQueries: GscQuery[];
+  } | null>(null);
+  const [liveGscLoading, setLiveGscLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -194,6 +200,22 @@ export default function GrowthDashboard() {
     });
     return unsub;
   }, [latestWeekId]);
+
+  useEffect(() => {
+    async function fetchGsc() {
+      try {
+        const r = await fetch('/api/gsc/performance');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        setLiveGsc(data);
+      } catch (err) {
+        console.error('GSC fetch error:', err);
+      } finally {
+        setLiveGscLoading(false);
+      }
+    }
+    fetchGsc();
+  }, []);
 
   const handleApprove = useCallback(async (action: AgentAction) => {
     if (!latestWeekId) return;
@@ -317,7 +339,7 @@ export default function GrowthDashboard() {
                 <TrendingUp size={20} className="text-emerald-600" />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Latest Analysis — {latestAnalysed.weekId}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Latest Analysis â {latestAnalysed.weekId}</p>
                 <p className="text-sm font-semibold text-slate-800">
                   {latestAnalysed.analysedAt ? `Analysed ${format(latestAnalysed.analysedAt.toDate(), 'EEE d MMM yyyy, HH:mm')}` : 'Recently analysed'}
                 </p>
@@ -333,19 +355,27 @@ export default function GrowthDashboard() {
 
       {/* Search Console panel */}
       {(() => {
-        const gsc = latestAnalysed?.searchConsole;
-        if (!gsc && !loading) return null;
+        const firestoreGsc = latestAnalysed?.searchConsole;
+        const gsc = liveGsc ? {
+          totalClicks: liveGsc.totals.clicks,
+          totalImpressions: liveGsc.totals.impressions,
+          avgPosition: parseFloat(liveGsc.totals.position.toFixed(1)),
+          topQueries: liveGsc.topQueries,
+          topPages: firestoreGsc?.topPages ?? [],
+        } : firestoreGsc;
+        const gscLoading = loading || liveGscLoading;
+        if (!gsc && !gscLoading) return null;
         return (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Search size={14} className="text-slate-500" />
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                  Google Search Console{latestAnalysed ? ` — ${latestAnalysed.weekId}` : ''}
+                  Google Search Console{latestAnalysed ? ` â ${latestAnalysed.weekId}` : ''}
                 </span>
               </div>
             </div>
-            {loading ? (
+            {gscLoading ? (
               <div className="p-6 space-y-3">
                 {[1,2,3].map(i => <div key={i} className="h-3 bg-slate-50 animate-pulse rounded" />)}
               </div>
@@ -427,7 +457,7 @@ export default function GrowthDashboard() {
           <div className="flex items-center gap-2">
             <Zap size={14} className="text-slate-500" />
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-              Recommended Actions{latestAnalysed ? ` — ${latestAnalysed.weekId}` : ''}
+              Recommended Actions{latestAnalysed ? ` â ${latestAnalysed.weekId}` : ''}
             </span>
           </div>
           <span className="text-[10px] font-bold text-slate-400">{actions.length} actions</span>
@@ -444,7 +474,7 @@ export default function GrowthDashboard() {
         ) : actions.length === 0 ? (
           <div className="h-40 flex flex-col items-center justify-center text-slate-400 gap-2">
             <AlertCircle size={28} className="opacity-20" />
-            <p className="text-sm font-medium">No actions yet — analysis runs Monday 07:30 BKK.</p>
+            <p className="text-sm font-medium">No actions yet â analysis runs Monday 07:30 BKK.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-50">
