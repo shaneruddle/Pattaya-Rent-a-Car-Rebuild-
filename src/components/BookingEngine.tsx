@@ -423,6 +423,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         utmCampaign:      utmParams.campaign   || null,
         utmContent:       utmParams.content    || null,
         utmTerm:          utmParams.term       || null,
+        rentalDays:      totalDays,
         customerName: `${formData.firstName} ${formData.lastName}`,
         mobileNumber: formData.mobile,
         email: formData.email,
