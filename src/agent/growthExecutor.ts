@@ -72,6 +72,38 @@ async function executeTask(taskId: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Generate-prompt only (no autonomous execution)
+// All channels go straight to cowork_ready — use this instead of executeTask
+// when you want the user to handle every action via a Cowork session.
+// ---------------------------------------------------------------------------
+async function generatePromptTask(taskId: string): Promise<string> {
+  const taskRef = db.collection('agent_tasks').doc(taskId);
+  const taskSnap = await taskRef.get();
+  if (!taskSnap.exists) throw new Error(`Task ${taskId} not found`);
+
+  const task = taskSnap.data()!;
+  if (task.status !== 'queued') throw new Error(`Task already in status: ${task.status}`);
+
+  await taskRef.update({ status: 'executing', executingAt: Timestamp.now() });
+
+  const { weekId, actionIndex, action: actionText, channel } = task;
+
+  const actionsSnap = await db.collection('agent_actions').doc(weekId).get();
+  const fullAction = actionsSnap.data()?.actions?.[actionIndex] ?? null;
+
+  const knowledgeSnap = await db.collection('agent_knowledge').get();
+  const knowledgeStr = knowledgeSnap.docs
+    .map(d => `[${d.data().category || 'general'}] ${d.data().content}`)
+    .join('\n') || 'No knowledge context stored yet.';
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
+  const coworkPrompt = await generateCoworkPrompt(client, actionText, fullAction, channel, knowledgeStr);
+  await taskRef.update({ status: 'cowork_ready', coworkPrompt, executedAt: Timestamp.now() });
+  return coworkPrompt;
+}
+
+// ---------------------------------------------------------------------------
 // SEO / Content execution
 // ---------------------------------------------------------------------------
 async function executeSeoContentAction(
@@ -288,7 +320,8 @@ Return JSON only:
 }
 
 // ---------------------------------------------------------------------------
-// Cowork prompt generator (ads / conversion / technical / other)
+// Cowork prompt generator
+// Produces a rich, self-contained prompt to paste into a Claude Cowork session.
 // ---------------------------------------------------------------------------
 async function generateCoworkPrompt(
   client: Anthropic,
@@ -325,13 +358,15 @@ Write a complete, self-contained Cowork prompt in markdown with exactly these se
 
 ## Cowork Task: [short descriptive title]
 
-**Background:** Why this task was identified and what problem it solves (2-3 sentences).
+**Background:** Why this task was identified and what problem it solves (2-3 sentences, reference the specific data/metrics that triggered it).
 
-**Task:** Step-by-step instructions — exact file paths, code changes, API calls, or browser actions.
+**Task:** Step-by-step instructions — exact file paths, code changes, API calls, or browser actions. Be specific enough that Claude can execute without asking questions. Include expected behaviour after the change.
 
 **Deploy:** State whether a code deploy is required (push to main → Cloud Build → Cloud Run us-west1) or if this is config/CMS-only.
 
-**Report back:** Exact instruction on what to paste into the Growth Dashboard result field when done.`,
+**Report back:** Exact instruction on what to paste into the Growth Dashboard result field when done — e.g. "Paste: what was changed, any before/after metrics, and any issues encountered."
+
+Write the prompt as if briefing a senior developer who has never seen this business before. Use concrete file paths and variable names where you know them.`,
     }],
   });
 
@@ -352,8 +387,41 @@ const corsOptions = {
 
 app.options('/api/growth/execute', cors(corsOptions));
 app.use('/api/growth/execute', cors(corsOptions));
+app.options('/api/growth/generate-prompt', cors(corsOptions));
+app.use('/api/growth/generate-prompt', cors(corsOptions));
 
 app.use(express.json());
+
+// Cowork-prompt-only path — used by the dashboard when autonomous execution is disabled.
+app.post('/api/growth/generate-prompt', async (req: Request, res: Response) => {
+  try {
+    await verifyIdToken(req.headers.authorization);
+  } catch {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const { taskId } = req.body;
+  if (!taskId || typeof taskId !== 'string') {
+    res.status(400).json({ error: 'Missing taskId' });
+    return;
+  }
+
+  try {
+    const result = await generatePromptTask(taskId);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    console.error('growthExecutor generate-prompt error:', err);
+    try {
+      await db.collection('agent_tasks').doc(taskId).update({
+        status: 'failed',
+        error: err.message,
+        executedAt: Timestamp.now(),
+      });
+    } catch {}
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 app.post('/api/growth/execute', async (req: Request, res: Response) => {
   try {
