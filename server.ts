@@ -1139,6 +1139,91 @@ app.get("/api/pricing/quote", async (req, res) => {
     })) || [];
   }
 
+  // GSC performance via service account (Secret Manager)
+  app.get('/api/gsc/performance', async (req, res) => {
+    try {
+      const { google } = await import('googleapis');
+      const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+
+      const secretmanager = google.secretmanager({ version: 'v1' });
+      const adcAuth = new google.auth.GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      });
+      const adcClient = await adcAuth.getClient();
+
+      const secretResp = await secretmanager.projects.secrets.versions.access({
+        auth: adcClient as any,
+        name: `projects/${projectId}/secrets/GSC_SERVICE_ACCOUNT_KEY/versions/latest`,
+      });
+
+      const keyJson = Buffer.from(
+        secretResp.data.payload!.data! as string,
+        'base64'
+      ).toString('utf8');
+      const credentials = JSON.parse(keyJson);
+
+      const gscAuth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+      });
+
+      const searchconsole = google.searchconsole({ version: 'v1', auth: gscAuth });
+
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 3);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 6);
+      const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+      const [topQueriesResp, totalsResp] = await Promise.all([
+        searchconsole.searchanalytics.query({
+          siteUrl: 'sc-domain:pattayarentacar.com',
+          requestBody: {
+            startDate: fmt(startDate),
+            endDate: fmt(endDate),
+            dimensions: ['query'],
+            rowLimit: 25,
+            dataState: 'final',
+          },
+        }),
+        searchconsole.searchanalytics.query({
+          siteUrl: 'sc-domain:pattayarentacar.com',
+          requestBody: {
+            startDate: fmt(startDate),
+            endDate: fmt(endDate),
+            rowLimit: 1,
+            dataState: 'final',
+          },
+        }),
+      ]);
+
+      const rows = topQueriesResp.data.rows || [];
+      const totalsRow = (totalsResp.data.rows || [])[0] || {};
+
+      res.json({
+        period: { startDate: fmt(startDate), endDate: fmt(endDate) },
+        totals: {
+          clicks: totalsRow.clicks ?? 0,
+          impressions: totalsRow.impressions ?? 0,
+          ctr: totalsRow.ctr ?? 0,
+          position: totalsRow.position ?? 0,
+        },
+        topQueries: rows.map((row: any) => ({
+          query: row.keys?.[0] ?? '',
+          clicks: row.clicks ?? 0,
+          impressions: row.impressions ?? 0,
+          ctr: row.ctr ?? 0,
+          position: row.position ?? 0,
+        })),
+      });
+    } catch (err: any) {
+      console.error('GSC API error:', err?.message || err);
+      res.status(500).json({ error: 'Failed to fetch GSC data', detail: err?.message });
+    }
+  });
+
+
+
   app.post("/api/searchconsole/performance", async (req, res) => {
     try {
       const { startDate, endDate, dimensions, rowLimit } = req.body;
