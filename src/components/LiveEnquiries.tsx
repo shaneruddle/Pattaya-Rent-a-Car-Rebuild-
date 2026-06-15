@@ -736,7 +736,7 @@ However, we can offer the following alternative...`,
                           {cars
                             .filter(car =>
                               !carSearch ||
-                              car.name.toLowerCase().includes(carSearch.toLowerCase()) ||
+                              (car.name ?? "").toLowerCase().includes(carSearch.toLowerCase()) ||
                               car.plateNumber?.toLowerCase().includes(carSearch.toLowerCase()) ||
                               car.type?.toLowerCase().includes(carSearch.toLowerCase())
                             )
@@ -755,7 +755,7 @@ However, we can offer the following alternative...`,
                             ))}
                           {cars.filter(car =>
                             !carSearch ||
-                            car.name.toLowerCase().includes(carSearch.toLowerCase()) ||
+                            (car.name ?? "").toLowerCase().includes(carSearch.toLowerCase()) ||
                             car.plateNumber?.toLowerCase().includes(carSearch.toLowerCase()) ||
                             car.type?.toLowerCase().includes(carSearch.toLowerCase())
                           ).length === 0 && (
