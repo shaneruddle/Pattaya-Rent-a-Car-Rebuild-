@@ -873,6 +873,19 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     setContextMenu({ x: e.clientX, y: e.clientY, booking });
   }, []);
 
+  const handleSaveMaintenancePeriod = React.useCallback(async (bookingId: string, newStart: string, newEnd: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        startDate: new Date(newStart + 'T00:00:00').toISOString(),
+        endDate: new Date(newEnd + 'T23:59:59').toISOString(),
+      });
+      setMaintenanceEditModal(null);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Failed to update maintenance period:', error);
+    }
+  }, [onRefresh]);
+
   const handleSlotContextMenu = React.useCallback((e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
     if (clipboard) {
@@ -1084,6 +1097,9 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const daysInMonth = visibleDays; // Maintain compatibility with existing variable name or replace all
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [maintenanceEditModal, setMaintenanceEditModal] = useState<{ booking: Booking } | null>(null);
+  const [maintenanceStartDate, setMaintenanceStartDate] = useState('');
+  const [maintenanceEndDate, setMaintenanceEndDate] = useState('');
 
   const handleSlotClick = React.useCallback((carId: string, date: Date, slot: 'AM' | 'PM') => {
     setSelectedSlot({ carId, date, slot });
@@ -2582,6 +2598,20 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   <Scissors size={14} />
                   Cut Booking
                 </button>
+            {contextMenu.booking?.isMaintenance && (
+              <button
+                onClick={() => {
+                  setMaintenanceStartDate(contextMenu.booking!.startDate.slice(0, 10));
+                  setMaintenanceEndDate(contextMenu.booking!.endDate.slice(0, 10));
+                  setMaintenanceEditModal({ booking: contextMenu.booking! });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-orange-600 hover:bg-orange-50 transition-colors rounded-xl"
+              >
+                <Wrench size={14} />
+                Edit Period
+              </button>
+            )}
                 <div className="h-[1px] bg-black/5 my-1" />
                 <button
                   onClick={() => {
@@ -2604,6 +2634,67 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 Paste Booking
               </button>
             ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Maintenance Period Edit Modal */}
+      <AnimatePresence>
+        {maintenanceEditModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40"
+            onClick={() => setMaintenanceEditModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900 mb-4">Edit Maintenance Period</h3>
+              {maintenanceEditModal.booking.maintenanceDescription && (
+                <p className="text-xs text-gray-500 mb-4">{maintenanceEditModal.booking.maintenanceDescription}</p>
+              )}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={maintenanceStartDate}
+                    onChange={(e) => setMaintenanceStartDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={maintenanceEndDate}
+                    onChange={(e) => setMaintenanceEndDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-5">
+                <button
+                  onClick={() => setMaintenanceEditModal(null)}
+                  className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:bg-gray-50 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleSaveMaintenancePeriod(maintenanceEditModal.booking.id, maintenanceStartDate, maintenanceEndDate)}
+                  disabled={!maintenanceStartDate || !maintenanceEndDate}
+                  className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors disabled:opacity-40"
+                >
+                  Save
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
