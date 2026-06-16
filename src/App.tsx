@@ -35,7 +35,7 @@ import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactGA from 'react-ga4';
 import { captureUTMParams } from './utils/utmCapture';
-import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck } from 'lucide-react';
+import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck, Plus } from 'lucide-react';
 import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
 import { safeLocalStorage } from './lib/storage';
@@ -179,7 +179,7 @@ function AppContent() {
   // Redirect mobile employees to allowed sections
   useEffect(() => {
     if (isMobile && user && isStaff) {
-      const allowedViews = ['timeline_cars', 'timeline_bikes', 'rentals'];
+      const allowedViews = ['timeline_cars', 'timeline_bikes', 'rentals', 'new_rental'];
       if (!allowedViews.includes(currentView) && !isAdmin) {
         setCurrentView('timeline_cars');
       }
@@ -818,6 +818,18 @@ function AppContent() {
                 <ShieldCheck size={20} />
               </motion.div>
               <span className="text-[9px] font-bold uppercase tracking-widest">Live</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('new_rental')}
+              className={cn(
+                "flex flex-col items-center gap-1 transition-all",
+                currentView === 'new_rental' ? "text-brand-orange" : "text-[#1A1A1A]/40"
+              )}
+            >
+              <motion.div animate={currentView === 'new_rental' ? { scale: 1.2 } : { scale: 1 }}>
+                <Plus size={20} />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">New Rental</span>
             </button>
           </div>
         )}
