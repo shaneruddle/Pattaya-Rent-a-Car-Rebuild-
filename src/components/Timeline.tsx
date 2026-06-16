@@ -1400,10 +1400,10 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const car = cars.find(c => c.id === (booking.carId || 'unassigned'));
     const pricePerDay = car?.pricePerDay || 0;
 
-    const RED_500 = 'rgba(239, 68, 68, 0.2)';
-    const EMERALD_500 = 'rgba(16, 185, 129, 0.2)';
-    const YELLOW_400 = 'rgba(250, 204, 21, 0.2)';
-    const GRAY_600 = 'rgba(75, 85, 99, 0.2)';
+    const RED_500 = '#EF4444';
+    const EMERALD_500 = '#10B981';
+    const YELLOW_400 = '#FACC15';
+    const GRAY_600 = '#4B5563';
 
     let background = EMERALD_500;
 
