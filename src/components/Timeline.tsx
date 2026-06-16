@@ -1122,7 +1122,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   }, [currentDate]);
 
   const availabilityData = useMemo(() => {
-    const activeCars = cars.filter(c => c.isActive !== false);
+    const activeCars = cars.filter(c => c.isActive !== false && c.name && c.name.trim());
     
     return visibleDays.map(day => {
       const amStart = startOfDay(day);
