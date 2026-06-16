@@ -395,6 +395,9 @@ function AppContent() {
   }, [cars, bookings]);
 
   const filteredBookings = useMemo(() => {
+    const isBikeView = currentView === 'timeline_bikes';
+    const isCarView = currentView === 'timeline_cars';
+
     const result = bookings.filter(booking => {
       const name = booking.customerName || '';
       const mobile = booking.mobileNumber || '';
@@ -402,6 +405,15 @@ function AppContent() {
       const matchesSearch = 
         (name?.toLowerCase() || '').includes((searchQuery || '').toLowerCase() || '') ||
         (mobile?.includes(searchQuery) || false);
+
+      // For unassigned bookings on timeline views, only show on the correct timeline
+      const isUnassigned = !booking.carId || booking.carId === '' || booking.carId === 'unassigned';
+      if (isUnassigned && (isBikeView || isCarView)) {
+        const matchedCar = cars.find(c => c.name === booking.requestedCarType);
+        const isBikeBooking = matchedCar ? matchedCar.category === 'Motorbike' : false;
+        if (isBikeView && !isBikeBooking) return false;
+        if (isCarView && isBikeBooking) return false;
+      }
       
       return matchesSearch;
     });
@@ -419,7 +431,7 @@ function AppContent() {
     }
 
     return result;
-  }, [bookings, searchQuery]);
+  }, [bookings, searchQuery, currentView, cars]);
 
   console.log('AppContent: Auth state:', { loading, user: !!user, isStaff });
 
