@@ -886,6 +886,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     }
   }, [onRefresh]);
 
+  const [earlyReturnModal, setEarlyReturnModal] = useState<{ booking: Booking } | null>(null);
+  const [earlyReturnDate, setEarlyReturnDate] = useState('');
+  const [earlyReturnRefund, setEarlyReturnRefund] = useState('');
+  const [earlyReturnAccountId, setEarlyReturnAccountId] = useState('');
+  const [earlyReturnSaving, setEarlyReturnSaving] = useState(false);
+
   const handleEarlyReturn = React.useCallback(async () => {
     if (!earlyReturnModal) return;
     const booking = earlyReturnModal.booking;
@@ -1175,11 +1181,6 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const [maintenanceEditModal, setMaintenanceEditModal] = useState<{ booking: Booking } | null>(null);
   const [maintenanceStartDate, setMaintenanceStartDate] = useState('');
   const [maintenanceEndDate, setMaintenanceEndDate] = useState('');
-  const [earlyReturnModal, setEarlyReturnModal] = useState<{ booking: Booking } | null>(null);
-  const [earlyReturnDate, setEarlyReturnDate] = useState('');
-  const [earlyReturnRefund, setEarlyReturnRefund] = useState('');
-  const [earlyReturnAccountId, setEarlyReturnAccountId] = useState('');
-  const [earlyReturnSaving, setEarlyReturnSaving] = useState(false);
 
   const handleSlotClick = React.useCallback((carId: string, date: Date, slot: 'AM' | 'PM') => {
     setSelectedSlot({ carId, date, slot });
