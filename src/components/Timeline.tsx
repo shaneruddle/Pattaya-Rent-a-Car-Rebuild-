@@ -824,7 +824,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   };
 
   useEffect(() => {
-    const sorted = [...cars].sort((a, b) => {
+    const sorted = [...cars].filter(c => c.name && c.name.trim()).sort((a, b) => {
       const orderA = a.sortOrder ?? a.order ?? 0;
       const orderB = b.sortOrder ?? b.order ?? 0;
       return orderA - orderB;
@@ -1506,7 +1506,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     if (isMaintenance) {
       background = GRAY_600;
     } else if (isUnassigned) {
-      background = '#8B5CF6';
+      background = 'rgba(139, 92, 246, 0.72)';
     } else if (isCompleted) {
       // Completed returns are always solid green
       background = EMERALD_500;
