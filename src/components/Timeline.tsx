@@ -5,7 +5,7 @@ import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { upsertCustomer } from '../lib/customerService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
@@ -886,6 +886,79 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     }
   }, [onRefresh]);
 
+  const handleEarlyReturn = React.useCallback(async () => {
+    if (!earlyReturnModal) return;
+    const booking = earlyReturnModal.booking;
+    setEarlyReturnSaving(true);
+    try {
+      const newEndDate = new Date(earlyReturnDate + 'T23:59:59').toISOString();
+
+      // 1. Update booking
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        endDate: newEndDate,
+        status: 'Completed',
+      });
+
+      // 2. Log refund transaction if amount entered
+      const refundAmount = parseFloat(earlyReturnRefund) || 0;
+      if (refundAmount > 0 && earlyReturnAccountId) {
+        const txRef = doc(collection(db, 'transactions'));
+        const batch = writeBatch(db);
+        batch.set(txRef, {
+          type: 'Expense',
+          amount: refundAmount,
+          date: new Date().toISOString(),
+          category: 'Rental Refund',
+          carId: booking.carId || null,
+          bookingId: booking.id,
+          accountId: earlyReturnAccountId,
+          description: `Early return refund - ${booking.customerName}`,
+        });
+        batch.update(doc(db, 'accounts', earlyReturnAccountId), {
+          balance: increment(-refundAmount),
+        });
+        await batch.commit();
+      }
+
+      // 3. Send return confirmation email
+      if (booking.email) {
+        try {
+          const carSnap = await getDoc(doc(db, 'cars', booking.carId || ''));
+          const carName = carSnap.exists() ? carSnap.data().name : (booking.requestedCarType || 'Vehicle');
+          const plateNumber = carSnap.exists() ? (carSnap.data().plateNumber || '') : '';
+          const startDate = parseISO(booking.startDate);
+          const returnDate = new Date(earlyReturnDate + 'T23:59:59');
+          await sendTemplatedEmail('return_confirmation', booking.email, {
+            '{{customer_name}}': booking.customerName,
+            '{{customer_email}}': booking.email,
+            '{{customer_phone}}': booking.mobileNumber || '',
+            '{{vehicle_model}}': carName,
+            '{{plate_number}}': plateNumber,
+            '{{pickup_date}}': format(startDate, 'dd MMM yyyy'),
+            '{{pickup_time}}': format(startDate, 'HH:mm'),
+            '{{return_date}}': format(returnDate, 'dd MMM yyyy'),
+            '{{return_time}}': format(returnDate, 'HH:mm'),
+            '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(returnDate, 'dd MMM yyyy')}`,
+            '{{total_price}}': (booking.amount || 0).toLocaleString(),
+            '{{delivery_address}}': booking.deliveryAddress || '',
+            '{{comments}}': booking.notes || '',
+          });
+        } catch (emailErr) {
+          console.error('Early return email failed:', emailErr);
+        }
+      }
+
+      setEarlyReturnModal(null);
+      if (onRefresh) onRefresh();
+      toast.success('Rental ended. Booking updated, refund logged, email sent.');
+    } catch (err) {
+      console.error('Early return failed:', err);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setEarlyReturnSaving(false);
+    }
+  }, [earlyReturnModal, earlyReturnDate, earlyReturnRefund, earlyReturnAccountId, onRefresh]);
+
   const handleSlotContextMenu = React.useCallback((e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
     if (clipboard) {
@@ -1100,6 +1173,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const [maintenanceEditModal, setMaintenanceEditModal] = useState<{ booking: Booking } | null>(null);
   const [maintenanceStartDate, setMaintenanceStartDate] = useState('');
   const [maintenanceEndDate, setMaintenanceEndDate] = useState('');
+  const [earlyReturnModal, setEarlyReturnModal] = useState<{ booking: Booking } | null>(null);
+  const [earlyReturnDate, setEarlyReturnDate] = useState('');
+  const [earlyReturnRefund, setEarlyReturnRefund] = useState('');
+  const [earlyReturnAccountId, setEarlyReturnAccountId] = useState('');
+  const [earlyReturnSaving, setEarlyReturnSaving] = useState(false);
 
   const handleSlotClick = React.useCallback((carId: string, date: Date, slot: 'AM' | 'PM') => {
     setSelectedSlot({ carId, date, slot });
@@ -2616,6 +2694,21 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 Edit Period
               </button>
             )}
+            {!contextMenu.booking?.isMaintenance && contextMenu.booking?.status !== 'Completed' && (
+              <button
+                onClick={() => {
+                  setEarlyReturnDate(new Date().toISOString().slice(0, 10));
+                  setEarlyReturnRefund('');
+                  setEarlyReturnAccountId(accounts[0]?.id || '');
+                  setEarlyReturnModal({ booking: contextMenu.booking! });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors rounded-xl"
+              >
+                <X size={14} />
+                End Rental Early
+              </button>
+            )}
                 <div className="h-[1px] bg-black/5 my-1" />
                 <button
                   onClick={() => {
@@ -2696,6 +2789,82 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                   className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors disabled:opacity-40"
                 >
                   Save
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Early Return Modal */}
+      <AnimatePresence>
+        {earlyReturnModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40"
+            onClick={() => !earlyReturnSaving && setEarlyReturnModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900 mb-1">End Rental Early</h3>
+              <p className="text-xs text-gray-500 mb-4">{earlyReturnModal.booking.customerName}</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1">Return Date</label>
+                  <input
+                    type="date"
+                    value={earlyReturnDate}
+                    max={earlyReturnModal.booking.endDate.slice(0, 10)}
+                    onChange={(e) => setEarlyReturnDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:border-red-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1">Refund Amount (฿)</label>
+                  <input
+                    type="number"
+                    value={earlyReturnRefund}
+                    onChange={(e) => setEarlyReturnRefund(e.target.value)}
+                    placeholder="0"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:border-red-400"
+                  />
+                </div>
+                {parseFloat(earlyReturnRefund) > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1">Refund From Account</label>
+                    <select
+                      value={earlyReturnAccountId}
+                      onChange={(e) => setEarlyReturnAccountId(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:border-red-400"
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-5">
+                <button
+                  onClick={() => setEarlyReturnModal(null)}
+                  disabled={earlyReturnSaving}
+                  className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:bg-gray-50 rounded-xl transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEarlyReturn}
+                  disabled={!earlyReturnDate || earlyReturnSaving}
+                  className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors disabled:opacity-40"
+                >
+                  {earlyReturnSaving ? 'Saving...' : 'Confirm'}
                 </button>
               </div>
             </motion.div>
