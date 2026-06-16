@@ -5,7 +5,7 @@ import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
 import { upsertCustomer } from '../lib/customerService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
@@ -903,6 +903,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       const refundAmount = parseFloat(earlyReturnRefund) || 0;
       if (refundAmount > 0 && earlyReturnAccountId) {
         const txRef = doc(collection(db, 'transactions'));
+        const accSnap = await getDoc(doc(db, 'accounts', earlyReturnAccountId));
+        const currentBalance = accSnap.exists() ? (accSnap.data().balance || 0) : 0;
         const batch = writeBatch(db);
         batch.set(txRef, {
           type: 'Expense',
@@ -915,7 +917,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
           description: `Early return refund - ${booking.customerName}`,
         });
         batch.update(doc(db, 'accounts', earlyReturnAccountId), {
-          balance: increment(-refundAmount),
+          balance: currentBalance - refundAmount,
         });
         await batch.commit();
       }
