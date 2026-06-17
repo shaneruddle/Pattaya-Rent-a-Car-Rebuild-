@@ -236,13 +236,13 @@ async function fetchFirestoreEnquiries(weekStart: string, weekEnd: string) {
 }
 
 // ── Main collector ─────────────────────────────────────────────────────────
-async function collectData(): Promise<{ weekId: string; status: string }> {
+async function collectData(force = false): Promise<{ weekId: string; status: string }> {
     const prevMonday = getPreviousWeekMonday();
     const { weekId, weekStart, weekEnd } = getWeekInfo(prevMonday);
     console.log(`Collecting data for ${weekId} (${weekStart} -> ${weekEnd})`);
 
   const existing = await db.collection("agent_weeks").doc(weekId).get();
-    if (existing.exists && existing.data()?.status !== "pending") {
+    if (!force && existing.exists && existing.data()?.status !== "pending") {
           console.log(`Week ${weekId} already collected, skipping.`);
           return { weekId, status: "skipped" };
     }

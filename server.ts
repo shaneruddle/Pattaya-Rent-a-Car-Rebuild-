@@ -1349,21 +1349,8 @@ app.get("/api/pricing/quote", async (req, res) => {
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
   try {
-    // Force-reset the most recent week so the full pipeline always re-runs
-    const snapshot = await admin.firestore()
-      .collection('agent_weeks')
-      .orderBy('weekId', 'desc')
-      .limit(1)
-      .get();
-    if (!snapshot.empty) {
-      const weekDoc = snapshot.docs[0];
-      const currentStatus = weekDoc.data()?.status;
-      if (currentStatus && currentStatus !== 'pending') {
-        await weekDoc.ref.update({ status: 'pending' });
-        console.log(`[run-now] Reset week ${weekDoc.id} from "${currentStatus}" to "pending"`);
-      }
-    }
-    await collectData();
+    // force=true bypasses the skip guard so the pipeline always re-runs
+    await collectData(true);
     await analyseWeek();
     console.log('[run-now] completed successfully');
     res.json({ success: true });
