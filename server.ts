@@ -1349,7 +1349,10 @@ app.get("/api/pricing/quote", async (req, res) => {
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
   try {
-    await collectData();
+    const collectResult = await collectData();
+    if (collectResult.status === 'skipped') {
+      return res.json({ success: true, skipped: true, message: `Week ${collectResult.weekId} is already analysed  nothing new to process.` });
+    }
     await analyseWeek();
     console.log('[run-now] completed successfully');
     res.json({ success: true });
