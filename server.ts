@@ -1348,14 +1348,14 @@ app.get("/api/pricing/quote", async (req, res) => {
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
-  // Respond immediately  analysis runs in background (avoids Cloud Run 60s timeout)
-  res.json({ success: true, message: 'Analysis started' });
   try {
     await collectData();
     await analyseWeek();
     console.log('[run-now] completed successfully');
+    res.json({ success: true });
   } catch (err: any) {
     console.error('[run-now] failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 // Catch-all for unhandled API routes
