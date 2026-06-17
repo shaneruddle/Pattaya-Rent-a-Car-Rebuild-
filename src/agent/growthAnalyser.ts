@@ -37,15 +37,29 @@ interface AnalysisResult {
   actions: AgentAction[];
 }
 
-async function getUnanalysedWeek() {
+async function getUnanalysedWeek(force = false) {
   const snap = await db
     .collection("agent_weeks")
     .where("status", "==", "collected")
     .orderBy("weekStart", "desc")
     .limit(1)
     .get();
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, data: snap.docs[0].data() };
+  if (!snap.empty) return { id: snap.docs[0].id, data: snap.docs[0].data() };
+
+  // force=true: also accept already-analysed weeks (for re-analysis without re-collecting)
+  if (force) {
+    const analysedSnap = await db
+      .collection("agent_weeks")
+      .where("status", "==", "analysed")
+      .orderBy("weekStart", "desc")
+      .limit(1)
+      .get();
+    if (!analysedSnap.empty) {
+      await analysedSnap.docs[0].ref.update({ status: "collected" });
+      return { id: analysedSnap.docs[0].id, data: analysedSnap.docs[0].data() };
+    }
+  }
+  return null;
 }
 
 async function getRecentActions(excludeWeekId: string, limit = 4) {
@@ -102,8 +116,8 @@ function buildPrompt(weekData: any, recentActions: any[], knowledge: any[]): str
   ].join("\n");
 }
 
-async function analyseWeek(): Promise<AnalysisResult> {
-  const week = await getUnanalysedWeek();
+async function analyseWeek(force = false): Promise<AnalysisResult> {
+  const week = await getUnanalysedWeek(force);
   if (!week) throw new Error("No collected weeks awaiting analysis");
   const { id: weekId, data: weekData } = week;
   console.log("Analysing week " + weekId);

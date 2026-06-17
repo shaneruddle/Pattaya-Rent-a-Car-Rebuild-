@@ -1349,9 +1349,9 @@ app.get("/api/pricing/quote", async (req, res) => {
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
   try {
-    // force=true bypasses the skip guard so the pipeline always re-runs
-    await collectData(true);
-    await analyseWeek();
+    // force=true: re-analyses existing collected/analysed data without re-collecting
+    // Raw data (GA4, Search Console, Bing) stays intact; only AI analysis is re-run
+    await analyseWeek(true);
     console.log('[run-now] completed successfully');
     res.json({ success: true });
   } catch (err: any) {
