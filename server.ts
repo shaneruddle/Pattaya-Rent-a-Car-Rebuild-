@@ -1343,16 +1343,7 @@ app.get("/api/pricing/quote", async (req, res) => {
     }
   });
 
-  app.options('/api/growth/run-now', (_req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.status(204).end();
-});
-app.post('/api/growth/run-now', async (req: any, res: any) => {
-  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  app.post('/api/growth/run-now', async (req: any, res: any) => {
   const authHeader = req.headers['authorization'] as string | undefined;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
