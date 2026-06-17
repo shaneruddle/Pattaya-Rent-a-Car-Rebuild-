@@ -1343,7 +1343,30 @@ app.get("/api/pricing/quote", async (req, res) => {
     }
   });
 
-  // Catch-all for unhandled API routes
+  app.options('/api/growth/run-now', (_req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.status(204).end();
+});
+app.post('/api/growth/run-now', async (req: any, res: any) => {
+  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const authHeader = req.headers['authorization'] as string | undefined;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
+  catch { return res.status(401).json({ error: 'Invalid token' }); }
+  try {
+    const collectResult = await collectData();
+    const analyseResult = await analyseWeek();
+    res.json({ success: true, collect: collectResult, analyse: analyseResult });
+  } catch (err: any) {
+    console.error('[run-now] failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// Catch-all for unhandled API routes
   app.use(growthExecutorApp);
   app.all("/api/*", (req, res) => {
     console.log(`Unhandled API Request: ${req.method} ${req.path}`);
@@ -1467,29 +1490,6 @@ app.get("/api/pricing/quote", async (req, res) => {
   }
 
 
-app.options('/api/growth/run-now', (_req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.status(204).end();
-});
-app.post('/api/growth/run-now', async (req: any, res: any) => {
-  res.setHeader('Access-Control-Allow-Origin', GROWTH_CMS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  const authHeader = req.headers['authorization'] as string | undefined;
-  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
-  try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
-  catch { return res.status(401).json({ error: 'Invalid token' }); }
-  try {
-    const collectResult = await collectData();
-    const analyseResult = await analyseWeek();
-    res.json({ success: true, collect: collectResult, analyse: analyseResult });
-  } catch (err: any) {
-    console.error('[run-now] failed:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 // Growth agent routes
 app.use(growthCollectorApp);
 app.use(growthAnalyserApp);
