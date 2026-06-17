@@ -1357,13 +1357,14 @@ app.post('/api/growth/run-now', async (req: any, res: any) => {
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try { await admin.auth().verifyIdToken(authHeader.slice(7)); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
+  // Respond immediately  analysis runs in background (avoids Cloud Run 60s timeout)
+  res.json({ success: true, message: 'Analysis started' });
   try {
-    const collectResult = await collectData();
-    const analyseResult = await analyseWeek();
-    res.json({ success: true, collect: collectResult, analyse: analyseResult });
+    await collectData();
+    await analyseWeek();
+    console.log('[run-now] completed successfully');
   } catch (err: any) {
     console.error('[run-now] failed:', err.message);
-    res.status(500).json({ success: false, error: err.message });
   }
 });
 // Catch-all for unhandled API routes
