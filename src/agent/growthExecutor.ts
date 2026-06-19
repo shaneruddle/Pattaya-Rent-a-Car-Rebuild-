@@ -369,6 +369,13 @@ The prompt will be pasted directly into a Claude Cowork session. Here is the exa
 
 **Rule: content goes into Firebase first. Only touch a repo if a code/template change is also needed.**
 
+## Firebase/Firestore collections (project: pattaya-rent-a-car-rebuild)
+- \`blog_posts\` — blog articles
+- \`faqs\` — FAQ entries
+- \`hotels\` — hotel listings
+- \`locations\` — location/area landing pages (e.g. Jomtien, Naklua, Pratumnak)
+- \`vehicle_guides\` — vehicle and fleet category guides
+
 ## Environment
 - Firebase/Firestore: project ID pattaya-rent-a-car-rebuild
 - Google Chrome available to check live pages
