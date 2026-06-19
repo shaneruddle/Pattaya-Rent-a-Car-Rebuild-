@@ -171,10 +171,12 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
   const ga4Ok = ga4 && !ga4.error;
   const scOk = sc && !sc.error;
   const bingOk = bing && !bing.error;
+  const dfsOk = dfs && !dfs.error;
   const unavailable: string[] = [];
   if (!ga4Ok) unavailable.push(`GA4 (${ga4?.error || "no data"})`);
   if (!scOk) unavailable.push(`Search Console (${sc?.error || "no data"})`);
   if (!bingOk) unavailable.push("Bing Webmaster");
+  if (!dfsOk) unavailable.push(`DataForSEO Rankings (${dfs?.error || "no data"})`);
   unavailable.push("Google Ads (not yet integrated)");
 
   return [
