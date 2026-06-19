@@ -16,6 +16,7 @@ import nodemailer from "nodemailer";
 import cors from "cors";
 import { growthCollectorApp, collectData } from "./src/agent/growthDataCollector.js";
 import { growthAnalyserApp, analyseWeek } from "./src/agent/growthAnalyser.js";
+import { runAnalysis } from "./src/agent/growthAgent.js";
 import { growthOutcomeScorerApp } from "./src/agent/growthOutcomeScorer.js";
 import { growthExecutorApp } from "./src/agent/growthExecutor.js";
 
@@ -1351,9 +1352,9 @@ app.get("/api/pricing/quote", async (req, res) => {
   try {
     // force=true: re-analyses existing collected/analysed data without re-collecting
     // Raw data (GA4, Search Console, Bing) stays intact; only AI analysis is re-run
-    await analyseWeek(true);
+    const result = await runAnalysis();
     console.log('[run-now] completed successfully');
-    res.json({ success: true });
+    res.json({ success: true, runId: result.runId, actionsCount: result.actionsCount });
   } catch (err: any) {
     console.error('[run-now] failed:', err.message);
     res.status(500).json({ success: false, error: err.message });
