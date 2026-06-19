@@ -90,6 +90,17 @@ function buildPrompt(weekData: any, recentActions: any[], knowledge: any[]): str
       ).join("\n")
     : "No prior weeks recorded yet.";
   const { weekId, weekStart, weekEnd, ga4, searchConsole, bing, enquiries } = weekData;
+
+  // Build explicit data availability warnings so Claude knows what's missing
+  const ga4Ok = ga4 && !ga4.error;
+  const scOk = searchConsole && !searchConsole.error;
+  const bingOk = bing && !bing.error;
+  const dataWarnings: string[] = [];
+  if (!ga4Ok) dataWarnings.push("GA4 Analytics: UNAVAILABLE (error: " + (ga4?.error || "no data") + ") — do NOT recommend GA4-specific actions");
+  if (!scOk) dataWarnings.push("Search Console: UNAVAILABLE (error: " + (searchConsole?.error || "no data") + ")");
+  if (!bingOk) dataWarnings.push("Bing Webmaster: UNAVAILABLE");
+  dataWarnings.push("Google Ads: NOT YET INTEGRATED — do not fabricate ad spend/performance data");
+
   return [
     "You are a growth analyst for Pattaya Rent a Car (pattayarentacar.com), a car rental business in Pattaya, Thailand. Review last week's data and produce a concise analysis with prioritised actions.",
     "",
@@ -97,18 +108,25 @@ function buildPrompt(weekData: any, recentActions: any[], knowledge: any[]): str
     knowledgeStr,
     "## Recent History",
     recentStr,
+    "## Data Availability This Week",
+    dataWarnings.length > 0 ? "MISSING DATA SOURCES:\n" + dataWarnings.map(w => "  - " + w).join("\n") : "All data sources available.",
+    "",
     "## This Week (" + weekId + ", " + weekStart + " to " + weekEnd + ")",
-    "GA4: sessions=" + (ga4?.totalSessions ?? "N/A") + ", conversions=" + (ga4?.totalConversions ?? "N/A"),
-    "Channels: " + JSON.stringify(ga4?.channels || []),
-    "Top pages: " + JSON.stringify((ga4?.topPages || []).slice(0, 8)),
-    "Search Console: clicks=" + (searchConsole?.totalClicks ?? "N/A") + ", impressions=" + (searchConsole?.totalImpressions ?? "N/A") + ", avgPos=" + (searchConsole?.avgPosition ?? "N/A"),
-    "Top queries: " + JSON.stringify((searchConsole?.topQueries || []).slice(0, 12)),
-    "Top SC pages: " + JSON.stringify((searchConsole?.topPages || []).slice(0, 8)),
-    "Bing: clicks=" + (bing?.totalClicks ?? "N/A") + ", impressions=" + (bing?.totalImpressions ?? "N/A"),
-    "Bing queries: " + JSON.stringify((bing?.topQueries || []).slice(0, 8)),
+    ga4Ok
+      ? "GA4: sessions=" + ga4.totalSessions + ", conversions=" + ga4.totalConversions + "\nChannels: " + JSON.stringify(ga4.channels) + "\nTop pages: " + JSON.stringify((ga4.topPages || []).slice(0, 8))
+      : "GA4: [UNAVAILABLE — base actions on Search Console + enquiry data only]",
+    scOk
+      ? "Search Console: clicks=" + searchConsole.totalClicks + ", impressions=" + searchConsole.totalImpressions + ", avgPos=" + searchConsole.avgPosition + "\nTop queries: " + JSON.stringify((searchConsole.topQueries || []).slice(0, 12)) + "\nTop SC pages: " + JSON.stringify((searchConsole.topPages || []).slice(0, 8))
+      : "Search Console: [UNAVAILABLE]",
+    bingOk
+      ? "Bing: clicks=" + bing.totalClicks + ", impressions=" + bing.totalImpressions + "\nBing queries: " + JSON.stringify((bing.topQueries || []).slice(0, 8))
+      : "Bing: [UNAVAILABLE]",
     "Enquiries: total=" + (enquiries?.total ?? "N/A") + ", avgRentalDays=" + (enquiries?.avgRentalDays ?? "N/A"),
     "By source: " + JSON.stringify(enquiries?.bySource || []),
     "By nationality: " + JSON.stringify((enquiries?.byNationality || []).slice(0, 8)),
+    "",
+    "IMPORTANT: Produce 3-6 CONCRETE, ACTIONABLE tasks — not observations. Each action must be something a person can actually do this week (e.g. \"Add FAQ schema to /jomtien\", \"Create blog post targeting \'car rental Pattaya Beach\'\", \"Fix broken internal link on homepage\"). Avoid vague actions like \"monitor metrics\" or \"improve SEO\".",
+    "Base actions only on data sources that are AVAILABLE. If GA4 is unavailable, still produce useful actions from Search Console + enquiries.",
     "",
     "Return ONLY a JSON object (no fences):",
     '{"summary":"...","highlights":["..."],"concerns":["..."],"actions":[{"priority":"high|medium|low","category":"seo|ads|content|conversion|technical|other","action":"...","reasoning":"...","metric":"optional","targetValue":"optional"}]}',

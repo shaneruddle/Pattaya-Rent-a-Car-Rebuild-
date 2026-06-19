@@ -77,16 +77,19 @@ function getPreviousWeekMonday(): Date {
 }
 
 // ── GA4 Data ───────────────────────────────────────────────────────────────
-async function fetchGA4Data(weekStart: string, weekEnd: string) {
+async function fetchGA4Data(weekStart: string, weekEnd: string, refreshToken: string) {
     const analyticsData = google.analyticsdata("v1beta");
-    const auth = new google.auth.GoogleAuth({
-          scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
-    });
-    const authClient = await auth.getClient();
+    // Use OAuth2 with the user's refresh token instead of ADC so GA4 access
+    // doesn't depend on the Cloud Run service-account having property-level access.
+    const oauth2Client = new google.auth.OAuth2(
+        OAUTH_CLIENT_ID || "407408718192.apps.googleusercontent.com",
+        OAUTH_CLIENT_SECRET || ""
+    );
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
 
   const channelRes = await analyticsData.properties.runReport({
         property: `properties/${GA4_PROPERTY_ID}`,
-        auth: authClient as any,
+        auth: oauth2Client as any,
         requestBody: {
                 dateRanges: [{ startDate: weekStart, endDate: weekEnd }],
                 dimensions: [{ name: "sessionDefaultChannelGrouping" }],
@@ -102,7 +105,7 @@ async function fetchGA4Data(weekStart: string, weekEnd: string) {
 
   const pagesRes = await analyticsData.properties.runReport({
         property: `properties/${GA4_PROPERTY_ID}`,
-        auth: authClient as any,
+        auth: oauth2Client as any,
         requestBody: {
                 dateRanges: [{ startDate: weekStart, endDate: weekEnd }],
                 dimensions: [{ name: "landingPagePlusQueryString" }],
@@ -253,7 +256,7 @@ async function collectData(force = false): Promise<{ weekId: string; status: str
       ]);
 
   const [ga4, sc, bing, enquiries] = await Promise.allSettled([
-        fetchGA4Data(weekStart, weekEnd),
+        fetchGA4Data(weekStart, weekEnd, googleRefreshToken),
         fetchSearchConsoleData(weekStart, weekEnd, googleRefreshToken),
         fetchBingData(weekStart, weekEnd, bingApiKey),
         fetchFirestoreEnquiries(weekStart, weekEnd),
