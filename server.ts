@@ -231,6 +231,17 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Force HTTPS — permanent redirect for all HTTP traffic
+  // Cloud Run sits behind Google's load balancer which terminates TLS.
+  // The original protocol is forwarded in X-Forwarded-Proto.
+  app.use((req, res, next) => {
+    const proto = req.headers['x-forwarded-proto'];
+    if (proto && proto !== 'https') {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    next();
+  });
+
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
 
