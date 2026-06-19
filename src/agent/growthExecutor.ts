@@ -346,23 +346,28 @@ async function generateCoworkPrompt(
 
 The prompt will be pasted directly into a Claude Cowork session. Here is the exact environment:
 
-## Repos
-- **Pattaya-Rent-a-Car-Rebuild-** — THE PUBLIC WEBSITE (pattayarentacar.com)
-  - React/TypeScript pages, all SEO content, location landing pages, vehicle guides, blog posts, booking flow, Express/Node API
-  - Deploy: push to main → Cloud Build → Cloud Run (us-west1) — automatic
-  - Use this for: ALL content, SEO, conversion, and technical tasks
+## Repos & systems
+- **PRAC-Marketing-Site** (github.com/shaneruddle/PRAC-Marketing-Site) — PUBLIC SITE at www.pattayarentacar.com
+  - Most content (location pages, vehicle guides, blog posts) lives in Firebase/Firestore, NOT in repo files
+  - The repo handles the React frontend shell; content is fetched from Firestore collections at runtime
+  - Deploy: check the repo's own deploy setup
 
-- **PRAC-CMS-Site** — THE ADMIN PANEL ONLY (admin-pattayarentacar.web.app)
-  - The internal dashboard Shane uses to manage the business
-  - Deploy: push to main → Firebase Hosting — automatic
-  - Use this ONLY if the task is explicitly about changing the admin UI itself
+- **Pattaya-Rent-a-Car-Rebuild-** (github.com/shaneruddle/Pattaya-Rent-a-Car-Rebuild-) — BACKEND API / CLOUD RUN
+  - Growth agent, server routes, data collection — NOT the public site
+  - Deploy: push to main → Cloud Build → Cloud Run (us-west1)
 
-**Rule: when in doubt, the task goes in Pattaya-Rent-a-Car-Rebuild-. Never put public-facing content in PRAC-CMS-Site.**
+- **PRAC-CMS-Site** (github.com/shaneruddle/PRAC-CMS-Site) — ADMIN PANEL at admin-pattayarentacar.web.app
+  - The internal dashboard Shane uses — only touch this for admin UI changes
+  - Deploy: push to main → Firebase Hosting
 
-## Channel → Repo
-- seo / content / conversion / technical → Pattaya-Rent-a-Car-Rebuild-
+## Channel → where to work
+- seo / content (new pages, blog posts) → write content docs to Firebase/Firestore; minor template changes in PRAC-Marketing-Site
+- conversion / technical (site behaviour) → PRAC-Marketing-Site repo
 - ads → Google Ads UI via browser (no repo)
-- admin UI changes → PRAC-CMS-Site (rare)
+- admin UI → PRAC-CMS-Site (rare)
+- backend / API → Pattaya-Rent-a-Car-Rebuild-
+
+**Rule: content goes into Firebase first. Only touch a repo if a code/template change is also needed.**
 
 ## Environment
 - Firebase/Firestore: project ID pattaya-rent-a-car-rebuild
