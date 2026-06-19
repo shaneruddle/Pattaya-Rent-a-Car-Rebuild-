@@ -242,6 +242,26 @@ async function startServer() {
     next();
   });
 
+  // Block crawlers on app.pattayarentacar.com — this subdomain is the raw
+  // Cloud Run service and should never appear in search results.
+  app.use((req, res, next) => {
+    const host = (req.headers.host || '').split(':')[0];
+    if (host === 'app.pattayarentacar.com') {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    }
+    next();
+  });
+
+  // Disallow-all robots.txt for app.pattayarentacar.com
+  app.get('/robots.txt', (req, res, next) => {
+    const host = (req.headers.host || '').split(':')[0];
+    if (host === 'app.pattayarentacar.com') {
+      res.type('text/plain');
+      return res.send('User-agent: *\nDisallow: /\n');
+    }
+    next();
+  });
+
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
 
