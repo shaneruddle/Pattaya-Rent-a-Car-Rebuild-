@@ -46,11 +46,11 @@ async function executeTask(taskId: string): Promise<string> {
 
   await taskRef.update({ status: 'executing', executingAt: Timestamp.now() });
 
-  const { weekId, actionIndex, action: actionText, channel } = task;
+  const { runId, actionIndex, action: actionText, channel } = task;
 
-  // Get full action context from agent_actions doc
-  const actionsSnap = await db.collection('agent_actions').doc(weekId).get();
-  const fullAction = actionsSnap.data()?.actions?.[actionIndex] ?? null;
+  // Get full action context from agent_runs doc
+  const runSnap = await db.collection('agent_runs').doc(runId).get();
+  const fullAction = runSnap.data()?.actions?.[actionIndex] ?? null;
 
   // Knowledge context for the prompt
   const knowledgeSnap = await db.collection('agent_knowledge').get();
@@ -86,10 +86,10 @@ async function generatePromptTask(taskId: string): Promise<string> {
 
   await taskRef.update({ status: 'executing', executingAt: Timestamp.now() });
 
-  const { weekId, actionIndex, action: actionText, channel } = task;
+  const { runId, actionIndex, action: actionText, channel } = task;
 
-  const actionsSnap = await db.collection('agent_actions').doc(weekId).get();
-  const fullAction = actionsSnap.data()?.actions?.[actionIndex] ?? null;
+  const runSnap = await db.collection('agent_runs').doc(runId).get();
+  const fullAction = runSnap.data()?.actions?.[actionIndex] ?? null;
 
   const knowledgeSnap = await db.collection('agent_knowledge').get();
   const knowledgeStr = knowledgeSnap.docs
