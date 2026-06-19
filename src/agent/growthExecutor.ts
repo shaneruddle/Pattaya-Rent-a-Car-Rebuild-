@@ -344,38 +344,58 @@ async function generateCoworkPrompt(
       role: 'user',
       content: `You are generating a Cowork task prompt for Pattaya Rent a Car's growth agent system.
 
-The prompt will be pasted directly into a Claude Cowork session that has:
-- Read/write access to the GitHub repo "Pattaya-Rent-a-Car-Rebuild-" (React/TypeScript frontend + Express/Node backend)
-- Firebase/Firestore access for the PRAC project
-- Deployment: push to main branch → Cloud Build → Cloud Run (us-west1) — no manual steps needed
-- Google Chrome browsing capability to check live sites
-- The user is Shane, the business owner
+The prompt will be pasted directly into a Claude Cowork session. Here is the exact environment:
 
-Task details:
+## Repos
+- **Pattaya-Rent-a-Car-Rebuild-** — THE PUBLIC WEBSITE (pattayarentacar.com)
+  - React/TypeScript pages, all SEO content, location landing pages, vehicle guides, blog posts, booking flow, Express/Node API
+  - Deploy: push to main → Cloud Build → Cloud Run (us-west1) — automatic
+  - Use this for: ALL content, SEO, conversion, and technical tasks
+
+- **PRAC-CMS-Site** — THE ADMIN PANEL ONLY (admin-pattayarentacar.web.app)
+  - The internal dashboard Shane uses to manage the business
+  - Deploy: push to main → Firebase Hosting — automatic
+  - Use this ONLY if the task is explicitly about changing the admin UI itself
+
+**Rule: when in doubt, the task goes in Pattaya-Rent-a-Car-Rebuild-. Never put public-facing content in PRAC-CMS-Site.**
+
+## Channel → Repo
+- seo / content / conversion / technical → Pattaya-Rent-a-Car-Rebuild-
+- ads → Google Ads UI via browser (no repo)
+- admin UI changes → PRAC-CMS-Site (rare)
+
+## Environment
+- Firebase/Firestore: project ID pattaya-rent-a-car-rebuild
+- Google Chrome available to check live pages
+- Shane is the business owner — no approval needed, just execute
+
+## Task
 - Action: ${actionText}
 - Channel: ${channel}
 - Reasoning: ${fullAction?.reasoning || 'N/A'}
-- Expected impact: ${fullAction?.expectedImpact || 'N/A'}
-- Metrics that triggered this: ${fullAction?.metrics ? JSON.stringify(fullAction.metrics) : 'N/A'}
+- Skill: ${fullAction?.skill_name || 'none specified'}
 
-Business knowledge context:
+## Business knowledge
 ${knowledgeStr}
 
-Write a complete, self-contained Cowork prompt in markdown with exactly these sections:
+Write a complete, self-contained Cowork prompt in markdown:
 
-## Cowork Task: [short descriptive title]
+## Cowork Task: [short title]
 
-**Background:** Why this task was identified and what problem it solves (2-3 sentences, reference the specific data/metrics that triggered it).
+**Background:** Why this was flagged and what problem it solves (2-3 sentences, include the specific metric that triggered it).
 
-**Task:** Step-by-step instructions — exact file paths, code changes, API calls, or browser actions. Be specific enough that Claude can execute without asking questions. Include expected behaviour after the change.
+**Repo:** Exactly which repo to work in and why.
 
-**Deploy:** State whether a code deploy is required (push to main → Cloud Build → Cloud Run us-west1) or if this is config/CMS-only.
+**Task:** Step-by-step — exact file paths, component names, Firestore collections, browser actions. Specific enough to execute without asking questions.
 
-**Report back:** Exact instruction on what to paste into the Growth Dashboard result field when done — e.g. "Paste: what was changed, any before/after metrics, and any issues encountered."
+**Deploy:** Whether a push to main is needed and which pipeline runs.
 
-Write the prompt as if briefing a senior developer who has never seen this business before. Use concrete file paths and variable names where you know them.`,
+**Report back:** What to paste into the Growth Dashboard result field when done.
+
+Write as if briefing a senior developer who has never seen this codebase.`,
     }],
   });
+
 
   return msg.content[0].type === 'text' ? msg.content[0].text : `Manual task required: ${actionText}`;
 }
