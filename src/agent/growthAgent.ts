@@ -150,8 +150,8 @@ async function fetchEnquiries(start: string, end: string) {
   };
 }
 
-function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing: any; enquiries: any; prevRuns: any[]; knowledge: any[] }): string {
-  const { start, end, ga4, sc, bing, enquiries, prevRuns, knowledge } = data;
+function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing: any; enquiries: any; dfs: any; prevRuns: any[]; knowledge: any[] }): string {
+  const { start, end, ga4, sc, bing, enquiries, dfs, prevRuns, knowledge } = data;
 
   const knowledgeStr = knowledge.length
     ? knowledge.map((k: any) => `[${k.category || "general"}] ${k.content}`).join("\n")
@@ -201,6 +201,9 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
     "Enquiries: total=" + (enquiries?.total ?? "N/A") + ", avgRentalDays=" + (enquiries?.avgRentalDays ?? "N/A"),
     "By source: " + JSON.stringify(enquiries?.bySource || []),
     "By nationality: " + JSON.stringify((enquiries?.byNationality || []).slice(0, 8)),
+    dfsOk
+      ? "Keyword Rankings (Google Thailand, top 30):\n" + (dfs.rankings || []).map((r: any) => `  [${r.notInTop30 ? "NOT IN TOP 30" : `pos ${r.position}`}] ${r.keyword}${r.url ? " → " + r.url : ""}`).join("\n")
+      : "Keyword Rankings: [UNAVAILABLE]",
     "",
     "## Rules",
     "1. Produce 3-6 CONCRETE, ACTIONABLE tasks a person can execute this week (e.g. 'Add FAQ schema to /jomtien', 'Create blog post targeting car rental Pattaya Beach').",
@@ -219,28 +222,75 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
   ].join("\n");
 }
 
+
+async function fetchDataForSEO(login: string, password: string) {
+  const keywords = [
+    'car rental pattaya',
+    'rent a car pattaya',
+    'pattaya car hire',
+    'car hire pattaya',
+    'pattaya rent a car',
+    'cheap car rental pattaya',
+  ];
+
+  const auth = Buffer.from(`${login}:${password}`).toString('base64');
+
+  const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+    method: 'POST',
+    headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(keywords.map(keyword => ({
+      keyword,
+      location_code: 1012728, // Thailand
+      language_code: 'en',
+      depth: 30,
+    }))),
+  });
+
+  const json = (await res.json()) as any;
+  if (!res.ok) throw new Error(`DataForSEO error: ${json.status_message || res.status}`);
+
+  const rankings = (json.tasks || []).map((task: any) => {
+    const keyword = task.data?.keyword;
+    const items: any[] = task.result?.[0]?.items || [];
+    const organic = items.filter((i: any) => i.type === 'organic');
+    const match = organic.find((i: any) => i.url?.includes('pattayarentacar.com'));
+    return {
+      keyword,
+      position: match?.rank_absolute ?? null,
+      url: match?.url ?? null,
+      notInTop30: !match,
+    };
+  });
+
+  return { rankings };
+}
+
 export async function runAnalysis(): Promise<{ runId: string; actionsCount: number }> {
   const { start, end } = getDateRange();
   console.log(`[growthAgent] Analysing ${start} to ${end}`);
 
-  const [refreshToken, oauthSecret, bingApiKey, anthropicKey] = await Promise.all([
+  const [refreshToken, oauthSecret, bingApiKey, anthropicKey, dfsLogin, dfsPassword] = await Promise.all([
     getSecret("GOOGLE_REFRESH_TOKEN"),
     getSecret("google-oauth-client-secret"),
     getSecret("BING_API_KEY"),
     getSecret("ANTHROPIC_API_KEY"),
+    getSecret("DATAFORSEO_LOGIN"),
+    getSecret("DATAFORSEO_PASSWORD"),
   ]);
 
-  const [ga4Res, scRes, bingRes, enquiriesRes] = await Promise.allSettled([
+  const [ga4Res, scRes, bingRes, enquiriesRes, dfsRes] = await Promise.allSettled([
     fetchGA4(start, end, refreshToken, oauthSecret),
     fetchSearchConsole(start, end, refreshToken, oauthSecret),
     fetchBing(start, end, bingApiKey),
     fetchEnquiries(start, end),
+    fetchDataForSEO(dfsLogin, dfsPassword),
   ]);
 
   const ga4 = ga4Res.status === "fulfilled" ? ga4Res.value : { error: (ga4Res as PromiseRejectedResult).reason?.message };
   const sc = scRes.status === "fulfilled" ? scRes.value : { error: (scRes as PromiseRejectedResult).reason?.message };
   const bing = bingRes.status === "fulfilled" ? bingRes.value : { error: (bingRes as PromiseRejectedResult).reason?.message };
   const enquiries = enquiriesRes.status === "fulfilled" ? enquiriesRes.value : null;
+  const dfs = dfsRes.status === "fulfilled" ? dfsRes.value : { error: (dfsRes as PromiseRejectedResult).reason?.message };
 
   const [prevSnap, knowledgeSnap] = await Promise.all([
     db.collection("agent_runs").orderBy("createdAt", "desc").limit(3).get(),
@@ -249,7 +299,7 @@ export async function runAnalysis(): Promise<{ runId: string; actionsCount: numb
 
   const parsed = await (async () => {
     const prompt = buildPrompt({
-      start, end, ga4, sc, bing, enquiries,
+      start, end, ga4, sc, bing, enquiries, dfs,
       prevRuns: prevSnap.docs.map((d) => d.data()),
       knowledge: knowledgeSnap.docs.map((d) => d.data()),
     });
@@ -267,7 +317,7 @@ export async function runAnalysis(): Promise<{ runId: string; actionsCount: numb
   const docRef = await db.collection("agent_runs").add({
     createdAt: Timestamp.now(),
     period: { start, end },
-    ga4, searchConsole: sc, bing, enquiries,
+    ga4, searchConsole: sc, bing, enquiries, dataForSeo: dfs,
     summary: parsed.summary || "",
     highlights: parsed.highlights || [],
     concerns: parsed.concerns || [],
