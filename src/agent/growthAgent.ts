@@ -207,8 +207,15 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
     "2. DO NOT repeat tasks from previous runs. If a previous task is still genuinely needed because Google/data hasn't propagated yet, include it with isCarryOver:true and updated reasoning showing current data still supports it.",
     "3. Base actions only on AVAILABLE data sources. No fabricated ad data.",
     "4. Order high → low priority.",
+    "5. For each action, set skill_name to the best matching Cowork skill from this list (or null if none fits):",
+    "   pattaya-rentacar-location-page — building a new area/location SEO landing page",
+    "   pattaya-rentacar-vehicle-guide — building a new vehicle or fleet category SEO page",
+    "   pattaya-car-rental-google-ads-optimizer — any Google Ads change (copy, bids, keywords, negatives)",
+    "   pattaya-seo-onpage — on-page fixes: meta titles, meta descriptions, schema markup, hreflang, heading structure",
+    "   pattaya-conversion — booking flow, CTA, form or UX changes to improve conversion rate",
+    "   pattaya-technical — technical fixes: page speed, crawlability, redirects, structured data errors",
     "",
-    'Return ONLY valid JSON (no markdown fences): {"summary":"...","highlights":["..."],"concerns":["..."],"actions":[{"priority":"high|medium|low","category":"seo|ads|content|conversion|technical|other","action":"...","reasoning":"...","isCarryOver":false}]}',
+    'Return ONLY valid JSON (no markdown fences): {"summary":"...","highlights":["..."],"concerns":["..."],"actions":[{"priority":"high|medium|low","category":"seo|ads|content|conversion|technical|other","action":"...","reasoning":"...","isCarryOver":false,"skill_name":"pattaya-seo-onpage|null"}]}',
   ].join("\n");
 }
 

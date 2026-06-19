@@ -98,7 +98,14 @@ async function generatePromptTask(taskId: string): Promise<string> {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-  const coworkPrompt = await generateCoworkPrompt(client, actionText, fullAction, channel, knowledgeStr);
+  const skillName: string | null = fullAction?.skill_name ?? null;
+  const basePrompt = await generateCoworkPrompt(client, actionText, fullAction, channel, knowledgeStr);
+  const coworkPrompt = skillName
+    ? `${basePrompt}
+
+---
+**Skill:** Use the \`${skillName}\` skill for this task.`
+    : basePrompt;
   await taskRef.update({ status: 'cowork_ready', coworkPrompt, executedAt: Timestamp.now() });
   return coworkPrompt;
 }
