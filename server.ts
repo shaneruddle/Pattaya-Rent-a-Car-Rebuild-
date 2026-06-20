@@ -1269,34 +1269,6 @@ app.get("/api/pricing/quote", async (req, res) => {
   });
 
 
-  // Diagnostic: reveal Cloud Run service account identity
-  app.get('/api/debug/identity', async (req, res) => {
-    try {
-      // Hit the GCP metadata server to get the Cloud Run SA email
-      const metaRes = await fetch(
-        'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email',
-        { headers: { 'Metadata-Flavor': 'Google' } }
-      );
-      const email = await metaRes.text();
-
-      // Also load GSC_SERVICE_ACCOUNT_KEY and reveal its client_email
-      const { google } = await import('googleapis');
-      const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
-      const secretmanager = google.secretmanager({ version: 'v1' });
-      const adcAuth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-      const adcClient = await adcAuth.getClient();
-      const secretResp = await secretmanager.projects.secrets.versions.access({
-        auth: adcClient as any,
-        name: `projects/${projectId}/secrets/GSC_SERVICE_ACCOUNT_KEY/versions/latest`,
-      });
-      const keyJson = Buffer.from(secretResp.data.payload!.data! as string, 'base64').toString('utf8');
-      const creds = JSON.parse(keyJson);
-      res.json({ cloudrun_sa: email, gsc_key_sa: creds.client_email });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message });
-    }
-  });
-
   // GA4 performance — service account auth (analytics.readonly)
   app.get('/api/ga4/performance', async (req, res) => {
     try {
