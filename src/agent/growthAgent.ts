@@ -171,7 +171,7 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
   const ga4Ok = ga4 && !ga4.error;
   const scOk = sc && !sc.error;
   const bingOk = bing && !bing.error;
-  const dfsOk = dfs && !dfs.error;
+  const dfsOk = dfs && !dfs.error && (dfs.rankings || dfs.ourRankedKeywords || dfs.topCompetitors);
   const unavailable: string[] = [];
   if (!ga4Ok) unavailable.push(`GA4 (${ga4?.error || "no data"})`);
   if (!scOk) unavailable.push(`Search Console (${sc?.error || "no data"})`);
@@ -204,8 +204,42 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
     "By source: " + JSON.stringify(enquiries?.bySource || []),
     "By nationality: " + JSON.stringify((enquiries?.byNationality || []).slice(0, 8)),
     dfsOk
-      ? "Keyword Rankings (Google Thailand, top 30):\n" + (dfs.rankings || []).map((r: any) => `  [${r.notInTop30 ? "NOT IN TOP 30" : `pos ${r.position}`}] ${r.keyword}${r.url ? " → " + r.url : ""}`).join("\n")
-      : "Keyword Rankings: [UNAVAILABLE]",
+      ? [
+          "=== DataForSEO Intelligence ===",
+          "Keyword Rankings (neutral Thai IP, top 30):",
+          (dfs.rankings || []).map((r: any) => {
+            const vol = dfs.searchVolumes?.[r.keyword] ? ` [vol:${dfs.searchVolumes[r.keyword]}/mo]` : '';
+            const lp = dfs.serpFeatures?.localPackPresent?.[r.keyword] ? ' [LOCAL_PACK]' : '';
+            const fs = dfs.serpFeatures?.featuredSnippetPresent?.[r.keyword] ? ' [FEATURED_SNIPPET]' : '';
+            return `  [${r.notInTop30 ? "NOT IN TOP 30" : "pos " + r.position}]${vol}${lp}${fs} ${r.keyword}${r.url ? " → " + r.url : ""}`;
+          }).join("\n"),
+          "",
+          "Quick-win keywords (we rank 4–20, not yet on page 1):",
+          (dfs.quickWins || []).length > 0
+            ? dfs.quickWins.map((k: any) => `  pos ${k.position} | vol ${k.searchVolume ?? '?'}/mo | ${k.keyword}`).join("\n")
+            : "  none detected",
+          "",
+          "All keywords we rank for in Thailand (top 30 by position):",
+          (dfs.ourRankedKeywords || []).slice(0, 30).map((k: any) =>
+            `  pos ${k.position} | vol ${k.searchVolume ?? '?'}/mo | ${k.keyword}`).join("\n") || "  none",
+          "",
+          "Top SERP competitors (keyword overlap with us):",
+          (dfs.topCompetitors || []).map((c: any) =>
+            `  ${c.domain} — ${c.intersections} shared keywords, avg pos ${c.avgPosition}, ~${c.totalKeywords ?? '?'} total keywords`).join("\n") || "  none detected",
+          "",
+          "Keyword gaps (competitors rank for these, we don't — sorted by volume × overlap):",
+          (dfs.keywordGaps || []).slice(0, 20).map((k: any) =>
+            `  vol ${k.searchVolume}/mo | their pos ${k.theirPosition ?? '?'} | found on ${k.foundOn?.join(', ')} | ${k.keyword}`).join("\n") || "  none detected",
+          "",
+          "People Also Ask (from our tracked keywords):",
+          (dfs.serpFeatures?.peopleAlsoAsk || []).map((q: string) => `  - ${q}`).join("\n") || "  none",
+          "",
+          dfs.backlinks ? `Backlinks: ${dfs.backlinks.referringDomains} referring domains, ${dfs.backlinks.totalBacklinks} total backlinks, domain rank ${dfs.backlinks.rank}` : "Backlinks: unavailable",
+          dfs.gmb ? `Google My Business: rating ${dfs.gmb.rating}/5 from ${dfs.gmb.reviewsCount} reviews` : "Google My Business: unavailable",
+          dfs.trends?.monthly ? `Google Trends (car rental pattaya, Thailand, last 12mo): ${dfs.trends.monthly.map((m: any) => m.period + ':' + m.value).join(', ')}` : "Google Trends: unavailable",
+          Object.values(dfs.errors || {}).some(Boolean) ? "DFS partial errors: " + JSON.stringify(dfs.errors) : "",
+        ].filter(Boolean).join("\n")
+      : "DataForSEO: [UNAVAILABLE]",
     "",
     "## Rules",
     "1. Produce 3-6 CONCRETE, ACTIONABLE tasks a person can execute this week (e.g. 'Add FAQ schema to /jomtien', 'Create blog post targeting car rental Pattaya Beach').",
@@ -226,45 +260,205 @@ function buildPrompt(data: { start: string; end: string; ga4: any; sc: any; bing
 
 
 async function fetchDataForSEO(login: string, password: string) {
-  const keywords = [
-    'car rental pattaya',
-    'rent a car pattaya',
-    'pattaya car hire',
-    'car hire pattaya',
-    'pattaya rent a car',
-    'cheap car rental pattaya',
+  const TRACKED_KEYWORDS = [
+    'car rental pattaya', 'rent a car pattaya', 'pattaya car hire',
+    'car hire pattaya', 'pattaya rent a car', 'cheap car rental pattaya',
   ];
-
+  const DOMAIN = 'pattayarentacar.com';
+  const LOCATION = 1012728; // Thailand
+  const LANG = 'en';
   const auth = Buffer.from(`${login}:${password}`).toString('base64');
+  const headers = { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' };
 
-  const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
-    method: 'POST',
-    headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(keywords.map(keyword => ({
-      keyword,
-      location_code: 1012728, // Thailand
-      language_code: 'en',
-      depth: 30,
-    }))),
-  });
+  const dfsPost = async (endpoint: string, body: any[]): Promise<any> => {
+    const res = await fetch(`https://api.dataforseo.com/v3/${endpoint}`, {
+      method: 'POST', headers, body: JSON.stringify(body),
+    });
+    const json = (await res.json()) as any;
+    if (!res.ok || json.status_code === 40000) throw new Error(`DFS ${endpoint}: ${json.status_message || res.status}`);
+    return json;
+  };
 
-  const json = (await res.json()) as any;
-  if (!res.ok) throw new Error(`DataForSEO error: ${json.status_message || res.status}`);
+  // ── Round 1: all independent calls in parallel ────────────────────────────
+  const [serpRes, volumeRes, ourRankedRes, competitorsRes, backlinksRes, gmbRes, trendsRes] =
+    await Promise.allSettled([
+      // 1. SERP rank check + SERP feature extraction
+      dfsPost('serp/google/organic/live/advanced', TRACKED_KEYWORDS.map(keyword => ({
+        keyword, location_code: LOCATION, language_code: LANG, depth: 30,
+      }))),
+      // 2. Search volumes for tracked keywords
+      dfsPost('keywords_data/google_ads/search_volume/live', [{
+        keywords: TRACKED_KEYWORDS, location_code: LOCATION, language_code: LANG,
+      }]),
+      // 3. All keywords our domain ranks for in Thailand (top 100 by volume)
+      dfsPost('dataforseo_labs/google/ranked_keywords/live', [{
+        target: DOMAIN, location_code: LOCATION, language_code: LANG, limit: 100,
+      }]),
+      // 4. Who are our SERP competitors in Thailand
+      dfsPost('dataforseo_labs/google/competitors_domain/live', [{
+        target: DOMAIN, location_code: LOCATION, language_code: LANG, limit: 10,
+      }]),
+      // 5. Backlink profile
+      dfsPost('backlinks/summary/live', [{
+        target: DOMAIN, include_subdomains: true,
+      }]),
+      // 6. Google My Business listing
+      dfsPost('business_data/google/search/live', [{
+        keyword: 'Pattaya Rent a Car', location_name: 'Pattaya,Thailand', language_name: 'English',
+      }]),
+      // 7. Google Trends – seasonal demand for primary keyword
+      dfsPost('keywords_data/google_trends/explore/live', [{
+        keywords: ['car rental pattaya'], location_name: 'Thailand',
+        language_code: LANG, type: 'web_search', time_range: 'past_12_months',
+      }]),
+    ]);
 
-  const rankings = (json.tasks || []).map((task: any) => {
-    const keyword = task.data?.keyword;
-    const items: any[] = task.result?.[0]?.items || [];
-    const organic = items.filter((i: any) => i.type === 'organic');
-    const match = organic.find((i: any) => i.url?.includes('pattayarentacar.com'));
-    return {
-      keyword,
-      position: match?.rank_absolute ?? null,
-      url: match?.url ?? null,
-      notInTop30: !match,
-    };
-  });
+  // ── Parse SERP + extract PAA / local pack / featured snippets ────────────
+  const rankings: any[] = [];
+  const paaQuestions: string[] = [];
+  const localPackPresent: Record<string, boolean> = {};
+  const featuredSnippetPresent: Record<string, boolean> = {};
 
-  return { rankings };
+  if (serpRes.status === 'fulfilled') {
+    for (const task of (serpRes.value.tasks || [])) {
+      const keyword = task.data?.keyword;
+      const items: any[] = task.result?.[0]?.items || [];
+      const organic = items.filter((i: any) => i.type === 'organic');
+      const match = organic.find((i: any) => i.url?.includes('pattayarentacar.com'));
+      rankings.push({ keyword, position: match?.rank_absolute ?? null, url: match?.url ?? null, notInTop30: !match });
+      items.filter((i: any) => i.type === 'people_also_ask').forEach((p: any) => {
+        (p.items || []).forEach((q: any) => { if (q.title && !paaQuestions.includes(q.title)) paaQuestions.push(q.title); });
+      });
+      localPackPresent[keyword] = items.some((i: any) => ['local_pack', 'maps'].includes(i.type));
+      featuredSnippetPresent[keyword] = items.some((i: any) => i.type === 'featured_snippet');
+    }
+  }
+
+  // ── Parse search volumes ─────────────────────────────────────────────────
+  const searchVolumes: Record<string, number> = {};
+  if (volumeRes.status === 'fulfilled') {
+    for (const item of (volumeRes.value.tasks?.[0]?.result || [])) {
+      if (item.keyword && item.search_volume != null) searchVolumes[item.keyword] = item.search_volume;
+    }
+  }
+
+  // ── Parse our ranked keywords ─────────────────────────────────────────────
+  let ourRankedKeywords: any[] = [];
+  if (ourRankedRes.status === 'fulfilled') {
+    ourRankedKeywords = (ourRankedRes.value.tasks?.[0]?.result?.[0]?.items || []).map((item: any) => ({
+      keyword: item.keyword_data?.keyword,
+      position: item.ranked_serp_element?.serp_item?.rank_absolute,
+      searchVolume: item.keyword_data?.keyword_info?.search_volume,
+      url: item.ranked_serp_element?.serp_item?.url,
+    })).filter((k: any) => k.keyword);
+    // Sort by position ascending for quick-win identification
+    ourRankedKeywords.sort((a: any, b: any) => (a.position ?? 999) - (b.position ?? 999));
+  }
+
+  // ── Parse competitors ─────────────────────────────────────────────────────
+  let topCompetitors: any[] = [];
+  if (competitorsRes.status === 'fulfilled') {
+    topCompetitors = (competitorsRes.value.tasks?.[0]?.result?.[0]?.items || []).slice(0, 5).map((item: any) => ({
+      domain: item.domain,
+      intersections: item.intersections,
+      avgPosition: typeof item.avg_position === 'number' ? parseFloat(item.avg_position.toFixed(1)) : null,
+      totalKeywords: item.full_domain_metrics?.organic?.count,
+    }));
+  }
+
+  // ── Parse backlinks ───────────────────────────────────────────────────────
+  let backlinks: any = null;
+  if (backlinksRes.status === 'fulfilled') {
+    const r = backlinksRes.value.tasks?.[0]?.result?.[0];
+    if (r) backlinks = { referringDomains: r.referring_domains, totalBacklinks: r.total_count, rank: r.rank };
+  }
+
+  // ── Parse GMB ────────────────────────────────────────────────────────────
+  let gmb: any = null;
+  if (gmbRes.status === 'fulfilled') {
+    const items: any[] = gmbRes.value.tasks?.[0]?.result?.[0]?.items || [];
+    const biz = items.find((i: any) => i.title?.toLowerCase().includes('pattaya rent a car'));
+    if (biz) gmb = { rating: biz.rating?.value, reviewsCount: biz.rating?.votes_count, category: biz.category };
+  }
+
+  // ── Parse trends ──────────────────────────────────────────────────────────
+  let trends: any = null;
+  if (trendsRes.status === 'fulfilled') {
+    const data = trendsRes.value.tasks?.[0]?.result?.[0];
+    if (data?.items) {
+      trends = {
+        keyword: 'car rental pattaya',
+        monthly: (data.items as any[]).map((i: any) => ({ period: i.date_from?.slice(0, 7), value: i.values?.[0] ?? 0 })).slice(-12),
+      };
+    }
+  }
+
+  // ── Round 2: keyword gap — competitor ranked keywords vs ours ─────────────
+  const ourKeywordSet = new Set(ourRankedKeywords.map((k: any) => k.keyword));
+  let keywordGaps: any[] = [];
+
+  if (topCompetitors.length >= 1) {
+    const compTargets = topCompetitors.slice(0, 2);
+    const compResults = await Promise.allSettled(
+      compTargets.map(c =>
+        dfsPost('dataforseo_labs/google/ranked_keywords/live', [{
+          target: c.domain, location_code: LOCATION, language_code: LANG, limit: 100,
+        }])
+      )
+    );
+    const gapMap: Record<string, any> = {};
+    compResults.forEach((res, idx) => {
+      if (res.status !== 'fulfilled') return;
+      const domain = compTargets[idx].domain;
+      for (const item of (res.value.tasks?.[0]?.result?.[0]?.items || [])) {
+        const kw = item.keyword_data?.keyword;
+        if (!kw || ourKeywordSet.has(kw)) continue;
+        if (!gapMap[kw]) {
+          gapMap[kw] = {
+            keyword: kw,
+            searchVolume: item.keyword_data?.keyword_info?.search_volume ?? 0,
+            foundOn: [domain],
+            theirPosition: item.ranked_serp_element?.serp_item?.rank_absolute,
+          };
+        } else if (!gapMap[kw].foundOn.includes(domain)) {
+          gapMap[kw].foundOn.push(domain);
+        }
+      }
+    });
+    keywordGaps = Object.values(gapMap)
+      .filter((k: any) => k.searchVolume > 0)
+      .sort((a: any, b: any) => {
+        if (b.foundOn.length !== a.foundOn.length) return b.foundOn.length - a.foundOn.length;
+        return b.searchVolume - a.searchVolume;
+      })
+      .slice(0, 25);
+  }
+
+  return {
+    rankings,
+    searchVolumes,
+    ourRankedKeywords: ourRankedKeywords.slice(0, 30),
+    quickWins: ourRankedKeywords.filter((k: any) => k.position >= 4 && k.position <= 20).slice(0, 10),
+    topCompetitors,
+    backlinks,
+    gmb,
+    trends,
+    keywordGaps,
+    serpFeatures: {
+      localPackPresent,
+      featuredSnippetPresent,
+      peopleAlsoAsk: paaQuestions.slice(0, 10),
+    },
+    errors: {
+      serp: serpRes.status === 'rejected' ? (serpRes as PromiseRejectedResult).reason?.message : null,
+      volume: volumeRes.status === 'rejected' ? (volumeRes as PromiseRejectedResult).reason?.message : null,
+      ourRanked: ourRankedRes.status === 'rejected' ? (ourRankedRes as PromiseRejectedResult).reason?.message : null,
+      competitors: competitorsRes.status === 'rejected' ? (competitorsRes as PromiseRejectedResult).reason?.message : null,
+      backlinks: backlinksRes.status === 'rejected' ? (backlinksRes as PromiseRejectedResult).reason?.message : null,
+      gmb: gmbRes.status === 'rejected' ? (gmbRes as PromiseRejectedResult).reason?.message : null,
+      trends: trendsRes.status === 'rejected' ? (trendsRes as PromiseRejectedResult).reason?.message : null,
+    },
+  };
 }
 
 export async function runAnalysis(): Promise<{ runId: string; actionsCount: number }> {
