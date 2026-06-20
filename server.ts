@@ -1361,7 +1361,7 @@ app.get("/api/pricing/quote", async (req, res) => {
       });
     } catch (err: any) {
       console.error('GA4 API error:', err?.message || err);
-      res.status(500).json({ error: 'Failed to fetch GA4 data', detail: err?.message });
+      res.status(500).json({ error: 'Failed to fetch GA4 data', detail: err?.message, debug_sa: (typeof credentials !== 'undefined' ? credentials.client_email : 'credentials_not_loaded') });
     }
   });
 
