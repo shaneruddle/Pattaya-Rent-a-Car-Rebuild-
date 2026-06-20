@@ -52,11 +52,15 @@ async function executeTask(taskId: string): Promise<string> {
   const runSnap = await db.collection('agent_runs').doc(runId).get();
   const fullAction = runSnap.data()?.actions?.[actionIndex] ?? null;
 
-  // Knowledge context for the prompt
-  const knowledgeSnap = await db.collection('agent_knowledge').get();
-  const knowledgeStr = knowledgeSnap.docs
+  // Knowledge context — capped at 50 most recent entries (~4k chars max)
+  const knowledgeSnap = await db.collection('agent_knowledge')
+    .orderBy('createdAt', 'desc')
+    .limit(50)
+    .get();
+  const rawKnowledge = knowledgeSnap.docs
     .map(d => `[${d.data().category || 'general'}] ${d.data().content}`)
     .join('\n') || 'No knowledge context stored yet.';
+  const knowledgeStr = rawKnowledge.length > 4000 ? rawKnowledge.slice(0, 4000) + '…' : rawKnowledge;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -91,10 +95,14 @@ async function generatePromptTask(taskId: string): Promise<string> {
   const runSnap = await db.collection('agent_runs').doc(runId).get();
   const fullAction = runSnap.data()?.actions?.[actionIndex] ?? null;
 
-  const knowledgeSnap = await db.collection('agent_knowledge').get();
-  const knowledgeStr = knowledgeSnap.docs
+  const knowledgeSnap = await db.collection('agent_knowledge')
+    .orderBy('createdAt', 'desc')
+    .limit(50)
+    .get();
+  const rawKnowledge = knowledgeSnap.docs
     .map(d => `[${d.data().category || 'general'}] ${d.data().content}`)
     .join('\n') || 'No knowledge context stored yet.';
+  const knowledgeStr = rawKnowledge.length > 4000 ? rawKnowledge.slice(0, 4000) + '…' : rawKnowledge;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
