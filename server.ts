@@ -1269,6 +1269,102 @@ app.get("/api/pricing/quote", async (req, res) => {
   });
 
 
+  // GA4 performance — service account auth (analytics.readonly)
+  app.get('/api/ga4/performance', async (req, res) => {
+    try {
+      const { google } = await import('googleapis');
+      const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+
+      const secretmanager = google.secretmanager({ version: 'v1' });
+      const adcAuth = new google.auth.GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      });
+      const adcClient = await adcAuth.getClient();
+
+      const secretResp = await secretmanager.projects.secrets.versions.access({
+        auth: adcClient as any,
+        name: `projects/${projectId}/secrets/GSC_SERVICE_ACCOUNT_KEY/versions/latest`,
+      });
+      const keyJson = Buffer.from(
+        secretResp.data.payload!.data! as string,
+        'base64'
+      ).toString('utf8');
+      const credentials = JSON.parse(keyJson);
+
+      const ga4Auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+      });
+
+      const analyticsData = google.analyticsdata('v1beta');
+      const propertyId = '311694159';
+
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 1);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 27);
+      const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+      const [channelRes, pagesRes] = await Promise.all([
+        analyticsData.properties.runReport({
+          property: `properties/${propertyId}`,
+          auth: ga4Auth as any,
+          requestBody: {
+            dateRanges: [{ startDate: fmt(startDate), endDate: fmt(endDate) }],
+            dimensions: [{ name: 'sessionDefaultChannelGrouping' }],
+            metrics: [
+              { name: 'sessions' },
+              { name: 'newUsers' },
+              { name: 'bounceRate' },
+              { name: 'engagementRate' },
+            ],
+            orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+          },
+        }),
+        analyticsData.properties.runReport({
+          property: `properties/${propertyId}`,
+          auth: ga4Auth as any,
+          requestBody: {
+            dateRanges: [{ startDate: fmt(startDate), endDate: fmt(endDate) }],
+            dimensions: [{ name: 'pagePath' }],
+            metrics: [{ name: 'sessions' }, { name: 'screenPageViews' }, { name: 'bounceRate' }],
+            orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+            limit: 25,
+          },
+        }),
+      ]);
+
+      const channels = (channelRes.data.rows || []).map((r: any) => ({
+        channel: r.dimensionValues?.[0]?.value || 'unknown',
+        sessions: parseInt(r.metricValues?.[0]?.value || '0'),
+        newUsers: parseInt(r.metricValues?.[1]?.value || '0'),
+        bounceRate: parseFloat(r.metricValues?.[2]?.value || '0'),
+        engagementRate: parseFloat(r.metricValues?.[3]?.value || '0'),
+      }));
+
+      const topPages = (pagesRes.data.rows || []).map((r: any) => ({
+        pagePath: r.dimensionValues?.[0]?.value || '',
+        sessions: parseInt(r.metricValues?.[0]?.value || '0'),
+        pageViews: parseInt(r.metricValues?.[1]?.value || '0'),
+        bounceRate: parseFloat(r.metricValues?.[2]?.value || '0'),
+      }));
+
+      res.json({
+        period: { startDate: fmt(startDate), endDate: fmt(endDate) },
+        propertyId,
+        channels,
+        topPages,
+        totals: {
+          sessions: channels.reduce((s: number, c: any) => s + c.sessions, 0),
+          newUsers: channels.reduce((s: number, c: any) => s + c.newUsers, 0),
+        },
+      });
+    } catch (err: any) {
+      console.error('GA4 API error:', err?.message || err);
+      res.status(500).json({ error: 'Failed to fetch GA4 data', detail: err?.message });
+    }
+  });
+
   app.post("/api/analytics/pages", async (req, res) => {
     try {
       const { startDate, endDate } = req.body;
