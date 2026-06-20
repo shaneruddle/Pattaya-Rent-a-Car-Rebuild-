@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
-import { upsertCustomer } from '../lib/customerService';
+import { upsertCustomer, updateCustomer, findExistingByEmail } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -142,6 +142,29 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     setSelectedEnquiry(enquiry);
     setFormData({ ...enquiry, carId: '' });
     setIsConverting(true);
+  };
+
+  const handleNationalityChange = async (enquiry: Booking, nationality: string) => {
+    try {
+      // Update the booking document
+      await updateDoc(doc(db, 'bookings', enquiry.id), {
+        nationality,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Update the customer record if one exists (matched by email)
+      if (enquiry.email) {
+        const existing = await findExistingByEmail(enquiry.email);
+        if (existing) {
+          await updateCustomer(existing.id, { nationality });
+        }
+      }
+
+      toast.success(`Nationality set to ${nationality}`);
+    } catch (error) {
+      toast.error('Failed to save nationality');
+      handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    }
   };
 
   const saveEnquiry = async () => {
@@ -445,11 +468,27 @@ However, we can offer the following alternative...`,
                         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
                           <Mail size={12} /> {enquiry.email || 'No email'}
                         </div>
-                        {enquiry.nationality && (
-                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
-                            <Globe size={12} /> {enquiry.nationality}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
+                          <Globe size={12} />
+                          <select
+                            value={enquiry.nationality || ''}
+                            onChange={(e) => handleNationalityChange(enquiry, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-transparent text-[10px] font-bold uppercase tracking-widest text-black/40 border-none outline-none cursor-pointer hover:text-brand-orange transition-colors"
+                          >
+                            <option value="">Nationality</option>
+                            <option value="Thai">Thai</option>
+                            <option value="Russian">Russian</option>
+                            <option value="Australian">Australian</option>
+                            <option value="British">British</option>
+                            <option value="German">German</option>
+                            <option value="Korean">Korean</option>
+                            <option value="Chinese">Chinese</option>
+                            <option value="American">American</option>
+                            <option value="French">French</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
                         {(enquiry.utmSource || enquiry.bookingSource) && (
                           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange/60">
                             <Zap size={12} /> {enquiry.bookingSource || enquiry.utmSource}

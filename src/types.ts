@@ -34,6 +34,7 @@ export interface Customer {
   lastName?: string;
   email?: string;
   mobileNumber?: string;
+  nationality?: string;
   address?: string;
   addressHotel?: string;
   dob?: string;
@@ -78,6 +79,7 @@ export interface Booking {
   customerName: string;
   email?: string;
   mobileNumber?: string;
+  nationality?: string;
   comments?: string;
   startDate: string; // ISO string
   endDate: string; // ISO string
