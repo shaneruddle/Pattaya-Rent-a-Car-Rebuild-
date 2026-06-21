@@ -58,6 +58,8 @@ export const CRM: React.FC = () => {
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   // Default to recent mode
   const [isRecentMode, setIsRecentMode] = useState(true);
+  const [showDeleteCustomerModal, setShowDeleteCustomerModal] = useState(false);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
   const [formLocation, setFormLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const handleSearch = () => {
@@ -157,7 +159,7 @@ export const CRM: React.FC = () => {
         
         if (!searchQuery) {
           // Default: 5 most recent
-          q = query(custRef, orderBy('creationDate', 'desc'), limit(5));
+          q = query(custRef, orderBy('createdAt', 'desc'), limit(5));
           const snapshot = await getDocs(q);
           const customerData = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Customer));
           setCustomers(customerData);
@@ -513,23 +515,28 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
 };
 
   const handleDeleteCustomer = async (id: string) => {
-    const customer = customers.find(c => c.id === id);
+    const customer = customers.find(c => c.id === id) || selectedCustomer;
+    if (!customer) return;
+    setIsDeletingCustomer(true);
     try {
-      await deleteDoc(doc(db, 'customers', id));
-      
-      if (customer) {
-        await logSystemActivity(
-          'Delete Customer',
-          `Deleted customer ${customer.firstName} ${customer.lastName}`,
-          'CRM',
-          { customerId: id, email: customer.email }
-        );
-      }
-
+      await updateDoc(doc(db, 'customers', id), {
+        status: 'Deleted',
+        deletedAt: new Date().toISOString(),
+        deletedBy: auth.currentUser?.email || 'unknown',
+      });
+      await logSystemActivity(
+        'Delete Customer',
+        `Deleted customer ${customer.firstName} ${customer.lastName}`,
+        'CRM',
+        { customerId: id, email: customer.email }
+      );
       setSelectedCustomer(null);
-      toast.success('Customer deleted successfully');
+      setShowDeleteCustomerModal(false);
+      toast.success('Customer deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `customers/${id}`);
+    } finally {
+      setIsDeletingCustomer(false);
     }
   };
 
@@ -940,8 +947,9 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                         <Edit2 size={22} />
                       </button>
                       <button 
-                        onClick={() => handleDeleteCustomer(selectedCustomer.id)}
+                        onClick={() => setShowDeleteCustomerModal(true)}
                         className="p-4 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-2xl border border-red-100 transition-all hover:scale-110"
+                        title="Delete customer"
                       >
                         <Trash2 size={22} />
                       </button>
@@ -1138,6 +1146,54 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
           </AnimatePresence>
         </div>
       </div>
+    {/* Delete Customer Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteCustomerModal && selectedCustomer && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteCustomerModal(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white/95 backdrop-blur-2xl rounded-[32px] shadow-2xl border border-white/60 p-10"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
+                  <Trash2 size={24} className="text-red-500" />
+                </div>
+                <div>
+                  <h2 className="font-serif italic text-2xl text-[#141414]">Delete Customer?</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40">{selectedCustomer.firstName} {selectedCustomer.lastName}</p>
+                </div>
+              </div>
+              <p className="text-sm text-[#141414]/60 mb-8 leading-relaxed">
+                This customer record will be marked as deleted. Their rental history and enquiry records are preserved. This action can be reversed by Firestore if needed.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteCustomerModal(false)}
+                  className="flex-1 h-12 bg-black/5 text-black font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-black/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteCustomer(selectedCustomer.id)}
+                  disabled={isDeletingCustomer}
+                  className="flex-1 h-12 bg-red-500 text-white font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isDeletingCustomer ? <Loader2 className="animate-spin" size={14} /> : 'Yes, Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
