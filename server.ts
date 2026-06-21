@@ -439,8 +439,8 @@ app.get("/api/debug/bookings/duplicates", async (req, res) => {
             overlaps.push({
               carId,
               sameCustomer: (a.customerName || '').toLowerCase().trim() === (b.customerName || '').toLowerCase().trim(),
-              original: { id: a.id, customer: a.customerName, start: a.startDate?.slice(0,10), end: a.endDate?.slice(0,10), status: a.status, createdAt: a.createdAt?.slice(0,10) },
-              duplicate: { id: b.id, customer: b.customerName, start: b.startDate?.slice(0,10), end: b.endDate?.slice(0,10), status: b.status, createdAt: b.createdAt?.slice(0,10) },
+              original: { id: a.id, customer: a.customerName, start: a.startDate?.slice?.(0,10) || a.startDate, end: a.endDate?.slice?.(0,10) || a.endDate, status: a.status, createdAt: a.createdAt?.toDate ? a.createdAt.toDate().toISOString().slice(0,10) : (a.createdAt?.slice?.(0,10) || a.createdAt) },
+              duplicate: { id: b.id, customer: b.customerName, start: b.startDate?.slice?.(0,10) || b.startDate, end: b.endDate?.slice?.(0,10) || b.endDate, status: b.status, createdAt: b.createdAt?.toDate ? b.createdAt.toDate().toISOString().slice(0,10) : (b.createdAt?.slice?.(0,10) || b.createdAt) },
             });
           }
         }
