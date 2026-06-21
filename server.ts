@@ -408,6 +408,44 @@ async function startServer() {
     }
   });
 
+
+// Temporary: soft-delete confirmed staff re-entries (run once, then remove)
+app.post("/api/debug/bookings/cleanup-reentries", async (req, res) => {
+  if (!firestore) return res.status(503).json({ error: "Firestore not ready" });
+  const IDS_TO_DELETE = [
+    "YaUtAQEcONlTV02KPTmw", // Igor AVAKIMYAN Jun18-29 (re-entry of Igor Avakimyan May4-Jun28)
+    "jiZpXk99sJvq0viEvusa", // YUYA YAJI Jun19-26 (re-entry of Yuya Yagi May5-Jun26)
+    "gBSXDoVw1cGW4bPVhFpc", // Homoz Jun13-Jul11 (re-entry of Hormoz May2-Jul11)
+    "fSJatcJfp2awcrhOsX0p", // Jon keyworth May3-12 (re-entry of JONATHAN KEYWORTH May3-Jul12)
+    "p00rnmpR00EepeoUCANh", // JONATHAN KEYWORD Jun19-Jul12 (re-entry of JONATHAN KEYWORTH May3-Jul12)
+    "oiaWvPr0Wyrp5Rjr3Dra", // BO JABAN Jun19-Jul2 (re-entry of LUKSUPA BOJAIBAN May4-Jul2)
+    "0Vt93ekDARhBpdgODs3P", // Khun Kwaang Jun19-25 (re-entry of Khun Kwaang May4-Jun24)
+  ];
+  try {
+    const results: any[] = [];
+    for (const id of IDS_TO_DELETE) {
+      const ref = firestore.collection('bookings').doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        results.push({ id, result: "not_found" });
+      } else {
+        const data = snap.data() as any;
+        if (data.status === 'Deleted') {
+          results.push({ id, result: "already_deleted", customer: data.customerName });
+        } else {
+          await ref.update({
+            status: 'Deleted',
+            deletedAt: new Date().toISOString(),
+            deletedBy: 'system-cleanup-reentries',
+          });
+          results.push({ id, result: "soft_deleted", customer: data.customerName, start: data.startDate, end: data.endDate });
+        }
+      }
+    }
+    res.json({ deleted: results.filter(r => r.result === 'soft_deleted').length, results });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // Temporary: find overlapping bookings for the same car (potential duplicates from staff re-entry)
 app.get("/api/debug/bookings/duplicates", async (req, res) => {
   if (!firestore) return res.status(503).json({ error: "Firestore not ready" });
