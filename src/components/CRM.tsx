@@ -1053,20 +1053,23 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                       </div>
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-widest bg-white/60 backdrop-blur-md border border-white/60 text-brand-orange px-5 py-2 rounded-2xl shadow-sm">
-                      {customerHistory.length} Bookings
+                      {customerHistory.filter(b => b.status !== 'Deleted').length} Records
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-6">
-                    {customerHistory.length > 0 ? (
-                      customerHistory.map(booking => {
+                    {customerHistory.filter(b => b.status !== 'Deleted').length > 0 ? (
+                      customerHistory.filter(b => b.status !== 'Deleted').map(booking => {
+                        const isDnr = booking.status === 'DNR';
                         const car = cars.find(c => c.id === booking.carId);
                         return (
-                          <div key={booking.id} className="bg-white/40 backdrop-blur-md border border-white/60 p-8 rounded-[32px] hover:bg-white/60 transition-all group shadow-sm hover:shadow-xl">
+                          <div key={booking.id} className={cn("backdrop-blur-md border p-8 rounded-[32px] transition-all group shadow-sm hover:shadow-xl", isDnr ? "bg-amber-50/40 border-amber-100/60 hover:bg-amber-50/60" : "bg-white/40 border-white/60 hover:bg-white/60")}>
                             <div className="flex flex-col md:flex-row justify-between gap-8">
                               <div className="flex gap-6">
-                                <div className="w-24 h-24 bg-white/60 border border-white/80 rounded-3xl overflow-hidden shrink-0 shadow-inner p-2">
-                                  {car?.imageUrl ? (
+                                <div className="w-24 h-24 bg-white/60 border border-white/80 rounded-3xl overflow-hidden shrink-0 shadow-inner p-2 flex items-center justify-center">
+                                  {isDnr ? (
+                                    <div className="w-full h-full flex items-center justify-center text-amber-300"><User size={32} /></div>
+                                  ) : car?.imageUrl ? (
                                     <img src={car.imageUrl} alt={car.name} className="w-full h-full object-cover rounded-2xl" referrerPolicy="no-referrer" />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center text-[#141414]/10"><User size={32} /></div>
@@ -1074,29 +1077,38 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-3">
-                                    <h4 className="font-bold text-xl text-[#141414]">{car?.name || 'Unknown Vehicle'}</h4>
-                                    <span className="px-2 py-0.5 bg-white/60 border border-white/80 text-[10px] font-bold uppercase tracking-widest rounded-lg text-[#141414]/60">
-                                      {car?.plateNumber}
-                                    </span>
+                                    <h4 className="font-bold text-xl text-[#141414]">{isDnr ? 'Enquiry — No booking made' : (car?.name || 'Unknown Vehicle')}</h4>
+                                    {!isDnr && car?.plateNumber && (
+                                      <span className="px-2 py-0.5 bg-white/60 border border-white/80 text-[10px] font-bold uppercase tracking-widest rounded-lg text-[#141414]/60">
+                                        {car.plateNumber}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-6 mt-4">
                                     <div className="flex items-center gap-2.5 text-xs font-bold text-[#141414]/60 bg-white/40 px-3 py-1.5 rounded-xl border border-white/60">
-                                      <History size={14} className="text-brand-orange" />
+                                      <History size={14} className={isDnr ? "text-amber-400" : "text-brand-orange"} />
                                       {safeFormat(booking.startDate, 'dd MMM')} - {safeFormat(booking.endDate, 'dd MMM yyyy')}
                                     </div>
                                   </div>
+                                  {isDnr && (booking as any).dnrNote && (
+                                    <div className="mt-3 text-xs text-amber-700/70 italic">
+                                      Reason: {(booking as any).dnrNote}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex flex-col items-end justify-between py-1">
                                 <span className={cn(
                                   "text-[10px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-xl border",
-                                  booking.status === 'Paid' 
-                                    ? "bg-green-50 text-green-600 border-green-100" 
-                                    : "bg-orange-50 text-brand-orange border-orange-100"
+                                  isDnr
+                                    ? "bg-amber-100 text-amber-600 border-amber-200"
+                                    : booking.status === 'Paid'
+                                      ? "bg-green-50 text-green-600 border-green-100"
+                                      : "bg-orange-50 text-brand-orange border-orange-100"
                                 )}>
-                                  {booking.status}
+                                  {isDnr ? 'Did Not Rent' : booking.status}
                                 </span>
-                                <p className="font-serif italic text-3xl text-[#141414]">฿{(booking.amount || 0).toLocaleString()}</p>
+                                {!isDnr && <p className="font-serif italic text-3xl text-[#141414]">฿{(booking.amount || 0).toLocaleString()}</p>}
                               </div>
                             </div>
                           </div>

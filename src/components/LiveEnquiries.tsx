@@ -52,6 +52,10 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [templates, setTemplates] = useState<Record<string, string>>({});
   const [carSearch, setCarSearch] = useState('');
   const [carDropdownOpen, setCarDropdownOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'dnr'>('active');
+  const [showDnrModal, setShowDnrModal] = useState(false);
+  const [dnrTarget, setDnrTarget] = useState<Booking | null>(null);
+  const [dnrReason, setDnrReason] = useState('');
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -89,7 +93,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
 
   const enquiries = useMemo(() => {
     return bookings
-      .filter(b => !b.carId || b.carId === '')
+      .filter(b => (!b.carId || b.carId === '') && b.status !== 'DNR')
       .filter(b => {
         const searchLower = (searchQuery || '').toLowerCase();
         const matchesSearch = 
@@ -106,6 +110,20 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
         // Fallback to startDate if createdAt is missing for some reason
         return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
       });
+  }, [bookings, searchQuery]);
+
+  const dnrEnquiries = useMemo(() => {
+    return bookings
+      .filter(b => b.status === 'DNR')
+      .filter(b => {
+        const searchLower = (searchQuery || '').toLowerCase();
+        return (
+          (b.customerName?.toLowerCase() || '').includes(searchLower) ||
+          (b.email?.toLowerCase() || '').includes(searchLower) ||
+          (b.mobileNumber && b.mobileNumber.includes(searchQuery))
+        );
+      })
+      .sort((a, b) => new Date((b as any).dnrAt || b.startDate).getTime() - new Date((a as any).dnrAt || a.startDate).getTime());
   }, [bookings, searchQuery]);
 
   const formatEnquiryTime = (createdAt: any) => {
@@ -246,33 +264,39 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     }
   };
 
-  const deleteEnquiry = async (id: string, customerName?: string) => {
-    toast('Delete this enquiry?', {
-      description: "This action cannot be undone.",
-      action: {
-        label: "Delete",
-        onClick: async () => {
-          try {
-            await logSystemActivity(
-              'Delete Enquiry',
-              `Deleted enquiry for ${customerName || id}`,
-              'Bookings',
-              { bookingId: id, customerName: customerName || 'Unknown' }
-            );
-            await updateDoc(doc(db, 'bookings', id), {
-              status: 'Deleted',
-              deletedAt: new Date().toISOString(),
-              deletedBy: auth.currentUser?.email || 'unknown',
-            });
-            toast.success('Enquiry deleted');
-            if (onRefresh) onRefresh();
-          } catch (error) {
-            toast.error('Failed to delete enquiry');
-            handleFirestoreError(error, OperationType.DELETE, 'bookings');
-          }
-        }
-      }
-    });
+  const initiateDnr = (enquiry: Booking) => {
+    setDnrTarget(enquiry);
+    setDnrReason('');
+    setShowDnrModal(true);
+  };
+
+  const confirmDnr = async () => {
+    if (!dnrTarget || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await logSystemActivity(
+        'Did Not Rent',
+        `Marked enquiry for ${dnrTarget.customerName || dnrTarget.id} as Did Not Rent${dnrReason ? `: ${dnrReason}` : ''}`,
+        'Bookings',
+        { bookingId: dnrTarget.id, customerName: dnrTarget.customerName, reason: dnrReason }
+      );
+      await updateDoc(doc(db, 'bookings', dnrTarget.id), {
+        status: 'DNR',
+        dnrAt: new Date().toISOString(),
+        dnrBy: auth.currentUser?.email || 'unknown',
+        dnrNote: dnrReason || '',
+      });
+      toast.success('Marked as Did Not Rent');
+      setShowDnrModal(false);
+      setDnrTarget(null);
+      setDnrReason('');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      toast.error('Failed to mark as Did Not Rent');
+      handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const copyTemplate = async (enquiry: Booking, templateId: string, fallbackName: string, defaultBody: string, successMsg: string) => {
@@ -402,11 +426,27 @@ However, we can offer the following alternative...`,
         <div>
           <h1 className="font-serif italic text-2xl sm:text-3xl text-[#1A1A1A]">Live Enquiries</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mt-1">
-            {enquiries.length} Pending Enquiries from Booking Engine
+            {activeTab === 'active' ? `${enquiries.length} Pending Enquiries from Booking Engine` : `${dnrEnquiries.length} Did Not Rent`}
           </p>
         </div>
 
-        <div className="flex items-center gap-6 w-full sm:w-auto">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          {/* Tab Switcher */}
+          <div className="flex bg-black/5 rounded-2xl p-1 shrink-0">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all", activeTab === 'active' ? "bg-white text-brand-orange shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setActiveTab('dnr')}
+              className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2", activeTab === 'dnr' ? "bg-white text-amber-600 shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
+            >
+              Did Not Rent
+              {dnrEnquiries.length > 0 && <span className="bg-amber-100 text-amber-600 rounded-full w-4 h-4 flex items-center justify-center text-[8px]">{dnrEnquiries.length}</span>}
+            </button>
+          </div>
           <div className="relative group w-full sm:w-auto">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30 group-focus-within:text-brand-orange transition-colors" size={18} />
             <input
@@ -422,6 +462,53 @@ However, we can offer the following alternative...`,
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-12 custom-scrollbar">
+        {activeTab === 'dnr' ? (
+          /* DNR Tab */
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
+            <AnimatePresence mode="popLayout">
+              {dnrEnquiries.length === 0 ? (
+                <motion.div key="empty-dnr" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="col-span-2 text-center py-20 bg-white/20 backdrop-blur-md border-2 border-dashed border-white/40 rounded-[40px]">
+                  <XCircle className="text-[#1A1A1A]/10 mx-auto mb-4" size={40} />
+                  <p className="text-[#1A1A1A]/40 font-bold uppercase tracking-widest text-xs">No did not rent records</p>
+                </motion.div>
+              ) : dnrEnquiries.map((enquiry) => (
+                <motion.div
+                  key={enquiry.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white/30 backdrop-blur-xl border border-white/40 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <span className="px-3 py-1 bg-amber-100 text-amber-600 text-[8px] font-bold uppercase tracking-widest rounded-full">Did Not Rent</span>
+                      <h3 className="font-bold text-lg text-[#1A1A1A] mt-3">{enquiry.customerName || 'Unknown'}</h3>
+                      <p className="text-xs text-[#1A1A1A]/40 font-medium">{enquiry.email}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30">Enquiry dates</p>
+                      <p className="text-xs font-bold text-[#1A1A1A]/60 mt-1">
+                        {enquiry.startDate ? format(parseISO(enquiry.startDate), 'dd MMM') : '—'} – {enquiry.endDate ? format(parseISO(enquiry.endDate), 'dd MMM yyyy') : '—'}
+                      </p>
+                    </div>
+                  </div>
+                  {(enquiry as any).dnrNote && (
+                    <div className="mt-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1">Reason</p>
+                      <p className="text-sm text-[#1A1A1A]/70 font-medium">{(enquiry as any).dnrNote}</p>
+                    </div>
+                  )}
+                  <div className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30">
+                    <Clock size={10} />
+                    {(enquiry as any).dnrAt ? format(parseISO((enquiry as any).dnrAt), 'dd MMM yyyy') : 'Date unknown'}
+                    {(enquiry as any).dnrBy && <span>· {(enquiry as any).dnrBy}</span>}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
           <AnimatePresence mode="popLayout">
             {enquiries.map((enquiry) => (
@@ -455,10 +542,10 @@ However, we can offer the following alternative...`,
                         <Edit2 size={14} /> Edit Enquiry
                       </button>
                       <button 
-                        onClick={() => deleteEnquiry(enquiry.id, enquiry.customerName)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
+                        onClick={() => initiateDnr(enquiry)}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-50 transition-all"
                       >
-                        <Trash2 size={14} /> Delete
+                        <XCircle size={14} /> Did Not Rent
                       </button>
                     </div>
                   </div>
@@ -646,7 +733,69 @@ However, we can offer the following alternative...`,
             </div>
           )}
         </div>
+        )} {/* end active tab */}
       </div>
+
+      {/* DNR Confirmation Modal */}
+      <AnimatePresence>
+        {showDnrModal && dnrTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setShowDnrModal(false); setDnrTarget(null); }}
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white/90 backdrop-blur-2xl rounded-[32px] shadow-2xl border border-white/60 p-10"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center">
+                  <XCircle size={24} className="text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="font-serif italic text-2xl text-[#1A1A1A]">Did Not Rent</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">{dnrTarget.customerName}</p>
+                </div>
+              </div>
+              <p className="text-sm text-[#1A1A1A]/60 mb-6 leading-relaxed">
+                This enquiry will be saved as Did Not Rent and will appear in the customer's history. The record is preserved and never deleted.
+              </p>
+              <div className="mb-6">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 block mb-2">Reason <span className="text-[#1A1A1A]/20">(optional)</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. Price too high, went elsewhere..."
+                  value={dnrReason}
+                  onChange={(e) => setDnrReason(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmDnr()}
+                  className="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-sm focus:bg-black/8 outline-none font-medium"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowDnrModal(false); setDnrTarget(null); }}
+                  className="flex-1 h-12 bg-black/5 text-black font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-black/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDnr}
+                  disabled={isSubmitting}
+                  className="flex-1 h-12 bg-amber-500 text-white font-bold uppercase tracking-widest text-[10px] rounded-2xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : 'Confirm DNR'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Edit/Convert Modal */}
       <AnimatePresence>
