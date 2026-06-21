@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
 import { upsertCustomer, updateCustomer, findExistingByEmail } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -246,14 +246,24 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     }
   };
 
-  const deleteEnquiry = async (id: string) => {
+  const deleteEnquiry = async (id: string, customerName?: string) => {
     toast('Delete this enquiry?', {
       description: "This action cannot be undone.",
       action: {
         label: "Delete",
         onClick: async () => {
           try {
-            await deleteDoc(doc(db, 'bookings', id));
+            await logSystemActivity(
+              'Delete Enquiry',
+              `Deleted enquiry for ${customerName || id}`,
+              'Bookings',
+              { bookingId: id, customerName: customerName || 'Unknown' }
+            );
+            await updateDoc(doc(db, 'bookings', id), {
+              status: 'Deleted',
+              deletedAt: new Date().toISOString(),
+              deletedBy: auth.currentUser?.email || 'unknown',
+            });
             toast.success('Enquiry deleted');
             if (onRefresh) onRefresh();
           } catch (error) {
@@ -445,7 +455,7 @@ However, we can offer the following alternative...`,
                         <Edit2 size={14} /> Edit Enquiry
                       </button>
                       <button 
-                        onClick={() => deleteEnquiry(enquiry.id)}
+                        onClick={() => deleteEnquiry(enquiry.id, enquiry.customerName)}
                         className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
                       >
                         <Trash2 size={14} /> Delete

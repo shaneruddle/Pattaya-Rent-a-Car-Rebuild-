@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { LocationPicker } from './LocationPicker';
 import { DatePickerCustom } from './ui/DatePickerCustom';
-import { db, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { sendTemplatedEmail } from '../lib/emailUtils';
 
@@ -198,7 +198,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
 
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, 'bookings', deletingBooking.id));
+      await updateDoc(doc(db, 'bookings', deletingBooking.id), {
+        status: 'Deleted',
+        deletedAt: new Date().toISOString(),
+        deletedBy: auth.currentUser?.email || 'unknown',
+      });
       
       // Log activity
       const car = cars.find(c => c.id === deletingBooking.carId);

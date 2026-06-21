@@ -350,7 +350,9 @@ function AppContent() {
     );
 
     const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
-      const bookingsData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking));
+      const bookingsData = snapshot.docs
+        .map((doc: any) => ({ id: doc.id, ...doc.data() } as Booking))
+        .filter((b: Booking) => b.status !== 'Deleted');
       setBookings(bookingsData);
       safeLocalStorage.setItem('prac_cached_bookings', JSON.stringify(bookingsData), true);
     }, (error) => {

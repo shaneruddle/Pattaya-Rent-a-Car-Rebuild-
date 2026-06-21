@@ -5,7 +5,7 @@ import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
 import { upsertCustomer } from '../lib/customerService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
@@ -1012,7 +1012,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
         { bookingId: docRef.id, customerName: dataToSave.customerName }
       );
 
-      await deleteDoc(doc(db, 'bookings', sourceBooking.id));
+      await updateDoc(doc(db, 'bookings', sourceBooking.id), {
+        status: 'Deleted',
+        deletedAt: new Date().toISOString(),
+        deletedBy: auth.currentUser?.email || 'unknown',
+      });
       setClipboard(null);
       toast.success('Booking moved');
       
@@ -1383,7 +1387,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     if (!editingBooking || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, 'bookings', editingBooking.id));
+      await updateDoc(doc(db, 'bookings', editingBooking.id), {
+        status: 'Deleted',
+        deletedAt: new Date().toISOString(),
+        deletedBy: auth.currentUser?.email || 'unknown',
+      });
       
       const car = cars.find(c => c.id === editingBooking.carId);
       await logSystemActivity(
