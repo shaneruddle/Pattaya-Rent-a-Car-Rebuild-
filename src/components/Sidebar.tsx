@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2, BarChart2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
@@ -13,7 +13,7 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates';
+  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report';
   onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates') => void;
 }
 
@@ -429,6 +429,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <Activity size={18} /> System Logs
+                    </button>
+                    <button
+                      onClick={() => {
+                        onViewChange('vehicle_report');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'vehicle_report'
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20"
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <BarChart2 size={18} /> Vehicle Reports
                     </button>
 
                     {/* System Settings Group */}

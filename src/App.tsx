@@ -28,6 +28,7 @@ import { Logs } from './components/Logs';
 import { ImageManagement } from './components/ImageManagement';
 import { CompanySettings } from './components/CompanySettings';
 import { LiveEnquiries } from './components/LiveEnquiries';
+import { VehicleReport } from './components/VehicleReport';
 import { EmailTemplates } from './components/EmailTemplates';
 import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -102,7 +103,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -774,7 +775,9 @@ function AppContent() {
                 <Marketing defaultTab="calendar" />
               ) : currentView === 'marketing_faq' ? (
                 <Marketing defaultTab="faq" />
-                            ) : currentView === 'image_management' ? (
+                            ) : currentView === 'vehicle_report' ? (
+                <VehicleReport cars={cars} bookings={bookings} />
+              ) : currentView === 'image_management' ? (
                 <ImageManagement />
               ) : (
                 <BookingEngine onLoginClick={() => {}} />
