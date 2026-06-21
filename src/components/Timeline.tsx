@@ -1480,11 +1480,19 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const timelineStart = startOfDay(visibleDays[0]);
     const timelineEnd = endOfDay(visibleDays[visibleDays.length - 1]);
 
-    // Filter bookings that overlap with visible range
-    if (end < timelineStart || start > timelineEnd) return null;
+    // Filter bookings that overlap with visible range.
+    // Exception: completed bookings whose startDate started within the last 90 days
+    // relative to the visible window are kept visible even if their endDate
+    // (moved by an early return) is before timelineStart.
+    // This prevents a booking "disappearing" immediately after an early return.
+    const bookingStatus = (booking.status || '').toLowerCase();
+    const startInWindow = start <= timelineEnd && start >= addDays(timelineStart, -90);
+
+    if (start > timelineEnd) return null; // starts after window — never visible
+    if (end < timelineStart && !(bookingStatus === 'completed' && startInWindow)) return null; // ends before window
 
     const visibleStart = start < timelineStart ? timelineStart : start;
-    const visibleEnd = end > timelineEnd ? timelineEnd : end;
+    const visibleEnd = end < timelineStart ? timelineStart : (end > timelineEnd ? timelineEnd : end);
 
     const startDayIdx = differenceInDays(startOfDay(visibleStart), timelineStart);
     const startSlot = visibleStart.getHours() >= 12 ? 1 : 0;

@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, limit, where, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, addDoc, doc, setDoc, getDoc, where, onSnapshot } from 'firebase/firestore';
 import { auth, db, signIn, signInRedirect, handleFirestoreError, OperationType, safeGetDocs } from './firebase';
 import { Car, Booking } from './types';
 import { Sidebar } from './components/Sidebar';
@@ -343,11 +343,12 @@ function AppContent() {
     
     fetchData();
 
-    // Set up real-time bookings listener
+    // Set up real-time bookings listener — no artificial limit
+    // Fetches all bookings; small fleet size makes this safe and necessary
+    // to prevent older bookings silently dropping off the 500-doc window
     const bookingsQuery = query(
       collection(db, 'bookings'), 
-      orderBy('startDate', 'desc'),
-      limit(500)
+      orderBy('startDate', 'desc')
     );
 
     const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
