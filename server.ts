@@ -408,6 +408,50 @@ async function startServer() {
     }
   });
 
+// Temporary: find overlapping bookings for the same car (potential duplicates from staff re-entry)
+app.get("/api/debug/bookings/duplicates", async (req, res) => {
+  if (!firestore) return res.status(503).json({ error: "Firestore not ready" });
+  try {
+    const snap = await firestore.collection('bookings').get();
+    const bookings = snap.docs
+      .map((d: any) => ({ id: d.id, ...d.data() }))
+      .filter((b: any) => b.status !== 'Deleted' && b.carId && b.carId !== '');
+
+    // Group by carId
+    const bycar: { [k: string]: any[] } = {};
+    for (const b of bookings) {
+      if (!bycar[b.carId]) bycar[b.carId] = [];
+      bycar[b.carId].push(b);
+    }
+
+    const overlaps: any[] = [];
+    for (const [carId, carBookings] of Object.entries(bycar)) {
+      carBookings.sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      for (let i = 0; i < carBookings.length; i++) {
+        for (let j = i + 1; j < carBookings.length; j++) {
+          const a = carBookings[i];
+          const b = carBookings[j];
+          const aStart = new Date(a.startDate).getTime();
+          const aEnd = new Date(a.endDate).getTime();
+          const bStart = new Date(b.startDate).getTime();
+          const bEnd = new Date(b.endDate).getTime();
+          if (aStart <= bEnd && aEnd >= bStart) {
+            overlaps.push({
+              carId,
+              sameCustomer: (a.customerName || '').toLowerCase().trim() === (b.customerName || '').toLowerCase().trim(),
+              original: { id: a.id, customer: a.customerName, start: a.startDate?.slice(0,10), end: a.endDate?.slice(0,10), status: a.status, createdAt: a.createdAt?.slice(0,10) },
+              duplicate: { id: b.id, customer: b.customerName, start: b.startDate?.slice(0,10), end: b.endDate?.slice(0,10), status: b.status, createdAt: b.createdAt?.slice(0,10) },
+            });
+          }
+        }
+      }
+    }
+    res.json({ total: bookings.length, overlappingPairs: overlaps.length, pairs: overlaps });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Read-only availability diagnostic for the pricing engine. Computes occupancy for a class + date range. Writes nothing.
 app.get("/api/debug/pricing/availability", async (req, res) => {
   if (!firestore) {
