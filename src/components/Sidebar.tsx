@@ -70,7 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     // Real-time listener for enquiries count
     const qEnquiries = query(collection(db, 'bookings'), where('carId', '==', ''));
     const unsubscribeEnquiries = onSnapshot(qEnquiries, (snapshot) => {
-      setCounts(prev => ({ ...prev, enquiries: snapshot.size }));
+      const activeCount = snapshot.docs.filter(d => {
+        const status = d.data().status;
+        return status !== 'DNR' && status !== 'Deleted';
+      }).length;
+      setCounts(prev => ({ ...prev, enquiries: activeCount }));
     });
 
     // Refresh every 5 minutes
