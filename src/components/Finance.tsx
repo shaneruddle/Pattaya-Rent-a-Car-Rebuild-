@@ -663,10 +663,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
       const accountsSnapshot = await getDocs(collection(db, 'accounts'));
       if (accountsSnapshot.empty) {
         const batch = writeBatch(db);
-        const requiredAccounts = ["Cash Car", "Kbank Auto", "Kbank Shane", "KTB Auto"];
+        const requiredAccounts = ["Cash Car", "Kbank Auto", "Kbank Shane", "KTB Auto", "Motorbikes"];
         requiredAccounts.forEach(name => {
           const ref = doc(collection(db, 'accounts'));
-          batch.set(ref, { name, balance: 0, type: name.includes('Cash') ? 'Cash' : 'Bank' });
+          batch.set(ref, { name, balance: 0, type: (name.includes('Cash') || name === 'Motorbikes') ? 'Cash' : 'Bank' });
         });
         await batch.commit();
       }
