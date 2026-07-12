@@ -386,22 +386,23 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         // 1. Send to Customer using template
         const startDate = parseISO(formData.dateOut);
         const endDate = parseISO(formData.dateIn);
+        const rentalDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const dailyRate = Math.round(formData.totalCharge / rentalDays);
 
-        await sendTemplatedEmail('booking_confirmed', formData.customerEmail, {
+        await sendTemplatedEmail('rental_confirmation', formData.customerEmail, {
           '{{customer_name}}': formData.customerName,
-          '{{customer_email}}': formData.customerEmail,
-          '{{customer_phone}}': formData.customerPhone,
           '{{vehicle_model}}': carName,
           '{{plate_number}}': plateNumber,
           '{{pickup_date}}': format(startDate, 'dd MMM yyyy'),
           '{{pickup_time}}': format(startDate, 'HH:mm'),
           '{{return_date}}': format(endDate, 'dd MMM yyyy'),
           '{{return_time}}': format(endDate, 'HH:mm'),
-          '{{rental_period}}': `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`,
-          '{{total_price}}': formData.totalCharge.toLocaleString(),
-          '{{photos}}': photoGridHtml,
-          '{{delivery_address}}': selectedBooking?.deliveryAddress || '',
-          '{{comments}}': selectedBooking?.notes || ''
+          '{{daily_rate}}': dailyRate.toLocaleString(),
+          '{{rental_days}}': String(rentalDays),
+          '{{deposit}}': formData.depositAmount.toLocaleString(),
+          '{{other_charge}}': formData.totalCharge.toLocaleString(),
+          '{{total_paid}}': (formData.totalCharge + formData.depositAmount).toLocaleString(),
+          '{{photos}}': photoGridHtml
         });
 
         // 2. Send to Staff (Simple notification)
