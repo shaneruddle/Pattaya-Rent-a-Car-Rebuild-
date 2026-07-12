@@ -405,24 +405,6 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
           '{{photos}}': photoGridHtml
         });
 
-        // 2. Send to Staff (Simple notification)
-        await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: 'info@pattayarentacar.com',
-            replyTo: formData.customerEmail,
-            subject: `[STAFF] New Rental Processed: ${formData.customerName}`,
-            html: `
-              <h3>New Rental Processed</h3>
-              <p><strong>Customer:</strong> ${formData.customerName}</p>
-              <p><strong>Vehicle:</strong> ${carName} (${plateNumber})</p>
-              <p><strong>Processed By:</strong> ${auth.currentUser?.email}</p>
-              <p><a href="${window.location.origin}/bookings">View in Dashboard</a></p>
-            `,
-          }),
-        });
-
         console.log('NewRental: Emails handled successfully');
       } catch (emailErr) {
         console.error('NewRental: Error handling emails:', emailErr);
