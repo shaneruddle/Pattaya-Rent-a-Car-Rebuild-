@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, 
-  UserPlus, 
-  Car as CarIcon, 
-  Bike, 
-  Camera, 
-  X, 
-  Check, 
-  ChevronRight, 
-  ChevronLeft, 
+import {
+  Search,
+  UserPlus,
+  Car as CarIcon,
+  Bike,
+  Camera,
+  X,
+  Check,
+  ChevronRight,
+  ChevronLeft,
   Upload,
   AlertCircle,
   Loader2,
@@ -45,7 +45,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
-  
+
   // Selection State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -69,7 +69,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       document.body.style.overflow = '';
     };
   }, [showDatePicker]);
-  
+
   // Form State
   const [vehicleType, setVehicleType] = useState<'Car' | 'Motorbike' | null>(null);
   const [formData, setFormData] = useState({
@@ -90,6 +90,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Stop camera on unmount or when step changes away from photos
   useEffect(() => {
@@ -126,7 +127,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const handleBookingSelect = (booking: Booking) => {
     setSelectedBooking(booking);
     setVehicleType(booking.requestedCarType === 'Motorbike' ? 'Motorbike' : 'Car');
-    
+
     const start = parseISO(booking.startDate);
     const end = parseISO(booking.endDate);
     setPickUpTime(format(start, 'HH:mm'));
@@ -163,9 +164,9 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const requestCameraPermissions = async () => {
     setIsCameraActive(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
-        audio: false 
+        audio: false
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -206,6 +207,27 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
     setPhotos(photos.filter((_, i) => i !== index));
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const remaining = 10 - photos.length;
+    if (remaining <= 0) {
+      toast.error('Maximum of 10 photos reached');
+      return;
+    }
+    files.slice(0, remaining).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setPhotos(prev => (prev.length < 10 ? [...prev, reader.result as string] : prev));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    toast.success(`Adding ${Math.min(files.length, remaining)} photo(s)`);
+    e.target.value = '';
+  };
+
   const handleComplete = async () => {
     setLoading(true);
     try {
@@ -217,7 +239,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            
+
             // Max dimension 1024px
             const MAX_DIM = 1024;
             if (width > height) {
@@ -231,12 +253,12 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                 height = MAX_DIM;
               }
             }
-            
+
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx?.drawImage(img, 0, 0, width, height);
-            
+
             canvas.toBlob((blob) => {
               if (blob) resolve(blob);
               else reject(new Error('Canvas toBlob failed'));
@@ -251,23 +273,23 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       const photoUploadPromises = photos.map(async (photo, i) => {
         try {
           if (!storage) throw new Error('Firebase Storage not initialized');
-          
+
           const compressedBlob = await compressImage(photo);
           const photoRef = ref(storage, `rentals/${Date.now()}_${i}.jpg`);
-          
+
           // Try uploading with a timeout logic
           const uploadPromise = uploadBytes(photoRef, compressedBlob);
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Upload timeout after 30 seconds')), 30000)
           );
-          
+
           await Promise.race([uploadPromise, timeoutPromise]);
           return await getDownloadURL(photoRef);
         } catch (error) {
           console.error(`Failed to upload photo ${i}, using base64 fallback:`, error);
           toast.warning(`Photo ${i+1} upload failed, using fallback storage.`);
           // If storage fails, fallback to the original data URL (base64)
-          return photo; 
+          return photo;
         }
       });
       const photoUrls = await Promise.all(photoUploadPromises);
@@ -346,7 +368,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       // 6. Send Templated Confirmation Email
       const carName = cars.find(c => c.id === formData.carId)?.name || 'Vehicle';
       const plateNumber = cars.find(c => c.id === formData.carId)?.plateNumber || '';
-      
+
       const photoGridHtml = photoUrls.length > 0 ? `
         <div style="margin-top: 20px;">
           <h3 style="font-size: 14px; text-transform: uppercase; color: #666;">Damage Inspection Photos</h3>
@@ -407,7 +429,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
       // 7. Success log
       toast.success('Rental processed and confirmation email sent!');
-      
+
       onComplete();
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'rentals');
@@ -417,12 +439,12 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
     }
   };
 
-  const filteredBookings = bookings.filter(b => 
+  const filteredBookings = bookings.filter(b =>
     b.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.email?.toLowerCase().includes(searchQuery.toLowerCase())
   ).slice(0, 5);
 
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     `${c.firstName} ${c.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   ).slice(0, 5);
@@ -595,7 +617,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Rental Details</h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1 block">Select Vehicle</label>
@@ -674,8 +696,8 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                                 const [eh, em] = dropOffTime.split(':').map(Number);
                                 end.setHours(eh, em, 0, 0);
 
-                                setFormData({ 
-                                  ...formData, 
+                                setFormData({
+                                  ...formData,
                                   dateOut: start.toISOString(),
                                   dateIn: end.toISOString()
                                 });
@@ -806,13 +828,30 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Damage Photos ({photos.length}/10)</h3>
-                  <button
-                    onClick={requestCameraPermissions}
-                    className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 text-[10px] font-bold uppercase tracking-widest"
-                  >
-                    <Camera size={16} />
-                    Take Photo
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#1A1A1A] text-white rounded-xl hover:bg-brand-orange transition-all shadow-lg text-[10px] font-bold uppercase tracking-widest"
+                    >
+                      <Upload size={16} />
+                      Upload
+                    </button>
+                    <button
+                      onClick={requestCameraPermissions}
+                      className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-xl hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 text-[10px] font-bold uppercase tracking-widest"
+                    >
+                      <Camera size={16} />
+                      Take Photo
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -928,9 +967,9 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         </AnimatePresence>
       </main>
 
-      <ImportantInfoModal 
-        isOpen={showImportantInfo} 
-        onClose={() => setShowImportantInfo(false)} 
+      <ImportantInfoModal
+        isOpen={showImportantInfo}
+        onClose={() => setShowImportantInfo(false)}
         isBikeMode={vehicleType === 'Motorbike'}
       />
 
@@ -956,7 +995,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
               >
                 <X size={24} />
               </button>
-              
+
               <div className="absolute bottom-10 left-0 right-0 flex items-center justify-center gap-12">
                 <div className="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center">
                   <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white text-xs font-bold">
@@ -989,14 +1028,14 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 };
 
 const Zap = ({ size }: { size: number }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
     strokeLinejoin="round"
   >
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
