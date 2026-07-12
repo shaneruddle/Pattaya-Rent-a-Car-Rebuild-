@@ -21,7 +21,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, storage, handleFirestoreError, OperationType, logSystemActivity } from '../firebase';
 import { sendTemplatedEmail } from '../lib/emailUtils';
-import { collection, addDoc, updateDoc, doc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDocs, query, where, orderBy, limit, increment } from 'firebase/firestore';
 import { upsertCustomer } from '../lib/customerService';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Car, Booking, Customer, Rental } from '../types';
@@ -355,6 +355,58 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
           status: formData.totalPaid < formData.totalCharge ? 'Pending' : 'Paid',
           paymentStatus: formData.totalPaid < formData.totalCharge ? 'pending' : 'paid'
         });
+      }
+
+      // 4b. Post income to Finance — account auto-routed by vehicle type
+      try {
+        const targetAccountName = vehicleType === 'Motorbike' ? 'Motorbikes' : 'Cash Car';
+        const accountSnap = await getDocs(
+          query(collection(db, 'accounts'), where('name', '==', targetAccountName), limit(1))
+        );
+
+        if (accountSnap.empty) {
+          console.error(`NewRental: finance account "${targetAccountName}" not found — skipping finance posting`);
+          toast.warning(`Finance account "${targetAccountName}" not found. Log this rental in Finance manually.`);
+        } else {
+          const accountId = accountSnap.docs[0].id;
+          const txDate = new Date().toISOString();
+          let balanceDelta = 0;
+
+          if (formData.totalCharge > 0) {
+            await addDoc(collection(db, 'transactions'), {
+              type: 'Income',
+              amount: Number(formData.totalCharge),
+              date: txDate,
+              category: 'Rental',
+              carId: formData.carId,
+              bookingId: selectedBooking?.id || '',
+              accountId,
+              description: `Rental payment from ${formData.customerName}`
+            });
+            balanceDelta += Number(formData.totalCharge);
+          }
+
+          if (formData.depositAmount > 0) {
+            await addDoc(collection(db, 'transactions'), {
+              type: 'Income',
+              amount: Number(formData.depositAmount),
+              date: txDate,
+              category: 'Security Deposit',
+              carId: formData.carId,
+              bookingId: selectedBooking?.id || '',
+              accountId,
+              description: `Security deposit from ${formData.customerName}`
+            });
+            balanceDelta += Number(formData.depositAmount);
+          }
+
+          if (balanceDelta > 0) {
+            await updateDoc(doc(db, 'accounts', accountId), { balance: increment(balanceDelta) });
+          }
+        }
+      } catch (financeErr) {
+        console.error('NewRental: failed to post finance transactions:', financeErr);
+        toast.warning('Rental saved, but finance posting failed. Log it in Finance manually.');
       }
 
       // 5. Log Activity
