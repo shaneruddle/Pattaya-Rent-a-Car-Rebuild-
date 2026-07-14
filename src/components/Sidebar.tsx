@@ -42,19 +42,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
 
     const fetchCounts = async () => {
       try {
-        const [bookingsSnap, rentalsSnap, crmSnap, enquiriesSnap] = await Promise.all([
+        const [bookingsSnap, rentalsSnap, crmSnap] = await Promise.all([
           getCountFromServer(collection(db, 'bookings')),
           getCountFromServer(collection(db, 'rentals')),
-          getCountFromServer(collection(db, 'customers')),
-          getCountFromServer(query(collection(db, 'bookings'), where('carId', '==', '')))
+          getCountFromServer(collection(db, 'customers'))
         ]);
 
-        setCounts({
+        setCounts(prev => ({
+          ...prev,
           bookings: bookingsSnap.data().count,
           rentals: rentalsSnap.data().count,
-          crm: crmSnap.data().count,
-          enquiries: enquiriesSnap.data().count
-        });
+          crm: crmSnap.data().count
+        }));
       } catch (error) {
         console.error('Sidebar: Error fetching counts:', error);
       }
