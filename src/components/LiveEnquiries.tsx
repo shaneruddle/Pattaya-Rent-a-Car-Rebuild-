@@ -56,6 +56,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [showDnrModal, setShowDnrModal] = useState(false);
   const [dnrTarget, setDnrTarget] = useState<Booking | null>(null);
   const [dnrReason, setDnrReason] = useState('');
+  const [openMenu, setOpenMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -530,25 +531,16 @@ However, we can offer the following alternative...`,
                         {formatEnquiryTime(enquiry.createdAt)}
                       </span>
                     )}
-                    <div className="relative group/menu">
-                    <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setOpenMenu(openMenu?.id === enquiry.id ? null : { id: enquiry.id, x: rect.right, y: rect.bottom });
+                      }}
+                      className="p-2 hover:bg-black/5 rounded-full transition-colors"
+                    >
                       <MoreVertical size={16} className="text-black/40" />
                     </button>
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white/90 backdrop-blur-xl border border-white/60 rounded-2xl shadow-xl opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all z-20 overflow-hidden">
-                      <button 
-                        onClick={() => handleEdit(enquiry)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-black/60 hover:bg-black/5 hover:text-brand-orange transition-all"
-                      >
-                        <Edit2 size={14} /> Edit Enquiry
-                      </button>
-                      <button 
-                        onClick={() => initiateDnr(enquiry)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-50 transition-all"
-                      >
-                        <XCircle size={14} /> Did Not Rent
-                      </button>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="flex flex-col h-full">
@@ -1094,6 +1086,41 @@ However, we can offer the following alternative...`,
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {openMenu && (() => {
+          const menuEnquiry = enquiries.find((e) => e.id === openMenu.id);
+          if (!menuEnquiry) return null;
+          return (
+            <React.Fragment key="enquiry-menu">
+              <div className="fixed inset-0 z-[999999]" onClick={() => setOpenMenu(null)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="fixed w-48 bg-white/90 backdrop-blur-xl border border-white/60 rounded-2xl shadow-xl z-[1000000] overflow-hidden"
+                style={{
+                  left: Math.min(window.innerWidth - 208, Math.max(16, openMenu.x - 192)),
+                  top: Math.min(window.innerHeight - 100, openMenu.y + 4),
+                }}
+              >
+                <button
+                  onClick={() => { handleEdit(menuEnquiry); setOpenMenu(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-black/60 hover:bg-black/5 hover:text-brand-orange transition-all"
+                >
+                  <Edit2 size={14} /> Edit Enquiry
+                </button>
+                <button
+                  onClick={() => { initiateDnr(menuEnquiry); setOpenMenu(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-50 transition-all"
+                >
+                  <XCircle size={14} /> Did Not Rent
+                </button>
+              </motion.div>
+            </React.Fragment>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
