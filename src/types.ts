@@ -97,6 +97,7 @@ export interface Booking {
   deposit?: number;
   isMaintenance?: boolean;
   maintenanceDescription?: string;
+  isGapBlock?: boolean;
   paymentStatus?: 'paid' | 'pending';
   createdAt?: any;
   nationality?: string;

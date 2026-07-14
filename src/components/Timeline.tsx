@@ -507,7 +507,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
               onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
               className={cn(
                 "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
-                booking.isMaintenance && "maintenance-pattern"
+                booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern"
               )}
               style={style || {}}
             >
@@ -534,7 +534,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
                   "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 min-w-0 text-left pl-6 pr-12",
                   booking.isMaintenance ? "text-white/90" : (booking.paymentStatus === 'pending' ? "text-black" : "text-[#1A1A1A]")
                 )}>
-                  {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                  {booking.isMaintenance ? (booking.isGapBlock ? '' : (booking.maintenanceDescription || 'Maintenance')) : booking.customerName}
                 </span>
                 
                 {!booking.isMaintenance && (
@@ -861,6 +861,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; booking?: Booking; carId?: string; date?: Date; slot?: 'AM' | 'PM' } | null>(null);
   const [clipboard, setClipboard] = useState<{ booking: Booking } | null>(null);
+  const [gapEndDateInput, setGapEndDateInput] = useState<string | null>(null);
 
   useEffect(() => {
     const handleGlobalClick = () => setContextMenu(null);
@@ -969,10 +970,73 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
   const handleSlotContextMenu = React.useCallback((e: React.MouseEvent, carId: string, date: Date, slot: 'AM' | 'PM') => {
     e.preventDefault();
-    if (clipboard) {
-      setContextMenu({ x: e.clientX, y: e.clientY, carId, date, slot });
+    setContextMenu({ x: e.clientX, y: e.clientY, carId, date, slot });
+  }, []);
+
+  // Gap-block feature: find the specific gap (between two bookings, or open-ended) that
+  // contains the given car/date/slot. Excludes deleted bookings.
+  const getGapBounds = (carId: string, date: Date, slot: 'AM' | 'PM') => {
+    const clicked = new Date(date);
+    clicked.setHours(slot === 'AM' ? 0 : 12, 0, 0, 0);
+
+    const carBookings = bookings
+      .filter(b => b.carId === carId && (b as any).status !== 'Deleted')
+      .map(b => ({ ...b, _start: parseISO(b.startDate), _end: parseISO(b.endDate) }))
+      .sort((a, b) => a._start.getTime() - b._start.getTime());
+
+    let prevEnd: Date | null = null;
+    let nextStart: Date | null = null;
+    for (const b of carBookings) {
+      if (b._end.getTime() <= clicked.getTime()) {
+        if (!prevEnd || b._end.getTime() > prevEnd.getTime()) prevEnd = b._end;
+      }
+      if (b._start.getTime() >= clicked.getTime()) {
+        if (!nextStart || b._start.getTime() < nextStart.getTime()) nextStart = b._start;
+      }
     }
-  }, [clipboard]);
+
+    return { start: prevEnd || clicked, end: nextStart };
+  };
+
+  const handleBlockGap = async (carId: string, start: Date, end: Date) => {
+    try {
+      const dataToSave = {
+        carId: carId === 'unassigned' ? '' : carId,
+        customerName: '',
+        mobileNumber: '',
+        status: 'Pending',
+        amount: 0,
+        deposit: 0,
+        notes: '',
+        deliveryAddress: '',
+        deliveryNotes: '',
+        returnNote: '',
+        deliveryLocation: undefined,
+        isMaintenance: true,
+        isGapBlock: true,
+        maintenanceDescription: '',
+        paymentStatus: 'paid',
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      const docRef = await addDoc(collection(db, 'bookings'), dataToSave);
+      const car = cars.find(c => c.id === carId);
+      await logSystemActivity(
+        'Block Gap (Timeline)',
+        `Blocked gap for ${car?.name || 'Unknown Car'} (${format(start, 'd MMM HH:mm')} to ${format(end, 'd MMM HH:mm')})`,
+        'Bookings',
+        { bookingId: docRef.id }
+      );
+      toast.success('Gap blocked');
+      setContextMenu(null);
+      setGapEndDateInput(null);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to block gap:', err);
+      toast.error('Failed to block gap. Please try again.');
+    }
+  };
 
   const handleCutBooking = (booking: Booking) => {
     setClipboard({ booking });
@@ -1517,13 +1581,14 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const EMERALD_500 = '#10B981';
     const YELLOW_400 = '#FACC15';
     const GRAY_600 = '#4B5563';
+    const LIGHT_GRAY = '#D1D5DB';
 
     const isUnassigned = !booking.carId || booking.carId === '' || booking.carId === 'unassigned';
 
     let background = EMERALD_500;
 
     if (isMaintenance) {
-      background = GRAY_600;
+      background = booking.isGapBlock ? LIGHT_GRAY : GRAY_600;
     } else if (isUnassigned) {
       background = 'rgba(139, 92, 246, 0.72)';
     } else if (isCompleted) {
@@ -1768,7 +1833,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
                       className={cn(
                         "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
-                        booking.isMaintenance && "maintenance-pattern"
+                        booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern"
                       )}
                       style={style || {}}
                     >
@@ -1799,7 +1864,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                           "text-[10px] font-bold uppercase tracking-widest truncate leading-none flex-1 min-w-0 text-left pl-6 pr-12",
                           booking.isMaintenance ? "text-white/90" : "text-[#1A1A1A]"
                         )}>
-                          {booking.isMaintenance ? (booking.maintenanceDescription || 'Maintenance') : booking.customerName}
+                          {booking.isMaintenance ? (booking.isGapBlock ? '' : (booking.maintenanceDescription || 'Maintenance')) : booking.customerName}
                         </span>
                         
                         {!booking.isMaintenance && (
@@ -2742,13 +2807,54 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 </button>
               </div>
             ) : contextMenu.carId ? (
-              <button
-                onClick={() => handlePasteBooking(contextMenu.carId!, contextMenu.date!, contextMenu.slot!)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
-              >
-                <Clipboard size={14} />
-                Paste Booking
-              </button>
+              <div className="flex flex-col gap-0.5">
+                {clipboard && (
+                  <button
+                    onClick={() => handlePasteBooking(contextMenu.carId!, contextMenu.date!, contextMenu.slot!)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
+                  >
+                    <Clipboard size={14} />
+                    Paste Booking
+                  </button>
+                )}
+                {(() => {
+                  const gap = getGapBounds(contextMenu.carId!, contextMenu.date!, contextMenu.slot!);
+                  if (!gap) return null;
+                  if (gap.end) {
+                    return (
+                      <button
+                        onClick={() => handleBlockGap(contextMenu.carId!, gap.start, gap.end!)}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] hover:bg-brand-orange hover:text-white rounded-xl transition-all"
+                      >
+                        <Lock size={14} />
+                        {`Block Gap (${format(gap.start, 'd MMM HH:mm')} to ${format(gap.end, 'd MMM HH:mm')})`}
+                      </button>
+                    );
+                  }
+                  return (
+                    <div className="px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-black/40 mb-1.5">Block until</p>
+                      <input
+                        type="date"
+                        value={gapEndDateInput || format(addDays(gap.start, 2), 'yyyy-MM-dd')}
+                        onChange={e => setGapEndDateInput(e.target.value)}
+                        className="w-full text-xs border border-black/10 rounded-lg px-2 py-1 mb-1.5"
+                      />
+                      <button
+                        onClick={() => {
+                          const chosen = gapEndDateInput || format(addDays(gap.start, 2), 'yyyy-MM-dd');
+                          const endDate = new Date(chosen + 'T09:00:00');
+                          handleBlockGap(contextMenu.carId!, gap.start, endDate);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white bg-brand-orange rounded-lg"
+                      >
+                        <Lock size={12} />
+                        Block Gap
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             ) : null}
           </motion.div>
         )}
