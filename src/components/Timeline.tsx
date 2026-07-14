@@ -507,7 +507,8 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
               onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
               className={cn(
                 "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
-                booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern"
+                booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern",
+                booking.isGapBlock && "z-0"
               )}
               style={style || {}}
             >
@@ -1833,7 +1834,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       onContextMenu={(e) => { e.preventDefault(); handleBookingContextMenu(e, booking); }}
                       className={cn(
                         "absolute h-6 top-1 rounded-md shadow-sm cursor-pointer z-10 px-1.5 py-0 flex flex-col justify-center border border-white/20 backdrop-blur-sm booking-bar group/booking",
-                        booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern"
+                        booking.isMaintenance && !booking.isGapBlock && "maintenance-pattern",
+                        booking.isGapBlock && "z-0"
                       )}
                       style={style || {}}
                     >
@@ -2797,6 +2799,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 <button
                   onClick={() => {
                     setEditingBooking(contextMenu.booking!);
+                    setModalMode('view');
+                    setIsModalOpen(true);
                     setShowDeleteConfirm(true);
                     setContextMenu(null);
                   }}
@@ -3077,7 +3081,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                     <h4 className="text-sm font-bold text-[#1A1A1A]">
                       {summaryBooking.booking.isMaintenance ? (
                         <span className="flex items-center gap-2">
-                          <Wrench size={14} className="text-gray-600" /> Maintenance
+                          <Wrench size={14} className="text-gray-600" /> {summaryBooking.booking.isGapBlock ? 'Holding' : 'Maintenance'}
                         </span>
                       ) : summaryBooking.booking.customerName}
                     </h4>
@@ -3107,7 +3111,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                                     ? "bg-red-100 text-red-600" 
                                     : ((!summaryBooking.booking.carId || summaryBooking.booking.carId === 'unassigned') ? "bg-yellow-100 text-yellow-600" : "bg-orange-100 text-orange-600"))))
                     )}>
-                      {summaryBooking.booking.isMaintenance ? 'Maintenance' : summaryBooking.booking.status}
+                      {summaryBooking.booking.isMaintenance ? (summaryBooking.booking.isGapBlock ? 'Holding' : 'Maintenance') : summaryBooking.booking.status}
                     </span>
                     <div className="flex gap-1.5 pointer-events-auto">
                       <button
@@ -3136,6 +3140,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingBooking(summaryBooking.booking);
+                          setModalMode('view');
+                          setIsModalOpen(true);
                           setShowDeleteConfirm(true);
                           setSummaryBookingInfo(null);
                         }}
