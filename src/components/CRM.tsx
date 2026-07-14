@@ -237,13 +237,19 @@ export const CRM: React.FC = () => {
     const fetchHistory = async () => {
       if (!auth.currentUser) return;
       try {
-        const q = query(
-          collection(db, 'bookings'),
-          where('email', '==', selectedCustomer.email)
-        );
-        const snapshot = await getDocs(q);
-        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-        setCustomerHistory(history.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+      // Case-insensitive match. Booking email casing is inconsistent (manual CRM
+      // entry vs booking-engine submissions vs CSV imports), so a case-sensitive
+      // '==' query can under-count a customer's real booking history even when
+      // their profile itself was found correctly.
+      const target = (selectedCustomer.email || '').trim().toLowerCase();
+      let history: Booking[] = [];
+      if (target) {
+        const snapshot = await getDocs(collection(db, 'bookings'));
+        history = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Booking))
+          .filter(b => ((b as any).email || '').trim().toLowerCase() === target);
+      }
+      setCustomerHistory(history.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
       } catch (error) {
         console.error("Error fetching customer history:", error);
       }
