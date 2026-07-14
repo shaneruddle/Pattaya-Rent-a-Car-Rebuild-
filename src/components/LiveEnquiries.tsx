@@ -522,7 +522,7 @@ However, we can offer the following alternative...`,
                 className="bg-white/40 backdrop-blur-xl border border-white/60 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
               >
                 {/* Status Badge */}
-                  <div className="absolute top-6 right-6 sm:top-8 sm:right-8 flex flex-col items-end gap-2">
+                  <div className="absolute top-6 right-6 sm:top-8 sm:right-8 flex flex-col items-end gap-2 max-w-[110px] sm:max-w-[150px] text-right">
                     <span className="px-3 py-1 bg-brand-orange/10 text-brand-orange text-[8px] font-bold uppercase tracking-widest rounded-full">
                       Pending Enquiry
                     </span>
@@ -544,7 +544,7 @@ However, we can offer the following alternative...`,
                 </div>
 
                 <div className="flex flex-col h-full">
-                  <div className="flex items-start gap-6 mb-8">
+                  <div className="flex items-start gap-6 mb-8 pr-28 sm:pr-40">
                     <div className="w-16 h-16 bg-brand-orange/10 rounded-2xl flex items-center justify-center text-brand-orange shrink-0">
                       <User size={32} />
                     </div>
