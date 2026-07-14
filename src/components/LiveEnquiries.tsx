@@ -11,7 +11,6 @@ import {
   Filter, 
   MoreVertical, 
   Calendar, 
-  User, 
   Phone, 
   Mail, 
   Car as CarIcon, 
@@ -544,10 +543,7 @@ However, we can offer the following alternative...`,
                 </div>
 
                 <div className="flex flex-col h-full">
-                  <div className="flex items-start gap-6 mb-8 pr-28 sm:pr-40">
-                    <div className="w-16 h-16 bg-brand-orange/10 rounded-2xl flex items-center justify-center text-brand-orange shrink-0">
-                      <User size={32} />
-                    </div>
+                  <div className="flex items-start mb-8 pr-28 sm:pr-40">
                     <div>
                       <h3 className="text-xl font-serif italic text-black mb-1">{enquiry.customerName}</h3>
                       <div className="flex flex-wrap gap-4">
