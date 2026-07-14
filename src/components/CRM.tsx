@@ -287,9 +287,24 @@ export const CRM: React.FC = () => {
 
   const handleSelectTopCustomer = async (email: string) => {
     try {
-      const existing = await findExistingByEmail(email);
-      if (existing) {
-        setSelectedCustomer(existing.data);
+      const target = email.trim().toLowerCase();
+
+      // Case-insensitive match against the full customer pool. Reuse allCustomers
+      // if already loaded (via a prior search), otherwise fetch the full collection
+      // once here. Firestore's '==' is case-sensitive and stored email casing is
+      // inconsistent across records, so findExistingByEmail's fixed 3-variant check
+      // (lower/upper/original) can miss real records stored in other casings.
+      let pool = allCustomers;
+      if (!hasLoadedAll) {
+        const snapshot = await getDocs(collection(db, 'customers'));
+        pool = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)) as Customer[];
+        setAllCustomers(pool);
+        setHasLoadedAll(true);
+      }
+
+      const match = pool.find(c => (c.email || '').trim().toLowerCase() === target);
+      if (match) {
+        setSelectedCustomer(match);
       } else {
         toast.error('Customer profile not found');
       }
