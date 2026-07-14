@@ -23,7 +23,8 @@ import {
   ChevronRight,
   ExternalLink,
   User,
-  Download
+  Download,
+  Trophy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ export const CRM: React.FC = () => {
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerHistory, setCustomerHistory] = useState<Booking[]>([]);
+  const [topCustomers, setTopCustomers] = useState<{ name: string; email: string; count: number }[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -249,6 +251,53 @@ export const CRM: React.FC = () => {
 
     fetchHistory();
   }, [selectedCustomer]);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchTopCustomers = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'bookings'));
+        const counts = new Map<string, { name: string; email: string; count: number }>();
+
+        snapshot.docs.forEach(doc => {
+          const b = doc.data() as any;
+          if (b.isMaintenance || b.isGapBlock) return;
+          if (b.status === 'Deleted' || b.status === 'DNR') return;
+          const email = (b.email || '').trim().toLowerCase();
+          if (!email) return;
+
+          const existing = counts.get(email);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            counts.set(email, { name: b.customerName || email, email, count: 1 });
+          }
+        });
+
+        const sorted = Array.from(counts.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+        setTopCustomers(sorted);
+      } catch (error) {
+        console.error('Error fetching top customers:', error);
+      }
+    };
+
+    fetchTopCustomers();
+  }, []);
+
+  const handleSelectTopCustomer = async (email: string) => {
+    try {
+      const existing = await findExistingByEmail(email);
+      if (existing) {
+        setSelectedCustomer(existing.data);
+      } else {
+        toast.error('Customer profile not found');
+      }
+    } catch (error) {
+      console.error('Error opening top customer:', error);
+      toast.error('Failed to open customer');
+    }
+  };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -1134,13 +1183,40 @@ const handleSaveCustomer = async (e: React.FormEvent<HTMLFormElement>) => {
                 </div>
               </motion.div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center">
-                <div className="w-32 h-32 rounded-[40px] bg-white/40 backdrop-blur-xl border border-white/60 flex items-center justify-center mb-8 shadow-2xl relative group">
-                  <div className="absolute inset-0 bg-brand-orange/5 rounded-[40px] blur-xl group-hover:bg-brand-orange/10 transition-colors" />
-                  <Users size={56} className="text-brand-orange/20 relative" />
+              <div className="h-full flex flex-col overflow-y-auto p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Trophy size={20} className="text-brand-orange" />
+                  <h2 className="font-serif italic text-2xl text-[#141414]">Top Customers</h2>
                 </div>
-                <h2 className="font-serif italic text-4xl text-[#141414] mb-3">Select a Customer</h2>
-                <p className="text-[#141414]/40 uppercase tracking-widest text-[10px] max-w-xs leading-relaxed">Search and manage customer profiles, contact details, and rental history in one place.</p>
+                <p className="text-[#141414]/40 uppercase tracking-widest text-[10px] mb-6">Ranked by total bookings</p>
+                {topCustomers.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-[#141414]/40 uppercase tracking-widest text-[10px]">Loading leaderboard...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {topCustomers.map((c, i) => (
+                      <button
+                        key={c.email}
+                        onClick={() => handleSelectTopCustomer(c.email)}
+                        className="w-full flex items-center gap-4 p-4 bg-white/40 hover:bg-white/70 border border-white/60 rounded-2xl transition-all text-left group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-brand-orange/10 flex items-center justify-center font-bold text-brand-orange text-sm shrink-0">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[#141414] truncate">{c.name}</p>
+                          <p className="text-[#141414]/40 text-xs truncate">{c.email}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-serif italic text-2xl text-[#141414]">{c.count}</p>
+                          <p className="text-[#141414]/40 uppercase tracking-widest text-[8px]">Bookings</p>
+                        </div>
+                        <ChevronRight size={16} className="text-[#141414]/20 group-hover:text-brand-orange transition-colors shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </AnimatePresence>
