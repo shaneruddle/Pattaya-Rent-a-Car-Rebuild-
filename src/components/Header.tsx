@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Filter, X, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Filter, X, Plus, Car, Bike } from 'lucide-react';
 import { format, addMonths, subMonths } from 'date-fns';
 import { cn } from '../lib/utils';
 
@@ -7,6 +7,7 @@ interface HeaderProps {
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
   availability: { free: number; total: number };
+  fleetCounts: { cars: number; bikes: number };
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onNewBooking?: () => void;
@@ -16,6 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentDate, 
   setCurrentDate, 
   availability,
+  fleetCounts,
   searchQuery,
   setSearchQuery,
   onNewBooking
@@ -59,6 +61,18 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="hidden md:flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">
+          <span className="flex items-center gap-1.5">
+            <Car size={14} />
+            {fleetCounts.cars} Cars
+          </span>
+          <span className="w-1 h-1 rounded-full bg-black/20" />
+          <span className="flex items-center gap-1.5">
+            <Bike size={14} />
+            {fleetCounts.bikes} Bikes
+          </span>
         </div>
 
         <div className="flex items-center gap-4">

@@ -398,6 +398,19 @@ function AppContent() {
     };
   }, [cars, bookings]);
 
+  const fleetCounts = useMemo(() => {
+    let carsCount = 0;
+    let bikesCount = 0;
+    cars.forEach(c => {
+      if (c.isActive === false) return;
+      const cat = (c.category || 'Car').toLowerCase().trim();
+      const type = (c.type || '').toLowerCase().trim();
+      const isBike = cat.includes('bike') || cat.includes('scooter') || type.includes('bike') || type.includes('scooter');
+      if (isBike) bikesCount++; else carsCount++;
+    });
+    return { cars: carsCount, bikes: bikesCount };
+  }, [cars]);
+
   const filteredBookings = useMemo(() => {
     const isBikeView = currentView === 'timeline_bikes';
     const isCarView = currentView === 'timeline_cars';
@@ -702,6 +715,7 @@ function AppContent() {
                 currentDate={currentDate}
                 setCurrentDate={setCurrentDate}
                 availability={availability}
+                fleetCounts={fleetCounts}
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
                 onNewBooking={() => setNewBookingTrigger(prev => prev + 1)}
