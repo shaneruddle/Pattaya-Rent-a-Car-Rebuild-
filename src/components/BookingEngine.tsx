@@ -325,7 +325,14 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     getFullDate(selectedRange.to, dropOffTime),
     getFullDate(selectedRange.from, pickUpTime)
   );
-  const totalDays = Math.max(1, Math.ceil(totalHours / 12) / 2);
+  // Billing rule: whole 24h days, plus a flat +0.5 day if leftover time exceeds a 2-hour
+  // grace period. Leftover <=2h is free; beyond that it's a half day regardless of how
+  // much further over (returns only happen during office hours, so this doesn't chain
+  // into a full extra day within the same window).
+  const GRACE_HOURS = 2;
+  const wholeDaysUnit = Math.floor(totalHours / 24);
+  const leftoverHours = totalHours - wholeDaysUnit * 24;
+  const totalDays = Math.max(1, leftoverHours <= GRACE_HOURS ? wholeDaysUnit : wholeDaysUnit + 0.5);
 
   const filteredCars = cars.filter(car => {
     // Filter by category first
@@ -353,9 +360,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   useEffect(() => {
     if (!quoteFrom || !quoteTo) return;              // need dates
     if (visibleClasses.length === 0) return;         // need at least one class
-    fetchClassPrices(visibleClasses, quoteFrom, quoteTo);
+    fetchClassPrices(visibleClasses, quoteFrom, quoteTo, totalDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleClassesKey, quoteFrom, quoteTo]);
+  }, [visibleClassesKey, quoteFrom, quoteTo, totalDays]);
 
 // Local fallback when the pricing engine can't quote (class not configured, fetch error, not loaded yet).
   const fallbackTotal = (car: WebsiteCar) => {

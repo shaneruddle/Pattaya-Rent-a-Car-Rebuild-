@@ -681,8 +681,16 @@ app.get("/api/pricing/quote", async (req, res) => {
       return res.json({ quotable: false, reason: "monthly_redirect", days, message: cfg.redirectMessage });
     }
 
+    // Billable duration: prefer the client-supplied duration (accounts for pickup/drop-off
+    // time-of-day, rounded to half-day increments client-side). Falls back to the whole
+    // calendar-day count if absent/invalid. Only affects tier selection and the final total -
+    // season, availability window, min-days and monthly-redirect guards keep using calendar `days`.
+    const rawDuration = req.query.durationDays;
+    const parsedDuration = rawDuration !== undefined ? parseFloat(rawDuration as string) : NaN;
+    const billableDays = (Number.isFinite(parsedDuration) && parsedDuration > 0) ? parsedDuration : days;
+
     // Tier
-    const isWeekly = days >= cfg.thresholds.weeklyFromDays;
+    const isWeekly = billableDays >= cfg.thresholds.weeklyFromDays;
     const tierRate = isWeekly ? cls.weekly : cls.daily;
     const tierName = isWeekly ? "weekly" : "daily";
 
@@ -749,7 +757,7 @@ app.get("/api/pricing/quote", async (req, res) => {
     const flooredDaily = Math.max(effectiveDaily, cls.floor);
     const floorApplied = flooredDaily > effectiveDaily;
     const roundedDaily = Math.ceil(flooredDaily / 50) * 50;   // round UP to nearest 50
-    const totalPrice = roundedDaily * days;                    // total derives from rounded per-day (reconciles)
+    const totalPrice = roundedDaily * billableDays;                    // total derives from rounded per-day (reconciles)
 
     res.json({
       quotable: true,
@@ -757,6 +765,7 @@ app.get("/api/pricing/quote", async (req, res) => {
       from: fromISO,
       to: toISO,
       days,
+      billableDays,
       tier: tierName,
       tierRate,
       season,

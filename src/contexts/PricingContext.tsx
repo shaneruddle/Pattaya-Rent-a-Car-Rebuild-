@@ -7,7 +7,7 @@ import { WebsiteCar } from '../types';
 interface PricingContextType {
   classPrices: Record<string, any>;
   classPricesLoading: boolean;
-  fetchClassPrices: (classes: string[], fromISO: string, toISO: string) => Promise<void>;
+  fetchClassPrices: (classes: string[], fromISO: string, toISO: string, durationDays?: number) => Promise<void>;
   getQuoteForCar: (car: WebsiteCar) => any | null;
 }
 
@@ -18,7 +18,7 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [classPricesLoading, setClassPricesLoading] = useState(true);
 
   // Fetch quotes from the pricing engine, one call per distinct class. Populates classPrices.
-  const fetchClassPrices = useCallback(async (classes: string[], fromISO: string, toISO: string) => {
+  const fetchClassPrices = useCallback(async (classes: string[], fromISO: string, toISO: string, durationDays?: number) => {
     if (!classes || classes.length === 0 || !fromISO || !toISO) return;
     const distinct = Array.from(new Set(classes.filter(Boolean)));
     setClassPricesLoading(true);
@@ -26,7 +26,9 @@ export const PricingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const results: Record<string, any> = {};
       await Promise.all(distinct.map(async (cls) => {
         try {
-          const resp = await fetchWithRetry(`/api/pricing/quote?class=${encodeURIComponent(cls)}&from=${fromISO}&to=${toISO}`);
+          const durationParam = (durationDays !== undefined && Number.isFinite(durationDays) && durationDays > 0)
+            ? `&durationDays=${encodeURIComponent(durationDays)}` : '';
+          const resp = await fetchWithRetry(`/api/pricing/quote?class=${encodeURIComponent(cls)}&from=${fromISO}&to=${toISO}${durationParam}`);
           if (resp.ok) {
             results[cls] = await resp.json();
           } else {
