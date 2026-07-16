@@ -232,7 +232,8 @@ export interface UserProfile {
 
 export interface CalendarEvent {
   id: string;
-  date: string; // ISO date, yyyy-MM-dd
+  date: string; // ISO date, yyyy-MM-dd (start date)
+  endDate?: string; // ISO date, yyyy-MM-dd; end date for multi-day entries, defaults to date if absent
   type: 'shift' | 'event' | 'holiday';
   title: string;
   staffName?: string; // populated for 'shift' entries

@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestor
 import { db, auth, safeGetDocs } from '../firebase';
 import { CalendarEvent } from '../types';
 import {
-  format, isToday, isSameMonth,
+  format, isToday, isSameMonth, differenceInCalendarDays,
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
   addMonths, subMonths
 } from 'date-fns';
@@ -12,11 +12,31 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 
-const TYPE_META: Record<CalendarEvent['type'], { label: string; dot: string; pill: string }> = {
-  shift: { label: 'Staff Shift', dot: 'bg-blue-500', pill: 'bg-blue-50 text-blue-600 border-blue-100' },
-  event: { label: 'Event / Reminder', dot: 'bg-purple-500', pill: 'bg-purple-50 text-purple-600 border-purple-100' },
-  holiday: { label: 'Holiday', dot: 'bg-red-500', pill: 'bg-red-50 text-red-600 border-red-100' },
+const LANE_HEIGHT = 24;
+const BAR_HEIGHT = 20;
+
+const TYPE_META: Record<CalendarEvent['type'], { label: string; dot: string; pill: string; bar: string }> = {
+  shift: { label: 'Staff Shift', dot: 'bg-blue-500', pill: 'bg-blue-50 text-blue-600 border-blue-100', bar: 'bg-blue-500 text-white hover:bg-blue-600' },
+  event: { label: 'Event / Reminder', dot: 'bg-purple-500', pill: 'bg-purple-50 text-purple-600 border-purple-100', bar: 'bg-purple-500 text-white hover:bg-purple-600' },
+  holiday: { label: 'Holiday', dot: 'bg-red-500', pill: 'bg-red-50 text-red-600 border-red-100', bar: 'bg-red-500 text-white hover:bg-red-600' },
 };
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getEndDate(ev: CalendarEvent): string {
+  return ev.endDate || ev.date;
+}
+
+function isMultiDay(ev: CalendarEvent): boolean {
+  return getEndDate(ev) > ev.date;
+}
+
+function eventOccursOn(ev: CalendarEvent, dateKey: string): boolean {
+  return ev.date <= dateKey && getEndDate(ev) >= dateKey;
+}
 
 export const TeamCalendar: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -27,6 +47,7 @@ export const TeamCalendar: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [formDate, setFormDate] = useState('');
+  const [formEndDate, setFormEndDate] = useState('');
   const [formType, setFormType] = useState<CalendarEvent['type']>('event');
   const [formTitle, setFormTitle] = useState('');
   const [formStaffName, setFormStaffName] = useState('');
@@ -54,15 +75,43 @@ export const TeamCalendar: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const eventsByDate = useMemo(() => {
+  const singleDayEventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     events.forEach(ev => {
-      if (!ev.date) return;
+      if (!ev.date || isMultiDay(ev)) return;
       if (!map[ev.date]) map[ev.date] = [];
       map[ev.date].push(ev);
     });
     return map;
   }, [events]);
+
+  const rangeEvents = useMemo(() => events.filter(isMultiDay), [events]);
+
+  const laneOf = useMemo(() => {
+    const sorted = [...rangeEvents].sort((a, b) => {
+      const byStart = a.date.localeCompare(b.date);
+      if (byStart !== 0) return byStart;
+      return getEndDate(b).localeCompare(getEndDate(a));
+    });
+    const laneEnds: string[] = [];
+    const result: Record<string, number> = {};
+    sorted.forEach(ev => {
+      let placed = false;
+      for (let i = 0; i < laneEnds.length; i++) {
+        if (laneEnds[i] < ev.date) {
+          laneEnds[i] = getEndDate(ev);
+          result[ev.id] = i;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        laneEnds.push(getEndDate(ev));
+        result[ev.id] = laneEnds.length - 1;
+      }
+    });
+    return result;
+  }, [rangeEvents]);
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 });
@@ -70,11 +119,22 @@ export const TeamCalendar: React.FC = () => {
     return eachDayOfInterval({ start, end });
   }, [currentMonth]);
 
-  const selectedDayEvents = selectedDay ? (eventsByDate[format(selectedDay, 'yyyy-MM-dd')] || []) : [];
+  const weeks = useMemo(() => {
+    const result: Date[][] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      result.push(days.slice(i, i + 7));
+    }
+    return result;
+  }, [days]);
+
+  const selectedDayEvents = selectedDay
+    ? events.filter(ev => eventOccursOn(ev, format(selectedDay, 'yyyy-MM-dd')))
+    : [];
 
   const openAddModal = (prefillDate?: Date) => {
     setEditingEvent(null);
     setFormDate(format(prefillDate || new Date(), 'yyyy-MM-dd'));
+    setFormEndDate('');
     setFormType('event');
     setFormTitle('');
     setFormStaffName('');
@@ -85,6 +145,7 @@ export const TeamCalendar: React.FC = () => {
   const openEditModal = (ev: CalendarEvent) => {
     setEditingEvent(ev);
     setFormDate(ev.date);
+    setFormEndDate(ev.endDate && ev.endDate !== ev.date ? ev.endDate : '');
     setFormType(ev.type);
     setFormTitle(ev.title || '');
     setFormStaffName(ev.staffName || '');
@@ -99,13 +160,19 @@ export const TeamCalendar: React.FC = () => {
 
   const handleSave = async () => {
     if (!formDate || !formTitle.trim()) {
-      toast.error('Date and title are required');
+      toast.error('Start date and title are required');
+      return;
+    }
+    const endDateValue = formEndDate.trim() || formDate;
+    if (endDateValue < formDate) {
+      toast.error('End date must be on or after the start date');
       return;
     }
     setSaving(true);
     try {
       const payload: any = {
         date: formDate,
+        endDate: endDateValue,
         type: formType,
         title: formTitle.trim(),
         staffName: formType === 'shift' && formStaffName.trim() ? formStaffName.trim() : null,
@@ -221,48 +288,98 @@ export const TeamCalendar: React.FC = () => {
               Loading calendar...
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-2">
-              {days.map(day => {
-                const dateKey = format(day, 'yyyy-MM-dd');
-                const dayEvents = eventsByDate[dateKey] || [];
-                const inMonth = isSameMonth(day, currentMonth);
-                const today = isToday(day);
+            <div className="flex flex-col gap-2">
+              {weeks.map((week, weekIdx) => {
+                const weekStartKey = format(week[0], 'yyyy-MM-dd');
+                const weekEndKey = format(week[6], 'yyyy-MM-dd');
+                const weekRangeEvents = rangeEvents.filter(ev => ev.date <= weekEndKey && getEndDate(ev) >= weekStartKey);
+                const maxLane = weekRangeEvents.length
+                  ? Math.max(...weekRangeEvents.map(ev => laneOf[ev.id] ?? 0))
+                  : -1;
+                const barsHeight = maxLane >= 0 ? (maxLane + 1) * LANE_HEIGHT : 0;
 
                 return (
-                  <motion.button
-                    key={dateKey}
-                    onClick={() => setSelectedDay(day)}
-                    className={cn(
-                      "min-h-[110px] rounded-2xl border p-3 text-left flex flex-col gap-1.5 transition-all cursor-pointer",
-                      inMonth ? "bg-white/60 border-white/40 hover:bg-white" : "bg-white/20 border-white/20 hover:bg-white/40",
-                      today && "ring-2 ring-brand-orange ring-offset-2 ring-offset-warm-bg"
+                  <div key={weekStartKey} className="relative grid grid-cols-7 gap-2">
+                    {barsHeight > 0 && (
+                      <div
+                        className="absolute inset-x-0 top-0 grid grid-cols-7 gap-2 z-10 pointer-events-none"
+                        style={{ height: barsHeight }}
+                      >
+                        {weekRangeEvents.map(ev => {
+                          const startCol = Math.max(0, differenceInCalendarDays(parseLocalDate(ev.date), week[0]));
+                          const endCol = Math.min(6, differenceInCalendarDays(parseLocalDate(getEndDate(ev)), week[0]));
+                          const isActualStart = ev.date >= weekStartKey;
+                          const isActualEnd = getEndDate(ev) <= weekEndKey;
+                          const lane = laneOf[ev.id] ?? 0;
+                          const label = ev.type === 'shift' && ev.staffName ? `${ev.staffName} - ${ev.title}` : ev.title;
+                          return (
+                            <button
+                              key={ev.id}
+                              onClick={() => openEditModal(ev)}
+                              title={label}
+                              className={cn(
+                                "pointer-events-auto absolute flex items-center px-2 text-[9px] font-bold uppercase tracking-widest truncate transition-all",
+                                TYPE_META[ev.type]?.bar || TYPE_META.event.bar,
+                                isActualStart ? "rounded-l-md" : "",
+                                isActualEnd ? "rounded-r-md" : ""
+                              )}
+                              style={{
+                                gridColumn: `${startCol + 1} / ${endCol + 2}`,
+                                top: lane * LANE_HEIGHT,
+                                height: BAR_HEIGHT,
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
-                    whileHover={{ scale: 1.02 }}
-                  >
-                    <span className={cn(
-                      "text-xs font-bold",
-                      inMonth ? "text-[#1A1A1A]" : "text-[#1A1A1A]/30",
-                      today && "text-brand-orange"
-                    )}>
-                      {format(day, 'd')}
-                    </span>
-                    <div className="flex flex-col gap-1">
-                      {dayEvents.slice(0, 3).map(ev => (
-                        <span
-                          key={ev.id}
+                    {week.map(day => {
+                      const dateKey = format(day, 'yyyy-MM-dd');
+                      const dayEvents = singleDayEventsByDate[dateKey] || [];
+                      const inMonth = isSameMonth(day, currentMonth);
+                      const today = isToday(day);
+
+                      return (
+                        <motion.button
+                          key={dateKey}
+                          onClick={() => setSelectedDay(day)}
+                          style={{ paddingTop: barsHeight > 0 ? barsHeight + 12 : undefined }}
                           className={cn(
-                            "px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border truncate",
-                            TYPE_META[ev.type]?.pill || TYPE_META.event.pill
+                            "min-h-[110px] rounded-2xl border p-3 text-left flex flex-col gap-1.5 transition-all cursor-pointer",
+                            inMonth ? "bg-white/60 border-white/40 hover:bg-white" : "bg-white/20 border-white/20 hover:bg-white/40",
+                            today && "ring-2 ring-brand-orange ring-offset-2 ring-offset-warm-bg"
                           )}
+                          whileHover={{ scale: 1.02 }}
                         >
-                          {ev.type === 'shift' && ev.staffName ? ev.staffName : ev.title}
-                        </span>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <span className="text-[9px] font-bold text-[#1A1A1A]/40 pl-1">+{dayEvents.length - 3} more</span>
-                      )}
-                    </div>
-                  </motion.button>
+                          <span className={cn(
+                            "text-xs font-bold",
+                            inMonth ? "text-[#1A1A1A]" : "text-[#1A1A1A]/30",
+                            today && "text-brand-orange"
+                          )}>
+                            {format(day, 'd')}
+                          </span>
+                          <div className="flex flex-col gap-1">
+                            {dayEvents.slice(0, 3).map(ev => (
+                              <span
+                                key={ev.id}
+                                className={cn(
+                                  "px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border truncate",
+                                  TYPE_META[ev.type]?.pill || TYPE_META.event.pill
+                                )}
+                              >
+                                {ev.type === 'shift' && ev.staffName ? ev.staffName : ev.title}
+                              </span>
+                            ))}
+                            {dayEvents.length > 3 && (
+                              <span className="text-[9px] font-bold text-[#1A1A1A]/40 pl-1">+{dayEvents.length - 3} more</span>
+                            )}
+                          </div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>
@@ -339,6 +456,11 @@ export const TeamCalendar: React.FC = () => {
                       </div>
                     </div>
                     <p className="font-bold text-sm">{ev.type === 'shift' && ev.staffName ? `${ev.staffName} - ${ev.title}` : ev.title}</p>
+                    {isMultiDay(ev) && (
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mt-1">
+                        {format(parseLocalDate(ev.date), 'MMM d')} - {format(parseLocalDate(getEndDate(ev)), 'MMM d')}
+                      </p>
+                    )}
                     {ev.notes && <p className="text-xs opacity-70 mt-1">{ev.notes}</p>}
                   </div>
                 ))}
@@ -379,15 +501,29 @@ export const TeamCalendar: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">Date</label>
-                  <input
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="mt-1 w-full px-4 py-2.5 bg-white/60 border border-[#1A1A1A]/10 rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-brand-orange"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">Start Date</label>
+                    <input
+                      type="date"
+                      value={formDate}
+                      onChange={(e) => setFormDate(e.target.value)}
+                      className="mt-1 w-full px-4 py-2.5 bg-white/60 border border-[#1A1A1A]/10 rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-brand-orange"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">End Date (optional)</label>
+                    <input
+                      type="date"
+                      value={formEndDate}
+                      min={formDate || undefined}
+                      onChange={(e) => setFormEndDate(e.target.value)}
+                      placeholder={formDate}
+                      className="mt-1 w-full px-4 py-2.5 bg-white/60 border border-[#1A1A1A]/10 rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-brand-orange"
+                    />
+                  </div>
                 </div>
+                <p className="text-[10px] text-[#1A1A1A]/40 -mt-2">Leave End Date blank for a single-day entry. Set it for multi-day holidays or events.</p>
 
                 <div>
                   <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">Type</label>
