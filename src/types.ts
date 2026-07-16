@@ -95,6 +95,7 @@ export interface Booking {
   deliveryNotes?: string;
   returnNote?: string;
   deposit?: number;
+  accountId?: string; // finance account selected by staff for this booking's payment
   isMaintenance?: boolean;
   maintenanceDescription?: string;
   isGapBlock?: boolean;

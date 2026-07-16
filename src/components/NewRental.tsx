@@ -45,6 +45,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
 
   // Selection State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -83,6 +84,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
     customerPhone: '',
     returnNote: '',
     totalPaid: 0,
+    accountId: '',
   });
 
   // Photos State
@@ -110,6 +112,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
   useEffect(() => {
     fetchCustomers();
+    fetchAccounts();
   }, []);
 
   const fetchCustomers = async () => {
@@ -121,6 +124,16 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       setCustomers(customerData);
     } catch (error) {
       console.error('Error fetching customers:', error);
+    }
+  };
+
+  const fetchAccounts = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'accounts'));
+      const accountData = snapshot.docs.map(d => ({ id: d.id, name: (d.data() as any).name || 'Unnamed Account' }));
+      setAccounts(accountData);
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
     }
   };
 
@@ -146,6 +159,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       customerEmail: booking.email || '',
       customerPhone: booking.mobileNumber || '',
       returnNote: booking.returnNote || '',
+      accountId: booking.accountId || '',
     });
     setStep('vehicle_type');
   };
@@ -229,6 +243,10 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   };
 
   const handleComplete = async () => {
+    if ((formData.totalCharge > 0 || formData.depositAmount > 0) && !formData.accountId) {
+      toast.error('Please select a payment account before completing the rental.');
+      return;
+    }
     setLoading(true);
     try {
       // Helper function to compress image before upload
@@ -357,18 +375,10 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         });
       }
 
-      // 4b. Post income to Finance — account auto-routed by vehicle type
-      try {
-        const targetAccountName = vehicleType === 'Motorbike' ? 'Motorbikes' : 'Cash Car';
-        const accountSnap = await getDocs(
-          query(collection(db, 'accounts'), where('name', '==', targetAccountName), limit(1))
-        );
-
-        if (accountSnap.empty) {
-          console.error(`NewRental: finance account "${targetAccountName}" not found — skipping finance posting`);
-          toast.warning(`Finance account "${targetAccountName}" not found. Log this rental in Finance manually.`);
-        } else {
-          const accountId = accountSnap.docs[0].id;
+      // 4b. Post income to Finance — account explicitly chosen by staff
+      if (formData.accountId && (formData.totalCharge > 0 || formData.depositAmount > 0)) {
+        try {
+          const accountId = formData.accountId;
           const txDate = new Date().toISOString();
           let balanceDelta = 0;
 
@@ -403,10 +413,10 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
           if (balanceDelta > 0) {
             await updateDoc(doc(db, 'accounts', accountId), { balance: increment(balanceDelta) });
           }
+        } catch (financeErr) {
+          console.error('NewRental: failed to post finance transactions:', financeErr);
+          toast.warning('Rental saved, but finance posting failed. Log it in Finance manually.');
         }
-      } catch (financeErr) {
-        console.error('NewRental: failed to post finance transactions:', financeErr);
-        toast.warning('Rental saved, but finance posting failed. Log it in Finance manually.');
       }
 
       // 5. Log Activity
@@ -833,9 +843,23 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                      </div>
                    </div>
 
+                   <div className="space-y-2">
+                     <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Payment Account</label>
+                     <select
+                       value={formData.accountId}
+                       onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                       className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                     >
+                       <option value="" disabled>Select Account</option>
+                       {accounts.map(acc => (
+                         <option key={acc.id} value={acc.id}>{acc.name}</option>
+                       ))}
+                     </select>
+                   </div>
+
                    <button
                      onClick={() => setStep('photos')}
-                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail}
+                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail || ((formData.totalCharge > 0 || formData.depositAmount > 0) && !formData.accountId)}
                      className="w-full h-14 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed"
                    >
                      Continue to Photos
