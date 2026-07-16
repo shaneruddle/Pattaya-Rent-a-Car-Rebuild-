@@ -186,11 +186,13 @@ const TransactionRow: React.FC<{
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest border",
           tx.type === 'Income' ? "bg-green-50 text-green-600 border-green-100" : 
           tx.type === 'Expense' ? "bg-red-50 text-red-600 border-red-100" :
+          tx.type === 'Adjustment' ? "bg-amber-50 text-amber-600 border-amber-100" :
           "bg-white/60 text-[#141414] border-white/80"
         )}>
           {tx.type === 'Income' && <ArrowUpRight size={10} />}
           {tx.type === 'Expense' && <ArrowDownRight size={10} />}
           {tx.type === 'Transfer' && <ArrowRightLeft size={10} />}
+          {tx.type === 'Adjustment' && <Wallet size={10} />}
           {tx.type}
         </span>
       </td>
@@ -235,19 +237,22 @@ const TransactionRow: React.FC<{
         "p-6 text-right font-bold text-base",
         tx.type === 'Income' ? "text-green-600" : 
         tx.type === 'Expense' ? "text-red-600" :
+        tx.type === 'Adjustment' ? (tx.amount >= 0 ? "text-green-600" : "text-red-600") :
         "text-[#141414]"
       )}>
-        {tx.type === 'Expense' ? '-' : tx.type === 'Income' ? '+' : ''}
-        ฿{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        {tx.type === 'Expense' ? '-' : tx.type === 'Income' ? '+' : tx.type === 'Adjustment' ? (tx.amount >= 0 ? '+' : '-') : ''}
+        ฿{(tx.type === 'Adjustment' ? Math.abs(tx.amount) : tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
       </td>
       <td className="p-6 text-right">
         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={() => onEdit(tx)}
-            className="p-2 hover:bg-brand-orange hover:text-white rounded-lg transition-all text-[#141414]/40"
-          >
-            <Edit2 size={14} />
-          </button>
+          {tx.type !== 'Adjustment' && (
+            <button 
+              onClick={() => onEdit(tx)}
+              className="p-2 hover:bg-brand-orange hover:text-white rounded-lg transition-all text-[#141414]/40"
+            >
+              <Edit2 size={14} />
+            </button>
+          )}
           <button 
             onClick={() => onDelete(tx)}
             className="p-2 hover:bg-red-500 hover:text-white rounded-lg transition-all text-[#141414]/40"
@@ -927,6 +932,9 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         const toAcc = accounts.find(a => a.id === tx.toAccountId);
         if (fromAcc) await updateDoc(doc(db, 'accounts', fromAcc.id), { balance: fromAcc.balance + tx.amount });
         if (toAcc) await updateDoc(doc(db, 'accounts', toAcc.id), { balance: toAcc.balance - tx.amount });
+      } else if (tx.type === 'Adjustment') {
+        const acc = accounts.find(a => a.id === tx.accountId);
+        if (acc) await updateDoc(doc(db, 'accounts', acc.id), { balance: acc.balance - tx.amount });
       } else {
         const acc = accounts.find(a => a.id === tx.accountId);
         if (acc) {
@@ -959,9 +967,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     if (!selectedAccount) return;
 
     try {
+      const oldBalance = selectedAccount.balance;
+      const newBalance = formData.amount;
+      const delta = newBalance - oldBalance;
+
       await updateDoc(doc(db, 'accounts', selectedAccount.id), {
-        balance: formData.amount
+        balance: newBalance
       });
+
+      if (delta !== 0) {
+        await addDoc(collection(db, 'transactions'), {
+          type: 'Adjustment',
+          amount: delta,
+          date: new Date().toISOString(),
+          category: 'Balance Adjustment',
+          accountId: selectedAccount.id,
+          description: `Balance manually adjusted from ฿${oldBalance.toLocaleString()} to ฿${newBalance.toLocaleString()}`
+        });
+
+        await logSystemActivity(
+          'Account Balance Adjusted',
+          `${selectedAccount.name} balance manually adjusted from ฿${oldBalance.toLocaleString()} to ฿${newBalance.toLocaleString()} (${delta > 0 ? '+' : ''}${delta.toLocaleString()})`,
+          'Finance',
+          { accountId: selectedAccount.id }
+        );
+      }
       
       setShowModal(false);
       resetForm();
@@ -1047,6 +1077,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         if (tx.type === 'Transfer') {
           if (newBalances[accId] !== undefined) newBalances[accId] -= tx.amount;
           if (tx.toAccountId && newBalances[tx.toAccountId] !== undefined) newBalances[tx.toAccountId] += tx.amount;
+        } else if (tx.type === 'Adjustment') {
+          if (newBalances[accId] !== undefined) newBalances[accId] += tx.amount;
         } else {
           if (newBalances[accId] !== undefined) {
             newBalances[accId] += (tx.type === 'Income' ? tx.amount : -tx.amount);
@@ -2561,7 +2593,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         matrix[cat] = {};
                         colRange.forEach(col => {
                           const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
-                          const val = txs.reduce((sum, t) => sum + (t.type === 'Income' ? t.amount : -t.amount), 0);
+                          const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
                           const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
                           const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
                           
