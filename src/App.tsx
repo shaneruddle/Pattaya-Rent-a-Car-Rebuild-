@@ -29,6 +29,7 @@ import { ImageManagement } from './components/ImageManagement';
 import { CompanySettings } from './components/CompanySettings';
 import { LiveEnquiries } from './components/LiveEnquiries';
 import { VehicleReport } from './components/VehicleReport';
+import { TeamCalendar } from './components/TeamCalendar';
 import { EmailTemplates } from './components/EmailTemplates';
 import { Rentals } from './components/Rentals';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -103,7 +104,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -782,6 +783,8 @@ function AppContent() {
                 <EmailTemplates />
               ) : currentView === 'logs' ? (
                 <Logs logs={logs} />
+              ) : currentView === 'calendar' ? (
+                <TeamCalendar />
               ) : currentView === 'new_rental' ? (
                 <NewRental cars={cars.filter(c => c.isActive !== false)} bookings={bookings} onComplete={() => setCurrentView('rentals')} />
               ) : currentView === 'marketing_blog' ? (

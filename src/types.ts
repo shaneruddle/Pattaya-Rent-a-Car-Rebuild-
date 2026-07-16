@@ -230,6 +230,16 @@ export interface UserProfile {
   createdAt?: string; // ISO string
 }
 
+export interface CalendarEvent {
+  id: string;
+  date: string; // ISO date, yyyy-MM-dd
+  type: 'shift' | 'event' | 'holiday';
+  title: string;
+  staffName?: string; // populated for 'shift' entries
+  notes?: string;
+  createdAt?: string; // ISO string
+}
+
 export interface BlogPost {
   id: string;
   title: string;
