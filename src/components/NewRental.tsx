@@ -188,7 +188,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   };
 
   const takePhoto = () => {
-    if (videoRef.current && canvasRef.current && photos.length < 10) {
+    if (videoRef.current && canvasRef.current && photos.length < 20) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
@@ -210,16 +210,16 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    const remaining = 10 - photos.length;
+      const remaining = 20 - photos.length;
     if (remaining <= 0) {
-      toast.error('Maximum of 10 photos reached');
+      toast.error('Maximum of 20 photos reached');
       return;
     }
     files.slice(0, remaining).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === 'string') {
-          setPhotos(prev => (prev.length < 10 ? [...prev, reader.result as string] : prev));
+        setPhotos(prev => (prev.length < 20 ? [...prev, reader.result as string] : prev));
         }
       };
       reader.readAsDataURL(file);
@@ -862,7 +862,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
 
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Damage Photos ({photos.length}/10)</h3>
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Damage Photos ({photos.length}/20)</h3>
                   <div className="flex items-center gap-2">
                     <input
                       ref={fileInputRef}
