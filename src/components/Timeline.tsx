@@ -722,7 +722,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     deliveryLocation: undefined,
     isMaintenance: false,
     maintenanceDescription: '',
-    paymentStatus: 'paid'
+    paymentStatus: 'paid',
+    accountId: ''
   });
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -1157,6 +1158,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     fetchCustomers();
   }, []);
 
+  const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const fetchAccounts = async () => {
+      try {
+        const snapshot = await safeGetDocs(collection(db, 'accounts'));
+        const accountData = snapshot.docs.map((d: any) => ({ id: d.id, name: d.data().name || 'Unnamed Account' }));
+        setAccounts(accountData);
+      } catch (error) {
+        console.error('Error fetching accounts for timeline:', error);
+      }
+    };
+    fetchAccounts();
+  }, []);
+
   const filteredCustomers = useMemo(() => {
     const search = formData.customerName?.toLowerCase() || '';
     if (!search || !showCustomerSuggestions) return [];
@@ -1278,7 +1295,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
       deliveryNotes: '',
       deliveryLocation: undefined,
       isMaintenance: false,
-      maintenanceDescription: ''
+      maintenanceDescription: '',
+      accountId: ''
     });
     setDateRange({ from: start, to: end });
     setIsModalOpen(true);
@@ -1316,6 +1334,12 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
+
+    if (formData.paymentStatus === 'paid' && !formData.accountId) {
+      toast.error('Please select a payment account for this booking.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const start = dateRange?.from ? new Date(dateRange.from) : new Date(formData.startDate || new Date());
@@ -2353,6 +2377,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                                 </button>
                              </div>
                           </div>
+
+                          {formData.paymentStatus === 'paid' && (
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-4">Payment Account</label>
+                              <select
+                                value={formData.accountId || ''}
+                                onChange={e => setFormData({ ...formData, accountId: e.target.value })}
+                                className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                              >
+                                <option value="" disabled>Select Account</option>
+                                {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
 
                         {!formData.isMaintenance ? (
