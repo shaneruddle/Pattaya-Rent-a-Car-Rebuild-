@@ -325,6 +325,8 @@ export const TeamCalendar: React.FC = () => {
                               )}
                               style={{
                                 gridColumn: `${startCol + 1} / ${endCol + 2}`,
+                                left: 0,
+                                right: 0,
                                 top: lane * LANE_HEIGHT,
                                 height: BAR_HEIGHT,
                               }}
