@@ -137,7 +137,7 @@ export interface VehicleFinance {
 
 export interface Transaction {
   id: string;
-  type: 'Income' | 'Expense' | 'Transfer';
+  type: 'Income' | 'Expense' | 'Transfer' | 'Adjustment';
   amount: number;
   date: string; // ISO string
   category: string;
