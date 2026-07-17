@@ -21,6 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
+  const SHOW_MARKETING = false; // Marketing sidebar section hidden from staff nav - flip to true to restore
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [bookingsCount, setBookingsCount] = useState(0);
   const [counts, setCounts] = useState({
@@ -232,6 +233,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <DollarSign size={18} /> Finance
                     </button>
+                    {SHOW_MARKETING && (
+                    <>
                     {/* Marketing Group */}
                     <div className="space-y-1">
                       <button
@@ -305,6 +308,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                         )}
                       </AnimatePresence>
                     </div>
+                    </>
+                    )}
                     <button
                       onClick={() => {
                         onViewChange('fleet');
@@ -703,6 +708,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
             >
               <DollarSign size={20} />
             </button>
+            {SHOW_MARKETING && (
+            <>
             {/* Collapsed Marketing */}
             <div className="flex flex-col items-center gap-2">
               <button 
@@ -759,6 +766,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                 )}
               </AnimatePresence>
             </div>
+            </>
+            )}
             <button 
               onClick={() => onViewChange('fleet')}
               className={cn(
