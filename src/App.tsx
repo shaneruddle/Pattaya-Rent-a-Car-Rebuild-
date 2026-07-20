@@ -801,7 +801,7 @@ function AppContent() {
                 <CompetitorPricing />
             ) : currentView === 'image_management' ? (
                 <ImageManagement />
-              ) : ( currentView === 'price_quote' ? (
+              ) : currentView === 'price_quote' ? (
                 <PriceQuote />
               ) : (
                 <BookingEngine onLoginClick={() => {}} />
