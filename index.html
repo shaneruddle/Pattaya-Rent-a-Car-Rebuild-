@@ -31,18 +31,11 @@
     <meta property="twitter:title" content="Rental Service | Trusted in Pattaya" />
     <meta property="twitter:description" content="Pattaya's most trusted rental service since 2005. Quality vehicles, transparent pricing, and exceptional service." />
     <meta property="twitter:image" content="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" />
-    
-    <!-- Clear any phantom service workers that might block Firebase Auth -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
-            console.log('Service Worker unregistered:', registration.scope);
-          }
-        });
-      }
-    </script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PRAC Staff">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#FF6321">
   </head>
   <body>
     <div id="root"></div>
