@@ -6,9 +6,9 @@ import { Loader2, Tag } from 'lucide-react';
 const CAR_CLASSES = [
   { id: 'Economy', label: 'Economy', icon: '' },
   { id: 'Compact Sedan', label: 'Compact Sedan', icon: '' },
-  { id: 'Pickup Truck', label: 'Pickup Truck', icon: '\U0001f6fb' },
-  { id: 'MPV', label: 'MPV', icon: '\U0001f690' },
-  { id: 'SUV', label: 'SUV', icon: '\U0001f3ce' },
+  { id: 'Pickup Truck', label: 'Pickup Truck', icon: '' },
+  { id: 'MPV', label: 'MPV', icon: '' },
+  { id: 'SUV', label: 'SUV', icon: '' },
 ];
 
 interface QuoteResult {
