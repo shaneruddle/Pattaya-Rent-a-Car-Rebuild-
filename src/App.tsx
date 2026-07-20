@@ -38,13 +38,14 @@ import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactGA from 'react-ga4';
 import { captureUTMParams } from './utils/utmCapture';
-import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck, Plus } from 'lucide-react';
+import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck, Plus, TrendingUp, Tag } from 'lucide-react';
 import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
 import { safeLocalStorage } from './lib/storage';
 
 import { NewRental } from './components/NewRental';
 import { BookingEngine } from './components/BookingEngine';
+import { PriceQuote } from './components/PriceQuote';
 import { Marketing } from './components/Marketing';
 import { LanguageProvider } from './LanguageContext';
 import { PricingProvider } from './contexts/PricingContext';
@@ -105,7 +106,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'price_quote'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -800,6 +801,8 @@ function AppContent() {
                 <CompetitorPricing />
             ) : currentView === 'image_management' ? (
                 <ImageManagement />
+              ) : ( currentView === 'price_quote' ? (
+                <PriceQuote />
               ) : (
                 <BookingEngine onLoginClick={() => {}} />
               )}
@@ -856,6 +859,26 @@ function AppContent() {
                 <Plus size={20} />
               </motion.div>
               <span className="text-[9px] font-bold uppercase tracking-widest">New Rental</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('finance')}
+              className={cn("flex flex-col items-center gap-1 transition-all",
+                currentView === 'finance' ? "text-brand-orange" : "text-[#1A1A1A]/40")}
+            >
+              <motion.div animate={currentView === 'finance' ? { scale: 1.2 } : { scale: 1 }}>
+                <TrendingUp size={20} />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Finance</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('price_quote')}
+              className={cn("flex flex-col items-center gap-1 transition-all",
+                currentView === 'price_quote' ? "text-brand-orange" : "text-[#1A1A1A]/40")}
+            >
+              <motion.div animate={currentView === 'price_quote' ? { scale: 1.2 } : { scale: 1 }}>
+                <Tag size={20} />
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Quote</span>
             </button>
           </div>
         )}
