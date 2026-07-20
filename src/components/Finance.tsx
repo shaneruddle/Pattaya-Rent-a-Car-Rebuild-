@@ -1809,15 +1809,15 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-warm-bg p-8">
+    <div className="flex-1 overflow-auto bg-warm-bg p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-10">
         {/* Header */}
-        <header className="flex justify-between items-end">
+        <header className="flex flex-col gap-4 md:flex-row md:justify-between md:items-end">
           <div>
             <h1 className="font-serif italic text-5xl text-[#141414] mb-2">Finance</h1>
             <p className="text-[#141414]/60 uppercase tracking-[0.2em] text-[10px] font-bold">Financial Operations & Tracking</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 overflow-x-auto pb-1 md:gap-3">
             <button 
               onClick={() => setShowSummaryReport(true)}
               className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2"
