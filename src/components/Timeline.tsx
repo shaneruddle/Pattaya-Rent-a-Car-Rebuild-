@@ -1821,7 +1821,8 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 const hour = today.getHours();
                 const minute = today.getMinutes();
                 const progressInDay = (hour * 60 + minute) / 1440;
-                const left = 200 + (startDayIdx * 72) + (progressInDay * 72); // Added 200 offset
+                const stickyColWidth = window.innerWidth < 768 ? 120 : 200;
+            const left = stickyColWidth + (startDayIdx * 72) + (progressInDay * 72);
                 
                 return (
                   <div 
