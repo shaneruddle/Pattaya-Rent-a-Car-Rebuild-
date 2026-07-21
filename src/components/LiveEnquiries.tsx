@@ -51,7 +51,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [templates, setTemplates] = useState<Record<string, string>>({});
   const [carSearch, setCarSearch] = useState('');
   const [carDropdownOpen, setCarDropdownOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'dnr'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'followup' | 'dnr'>('active');
   const [showDnrModal, setShowDnrModal] = useState(false);
   const [dnrTarget, setDnrTarget] = useState<Booking | null>(null);
   const [dnrReason, setDnrReason] = useState('');
@@ -59,6 +59,8 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
 
   const [sendingEnquiryId, setSendingEnquiryId] = useState<string | null>(null);
   const [sentTimestamps, setSentTimestamps] = useState<Record<string, string>>({});
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+  const [reminderSentTimestamps, setReminderSentTimestamps] = useState<Record<string, string>>({});
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -96,7 +98,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
 
   const enquiries = useMemo(() => {
     return bookings
-      .filter(b => (!b.carId || b.carId === '') && b.status !== 'DNR')
+      .filter(b => (!b.carId || b.carId === '') && b.status !== 'DNR' && (b as any).status !== 'FollowUp')
       .filter(b => {
         const searchLower = (searchQuery || '').toLowerCase();
         const matchesSearch = 
@@ -128,6 +130,36 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
       })
       .sort((a, b) => new Date((b as any).dnrAt || b.startDate).getTime() - new Date((a as any).dnrAt || a.startDate).getTime());
   }, [bookings, searchQuery]);
+
+  const followUpEnquiries = useMemo(() => {
+    return bookings
+      .filter(b => (b as any).status === 'FollowUp')
+      .filter(b => {
+        const searchLower = (searchQuery || '').toLowerCase();
+        return (
+          (b.customerName?.toLowerCase() || '').includes(searchLower) ||
+          (b.email?.toLowerCase() || '').includes(searchLower) ||
+          (b.mobileNumber && b.mobileNumber.includes(searchQuery))
+        );
+      })
+      // Oldest enquiry first — surfaces the most overdue follow-ups at the top of the queue
+      .sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return dateA - dateB;
+      });
+  }, [bookings, searchQuery]);
+
+  const daysSinceEnquiry = (createdAt: any): number | null => {
+    if (!createdAt) return null;
+    try {
+      const date = createdAt?.toDate ? createdAt.toDate() : (typeof createdAt === 'string' ? parseISO(createdAt) : null);
+      if (!date || !isValid(date)) return null;
+      return Math.max(0, Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)));
+    } catch {
+      return null;
+    }
+  };
 
   const formatEnquiryTime = (createdAt: any) => {
     if (!createdAt) return null;
@@ -273,6 +305,27 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     setShowDnrModal(true);
   };
 
+  const markAsFollowUp = async (enquiry: Booking) => {
+    try {
+      await logSystemActivity(
+        'Marked for Follow Up',
+        `Marked enquiry for ${enquiry.customerName || enquiry.id} as Follow Up`,
+        'Bookings',
+        { bookingId: enquiry.id, customerName: enquiry.customerName }
+      );
+      await updateDoc(doc(db, 'bookings', enquiry.id), {
+        status: 'FollowUp',
+        followUpAt: new Date().toISOString(),
+        followUpBy: auth.currentUser?.email || 'unknown',
+      });
+      toast.success('Moved to Follow Up');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      toast.error('Failed to mark as Follow Up');
+      handleFirestoreError(error, OperationType.WRITE, 'bookings');
+    }
+  };
+
   const confirmDnr = async () => {
     if (!dnrTarget || isSubmitting) return;
     setIsSubmitting(true);
@@ -406,6 +459,50 @@ Do you wish to proceed with the booking ?`,
     }
   };
 
+  const sendFollowUpReminder = async (enquiry: Booking) => {
+    if (!enquiry.email) {
+      toast.error('No email address for this customer');
+      return;
+    }
+    setSendingReminderId(enquiry.id || '');
+    try {
+      const placeholders: Record<string, string> = {
+        '{{customer_name}}': (enquiry.customerName || 'Customer').split(' ')[0],
+        '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
+        '{{total_price}}': (enquiry.amount || 0).toLocaleString(),
+        '{{pickup_date}}': enquiry.startDate ? format(parseISO(enquiry.startDate), 'dd MMM yyyy') : '',
+        '{{pickup_time}}': enquiry.startDate ? format(parseISO(enquiry.startDate), 'HH:mm') : '',
+        '{{return_date}}': enquiry.endDate ? format(parseISO(enquiry.endDate), 'dd MMM yyyy') : '',
+        '{{return_time}}': enquiry.endDate ? format(parseISO(enquiry.endDate), 'HH:mm') : '',
+        '{{rental_period}}': enquiry.startDate && enquiry.endDate
+          ? `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
+          : '',
+        '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{customer_email}}': enquiry.email || '',
+        '{{customer_phone}}': enquiry.mobileNumber || '',
+        '{{comments}}': enquiry.notes || '',
+      };
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: enquiry.email,
+          templateId: 'follow_up_reminder',
+          skipFinalToOverride: true,
+          replyTo: 'info@pattayarentacar.com',
+          placeholders,
+        }),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      toast.success(`Reminder sent to ${enquiry.email}`);
+      setReminderSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) }));
+    } catch (err) {
+      toast.error('Failed to send reminder - please try again');
+    } finally {
+      setSendingReminderId(null);
+    }
+  };
+
   const copyDeliveryEmailTemplate = (enquiry: Booking) => {
     return copyTemplate(
       enquiry,
@@ -473,7 +570,11 @@ However, we can offer the following alternative...`,
         <div>
           <h1 className="font-serif italic text-2xl sm:text-3xl text-[#1A1A1A]">Live Enquiries</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mt-1">
-            {activeTab === 'active' ? `${enquiries.length} Pending Enquiries from Booking Engine` : `${dnrEnquiries.length} Did Not Rent`}
+            {activeTab === 'active'
+              ? `${enquiries.length} Pending Enquiries from Booking Engine`
+              : activeTab === 'followup'
+              ? `${followUpEnquiries.length} Awaiting Follow Up`
+              : `${dnrEnquiries.length} Did Not Rent`}
           </p>
         </div>
 
@@ -485,6 +586,13 @@ However, we can offer the following alternative...`,
               className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all", activeTab === 'active' ? "bg-white text-brand-orange shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
             >
               Active
+            </button>
+            <button
+              onClick={() => setActiveTab('followup')}
+              className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2", activeTab === 'followup' ? "bg-white text-blue-600 shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
+            >
+              Follow Up
+              {followUpEnquiries.length > 0 && <span className="bg-blue-100 text-blue-600 rounded-full w-4 h-4 flex items-center justify-center text-[8px]">{followUpEnquiries.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('dnr')}
@@ -553,6 +661,85 @@ However, we can offer the following alternative...`,
                   </div>
                 </motion.div>
               ))}
+            </AnimatePresence>
+          </div>
+        ) : activeTab === 'followup' ? (
+          /* Follow Up Tab */
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
+            <AnimatePresence mode="popLayout">
+              {followUpEnquiries.length === 0 ? (
+                <motion.div key="empty-followup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="col-span-2 text-center py-20 bg-white/20 backdrop-blur-md border-2 border-dashed border-white/40 rounded-[40px]">
+                  <Clock className="text-[#1A1A1A]/10 mx-auto mb-4" size={40} />
+                  <p className="text-[#1A1A1A]/40 font-bold uppercase tracking-widest text-xs">No enquiries awaiting follow up</p>
+                </motion.div>
+              ) : followUpEnquiries.map((enquiry) => {
+                const days = daysSinceEnquiry(enquiry.createdAt);
+                return (
+                <motion.div
+                  key={enquiry.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white/30 backdrop-blur-xl border border-white/40 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 shadow-sm flex flex-col"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <span className="px-3 py-1 bg-blue-100 text-blue-600 text-[8px] font-bold uppercase tracking-widest rounded-full">Follow Up</span>
+                      <h3 className="font-bold text-lg text-[#1A1A1A] mt-3">{enquiry.customerName || 'Unknown'}</h3>
+                      <p className="text-xs text-[#1A1A1A]/40 font-medium">{enquiry.email}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30">Since Enquiry</p>
+                      <p className={cn("text-sm font-bold mt-1", days !== null && days >= 7 ? "text-red-500" : "text-[#1A1A1A]/60")}>
+                        {days !== null ? `${days} ${days === 1 ? 'day' : 'days'}` : '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30 mb-2">
+                    <Calendar size={10} />
+                    {enquiry.startDate ? format(parseISO(enquiry.startDate), 'dd MMM') : '—'} – {enquiry.endDate ? format(parseISO(enquiry.endDate), 'dd MMM yyyy') : '—'}
+                    {enquiry.requestedCarType && <span>· {enquiry.requestedCarType}</span>}
+                  </div>
+
+                  {enquiry.notes && (
+                    <div className="mt-2 mb-2 bg-black/5 border border-black/5 rounded-2xl px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-1">Customer Comments</p>
+                      <p className="text-xs text-black/60 leading-relaxed italic">"{enquiry.notes}"</p>
+                    </div>
+                  )}
+
+                  <div className="mt-auto pt-4 flex flex-col sm:flex-row flex-wrap gap-3">
+                    <button
+                      onClick={() => sendFollowUpReminder(enquiry)}
+                      disabled={sendingReminderId === enquiry.id}
+                      className="flex-1 min-w-[140px] bg-blue-500 border border-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-blue-600 transition-all text-center disabled:opacity-50"
+                    >
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex items-center gap-2">
+                          {sendingReminderId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
+                          {sendingReminderId === enquiry.id ? 'Sending...' : 'Send Reminder'}
+                        </div>
+                        {reminderSentTimestamps[enquiry.id || ''] && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {reminderSentTimestamps[enquiry.id || '']}</div>}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => initiateDnr(enquiry)}
+                      className="flex-1 min-w-[140px] bg-white border border-black/10 text-amber-600 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-amber-50 transition-all text-center"
+                    >
+                      <XCircle size={10} /> Did Not Rent
+                    </button>
+                    <button
+                      onClick={() => handleConvert(enquiry)}
+                      className="w-full sm:w-auto flex-none bg-brand-orange text-white py-3 px-6 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-all shadow-lg shadow-brand-orange/20 text-center"
+                    >
+                      Confirm & Assign Car <ArrowRight size={10} />
+                    </button>
+                  </div>
+                </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
         ) : (
@@ -1154,6 +1341,12 @@ However, we can offer the following alternative...`,
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-black/60 hover:bg-black/5 hover:text-brand-orange transition-all"
                 >
                   <Edit2 size={14} /> Edit Enquiry
+                </button>
+                <button
+                  onClick={() => { markAsFollowUp(menuEnquiry); setOpenMenu(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 transition-all"
+                >
+                  <Clock size={14} /> Follow Up
                 </button>
                 <button
                   onClick={() => { initiateDnr(menuEnquiry); setOpenMenu(null); }}
