@@ -58,6 +58,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [openMenu, setOpenMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const [sendingEnquiryId, setSendingEnquiryId] = useState<string | null>(null);
+  const [sentTimestamps, setSentTimestamps] = useState<Record<string, string>>({});
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -397,6 +398,7 @@ Do you wish to proceed with the booking ?`,
       });
       if (!res.ok) throw new Error('Send failed');
       toast.success(`Reply sent to ${enquiry.email}`);
+      setSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) }));
     } catch (err) {
       toast.error('Failed to send email - please try again');
     } finally {
@@ -725,7 +727,7 @@ However, we can offer the following alternative...`,
                       disabled={sendingEnquiryId === enquiry.id}
                       className="flex-1 min-w-[140px] bg-emerald-500 border border-emerald-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all text-center disabled:opacity-50"
                     >
-                      {sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Vehicle Available Auto Response'}
+                      <div className="flex flex-col items-center gap-0.5"><div className="flex items-center gap-2">{sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Vehicle Available Auto Response'}</div>{sentTimestamps[enquiry.id || ''] && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {sentTimestamps[enquiry.id || '']}</div>}</div>
                     </button>
                     <button
                       onClick={() => copyDeliveryEmailTemplate(enquiry)}
