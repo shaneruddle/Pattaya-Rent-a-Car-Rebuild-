@@ -723,9 +723,9 @@ However, we can offer the following alternative...`,
                     <button
                       onClick={() => sendEmailReply(enquiry)}
                       disabled={sendingEnquiryId === enquiry.id}
-                      className="flex-1 min-w-[140px] bg-white border border-black/10 text-black/60 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center disabled:opacity-50"
+                      className="flex-1 min-w-[140px] bg-green-600 border border-green-700 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-green-700 transition-all text-center disabled:opacity-50"
                     >
-                      {sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Email Reply'}
+                      {sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Vehicle Available Auto Response'}
                     </button>
                     <button
                       onClick={() => copyDeliveryEmailTemplate(enquiry)}
