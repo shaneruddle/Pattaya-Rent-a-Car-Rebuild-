@@ -85,6 +85,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
     returnNote: '',
     totalPaid: 0,
     accountId: '',
+    depositAccountId: '',
   });
 
   // Photos State
@@ -160,6 +161,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       customerPhone: booking.mobileNumber || '',
       returnNote: booking.returnNote || '',
       accountId: booking.accountId || '',
+      depositAccountId: booking.depositAccountId || '',
     });
     setStep('vehicle_type');
   };
@@ -243,8 +245,12 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
   };
 
   const handleComplete = async () => {
-    if ((formData.totalCharge > 0 || formData.depositAmount > 0) && !formData.accountId) {
-      toast.error('Please select a payment account before completing the rental.');
+    if (formData.totalCharge > 0 && !formData.accountId) {
+      toast.error('Please select a rental fee account before completing the rental.');
+      return;
+    }
+    if (formData.depositAmount > 0 && !formData.depositAccountId) {
+      toast.error('Please select a deposit account before completing the rental.');
       return;
     }
     setLoading(true);
@@ -375,14 +381,14 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
         });
       }
 
-      // 4b. Post income to Finance — account explicitly chosen by staff
-      if (formData.accountId && (formData.totalCharge > 0 || formData.depositAmount > 0)) {
+      // 4b. Post income to Finance — rental fee and deposit can go to different accounts,
+      // each chosen explicitly by staff (mirrors the split-income pattern in Finance.tsx).
+      if ((formData.accountId && formData.totalCharge > 0) || (formData.depositAccountId && formData.depositAmount > 0)) {
         try {
-          const accountId = formData.accountId;
           const txDate = new Date().toISOString();
-          let balanceDelta = 0;
+          const balanceDeltas: Record<string, number> = {};
 
-          if (formData.totalCharge > 0) {
+          if (formData.totalCharge > 0 && formData.accountId) {
             await addDoc(collection(db, 'transactions'), {
               type: 'Income',
               amount: Number(formData.totalCharge),
@@ -390,13 +396,13 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
               category: 'Rental',
               carId: formData.carId,
               bookingId: selectedBooking?.id || '',
-              accountId,
+              accountId: formData.accountId,
               description: `Rental payment from ${formData.customerName}`
             });
-            balanceDelta += Number(formData.totalCharge);
+            balanceDeltas[formData.accountId] = (balanceDeltas[formData.accountId] || 0) + Number(formData.totalCharge);
           }
 
-          if (formData.depositAmount > 0) {
+          if (formData.depositAmount > 0 && formData.depositAccountId) {
             await addDoc(collection(db, 'transactions'), {
               type: 'Income',
               amount: Number(formData.depositAmount),
@@ -404,15 +410,17 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
               category: 'Security Deposit',
               carId: formData.carId,
               bookingId: selectedBooking?.id || '',
-              accountId,
+              accountId: formData.depositAccountId,
               description: `Security deposit from ${formData.customerName}`
             });
-            balanceDelta += Number(formData.depositAmount);
+            balanceDeltas[formData.depositAccountId] = (balanceDeltas[formData.depositAccountId] || 0) + Number(formData.depositAmount);
           }
 
-          if (balanceDelta > 0) {
-            await updateDoc(doc(db, 'accounts', accountId), { balance: increment(balanceDelta) });
-          }
+          await Promise.all(
+            Object.entries(balanceDeltas).map(([accountId, delta]) =>
+              updateDoc(doc(db, 'accounts', accountId), { balance: increment(delta) })
+            )
+          );
         } catch (financeErr) {
           console.error('NewRental: failed to post finance transactions:', financeErr);
           toast.warning('Rental saved, but finance posting failed. Log it in Finance manually.');
@@ -843,23 +851,39 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                      </div>
                    </div>
 
-                   <div className="space-y-2">
-                     <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Payment Account</label>
-                     <select
-                       value={formData.accountId}
-                       onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
-                       className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
-                     >
-                       <option value="" disabled>Select Account</option>
-                       {accounts.map(acc => (
-                         <option key={acc.id} value={acc.id}>{acc.name}</option>
-                       ))}
-                     </select>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Rental Fee Account</label>
+                       <select
+                         value={formData.accountId}
+                         onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                         className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                       >
+                         <option value="" disabled>Select Account</option>
+                         {accounts.map(acc => (
+                           <option key={acc.id} value={acc.id}>{acc.name}</option>
+                         ))}
+                       </select>
+                     </div>
+
+                     <div className="space-y-2">
+                       <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Deposit Account</label>
+                       <select
+                         value={formData.depositAccountId}
+                         onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
+                         className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                       >
+                         <option value="" disabled>Select Account</option>
+                         {accounts.map(acc => (
+                           <option key={acc.id} value={acc.id}>{acc.name}</option>
+                         ))}
+                       </select>
+                     </div>
                    </div>
 
                    <button
                      onClick={() => setStep('photos')}
-                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail || ((formData.totalCharge > 0 || formData.depositAmount > 0) && !formData.accountId)}
+                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail || (formData.totalCharge > 0 && !formData.accountId) || (formData.depositAmount > 0 && !formData.depositAccountId)}
                      className="w-full h-14 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed"
                    >
                      Continue to Photos
