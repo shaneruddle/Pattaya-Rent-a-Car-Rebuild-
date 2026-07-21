@@ -195,6 +195,11 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
 
   const handleDeleteBooking = async () => {
     if (!deletingBooking) return;
+    if (!deletingBooking.carId || deletingBooking.carId === '' || deletingBooking.carId === 'unassigned') {
+      toast.error('This is still an enquiry — mark it Did Not Rent from Live Enquiries instead');
+      setDeletingBooking(null);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -410,13 +415,23 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                             >
                               <Edit2 size={14} />
                             </button>
-                            <button
-                              onClick={() => setDeletingBooking(booking)}
-                              className="p-2 hover:bg-white rounded-xl text-[#1A1A1A]/40 hover:text-red-500 transition-all"
-                              title="Delete Booking"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {(!booking.carId || booking.carId === '' || booking.carId === 'unassigned') ? (
+                              <button
+                                disabled
+                                title="This is still an enquiry — mark it Did Not Rent from Live Enquiries instead"
+                                className="p-2 rounded-xl text-[#1A1A1A]/15 cursor-not-allowed transition-all"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setDeletingBooking(booking)}
+                                className="p-2 hover:bg-white rounded-xl text-[#1A1A1A]/40 hover:text-red-500 transition-all"
+                                title="Delete Booking"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </motion.div>

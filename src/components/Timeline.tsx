@@ -1529,6 +1529,11 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
 
   const handleDeleteBooking = async () => {
     if (!editingBooking || isSubmitting) return;
+    if (!editingBooking.carId || editingBooking.carId === '' || editingBooking.carId === 'unassigned') {
+      toast.error('This is still an enquiry — mark it Did Not Rent from Live Enquiries instead');
+      setShowDeleteConfirm(false);
+      return;
+    }
     setIsSubmitting(true);
     try {
       await updateDoc(doc(db, 'bookings', editingBooking.id), {
@@ -2345,12 +2350,22 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       <Check size={16} /> 
                       {editingBooking.paymentStatus === 'pending' ? 'Mark as Paid' : 'Mark as Pending'}
                     </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="h-12 px-6 border border-red-500/30 text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] rounded-full"
-                    >
-                      <Trash2 size={16} /> Delete
-                    </button>
+                    {(!editingBooking.carId || editingBooking.carId === '' || editingBooking.carId === 'unassigned') ? (
+                      <button
+                        disabled
+                        title="This is still an enquiry — mark it Did Not Rent from Live Enquiries instead"
+                        className="h-12 px-6 border border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] rounded-full"
+                      >
+                        <Trash2 size={16} /> Delete
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="h-12 px-6 border border-red-500/30 text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] rounded-full"
+                      >
+                        <Trash2 size={16} /> Delete
+                      </button>
+                    )}
                     <button
                       onClick={() => setModalMode('edit')}
                       className="flex-1 bg-gray-900 text-white h-12 rounded-full font-bold uppercase tracking-widest text-[10px] hover:bg-gray-800 transition-all shadow-lg active:translate-y-[2px] active:shadow-none"
@@ -2892,19 +2907,30 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
               </button>
             )}
                 <div className="h-[1px] bg-black/5 my-1" />
-                <button
-                  onClick={() => {
-                    setEditingBooking(contextMenu.booking!);
-                    setModalMode('view');
-                    setIsModalOpen(true);
-                    setShowDeleteConfirm(true);
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all"
-                >
-                  <Trash2 size={14} />
-                  Delete Booking
-                </button>
+                {(!contextMenu.booking?.carId || contextMenu.booking?.carId === '' || contextMenu.booking?.carId === 'unassigned') ? (
+                  <button
+                    disabled
+                    title="This is still an enquiry — mark it Did Not Rent from Live Enquiries instead"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-300 cursor-not-allowed rounded-xl"
+                  >
+                    <Trash2 size={14} />
+                    Delete Booking
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingBooking(contextMenu.booking!);
+                      setModalMode('view');
+                      setIsModalOpen(true);
+                      setShowDeleteConfirm(true);
+                      setContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all"
+                  >
+                    <Trash2 size={14} />
+                    Delete Booking
+                  </button>
+                )}
               </div>
             ) : contextMenu.carId ? (
               <div className="flex flex-col gap-0.5">
@@ -3232,20 +3258,31 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                       >
                         <Scissors size={12} />
                         </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingBooking(summaryBooking.booking);
-                          setModalMode('view');
-                          setIsModalOpen(true);
-                          setShowDeleteConfirm(true);
-                          setSummaryBookingInfo(null);
-                        }}
-                        className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
-                        title="Delete Booking"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      {(!summaryBooking.booking.carId || summaryBooking.booking.carId === '' || summaryBooking.booking.carId === 'unassigned') ? (
+                        <button
+                          disabled
+                          onClick={(e) => e.stopPropagation()}
+                          title="This is still an enquiry — mark it Did Not Rent from Live Enquiries instead"
+                          className="p-1.5 bg-gray-50 text-gray-300 rounded-lg cursor-not-allowed transition-all"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingBooking(summaryBooking.booking);
+                            setModalMode('view');
+                            setIsModalOpen(true);
+                            setShowDeleteConfirm(true);
+                            setSummaryBookingInfo(null);
+                          }}
+                          className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                          title="Delete Booking"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
