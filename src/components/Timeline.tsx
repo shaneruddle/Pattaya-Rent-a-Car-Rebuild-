@@ -5,7 +5,7 @@ import { Car, Booking, Customer } from '../types';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Plus, X, Phone, Mail, DollarSign, FileText, Calendar, Trash2, AlertCircle, AlertTriangle, Search, User, ChevronRight, Bike, Truck as TruckIcon, Car as CarIconType, ShieldCheck, Clipboard, Scissors, Loader2, Lock, Wrench, Settings, Check, Zap, ChevronLeft, ArrowUpDown, GripVertical } from 'lucide-react';
 import { db, OperationType, handleFirestoreError, logSystemActivity, auth, safeGetDocs, getDocs } from '../firebase';
-import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { upsertCustomer } from '../lib/customerService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
@@ -53,11 +53,13 @@ const ManageRentalModal: React.FC<{
   const [loading, setLoading] = useState(false);
   const [extraCharges, setExtraCharges] = useState<number>(0);
   const [extraReason, setExtraReason] = useState('');
+  const [refundAmount, setRefundAmount] = useState<number>(0);
   const [extensionPayment, setExtensionPayment] = useState<number>(0);
   const [extensionDays, setExtensionDays] = useState<number>(1);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [returnAccountId, setReturnAccountId] = useState('');
+  const [refundAccountId, setRefundAccountId] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -70,6 +72,7 @@ const ManageRentalModal: React.FC<{
         if (defaultAcc) {
           setSelectedAccountId(defaultAcc.id);
           setReturnAccountId(defaultAcc.id);
+          setRefundAccountId(defaultAcc.id);
         }
       };
       fetchAccounts();
@@ -81,6 +84,10 @@ const ManageRentalModal: React.FC<{
   const handleEndRental = async () => {
     if (extraCharges > 0 && !returnAccountId) {
       toast.error('Please select an account for the extra charges');
+      return;
+    }
+    if (refundAmount > 0 && !refundAccountId) {
+      toast.error('Please select an account to refund from');
       return;
     }
 
@@ -114,6 +121,24 @@ const ManageRentalModal: React.FC<{
         }
       }
 
+      // 2b. Log Deposit Refund to Finance if > 0 — comes off the selected account
+      if (refundAmount > 0) {
+        await addDoc(collection(db, 'transactions'), {
+          type: 'Expense',
+          amount: Number(refundAmount),
+          date: new Date().toISOString(),
+          category: 'Deposit Refund',
+          carId: booking.carId,
+          bookingId: booking.id,
+          accountId: refundAccountId,
+          description: `Deposit refund to ${booking.customerName}`
+        });
+
+        await updateDoc(doc(db, 'accounts', refundAccountId), {
+          balance: increment(-Number(refundAmount))
+        });
+      }
+
       // 3. Send Email
       try {
         const carSnap = await getDoc(doc(db, 'cars', booking.carId));
@@ -141,7 +166,7 @@ const ManageRentalModal: React.FC<{
         // Fallback or just ignore if it's secondary
       }
 
-      toast.success('Email Sent & Calendar Updated');
+      toast.success(refundAmount > 0 ? 'Return complete. Refund logged.' : 'Email Sent & Calendar Updated');
       onRefresh();
       onClose();
     } catch (err) {
@@ -295,6 +320,36 @@ const ManageRentalModal: React.FC<{
                   value={returnAccountId}
                   onChange={e => setReturnAccountId(e.target.value)}
                   className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                >
+                  <option value="" disabled>Select Account</option>
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-2 pt-2 border-t border-black/5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-red-500/70 ml-4">Refund To Customer</label>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Refund Amount (฿)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500 font-bold text-sm">฿</span>
+                  <input
+                    type="number"
+                    value={refundAmount}
+                    onChange={e => setRefundAmount(Number(e.target.value))}
+                    className="w-full bg-black/5 border-0 p-4 pl-10 rounded-2xl text-sm font-bold focus:ring-2 ring-red-400 outline-none transition-all"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 ml-4">Refund From Account</label>
+                <select
+                  value={refundAccountId}
+                  onChange={e => setRefundAccountId(e.target.value)}
+                  className="w-full bg-black/5 border-0 p-4 rounded-2xl text-sm font-bold focus:ring-2 ring-red-400 outline-none transition-all appearance-none"
                 >
                   <option value="" disabled>Select Account</option>
                   {accounts.map(acc => (
