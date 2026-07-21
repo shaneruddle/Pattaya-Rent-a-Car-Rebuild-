@@ -927,7 +927,7 @@ app.get("/api/pricing/quote", async (req, res) => {
         const info = await transporter.sendMail({
           from: `"${tmplFromName}" <${gmailUser}>`,
           to: tmplFinalTo,
-          bcc: templateId === 'rental_confirmation' ? 'info@pattayarentacar.com' : undefined,
+          bcc: (templateId === 'rental_confirmation' || templateId === 'email_reply') ? 'info@pattayarentacar.com' : undefined,
           replyTo: tmplReplyTo,
           subject: renderedSubject,
           html: renderedHtml,

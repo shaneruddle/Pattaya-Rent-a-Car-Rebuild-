@@ -57,6 +57,8 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [dnrReason, setDnrReason] = useState('');
   const [openMenu, setOpenMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
+  const [sendingEnquiryId, setSendingEnquiryId] = useState<string | null>(null);
+
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -357,6 +359,49 @@ In addition you can book now, pay later and cancel at anytime free of charge
 Do you wish to proceed with the booking ?`,
       'Email reply template copied!'
     );
+  };
+
+  const sendEmailReply = async (enquiry: Booking) => {
+    if (!enquiry.email) {
+      toast.error('No email address for this customer');
+      return;
+    }
+    setSendingEnquiryId(enquiry.id || '');
+    try {
+      const placeholders: Record<string, string> = {
+        '{{customer_name}}': (enquiry.customerName || 'Customer').split(' ')[0],
+        '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
+        '{{total_price}}': (enquiry.amount || 0).toLocaleString(),
+        '{{pickup_date}}': enquiry.startDate ? format(parseISO(enquiry.startDate), 'dd MMM yyyy') : '',
+        '{{pickup_time}}': enquiry.startDate ? format(parseISO(enquiry.startDate), 'HH:mm') : '',
+        '{{return_date}}': enquiry.endDate ? format(parseISO(enquiry.endDate), 'dd MMM yyyy') : '',
+        '{{return_time}}': enquiry.endDate ? format(parseISO(enquiry.endDate), 'HH:mm') : '',
+        '{{rental_period}}': enquiry.startDate && enquiry.endDate
+          ? `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
+          : '',
+        '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{customer_email}}': enquiry.email || '',
+        '{{customer_phone}}': enquiry.mobileNumber || '',
+        '{{comments}}': enquiry.notes || '',
+      };
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: enquiry.email,
+          templateId: 'email_reply',
+          skipFinalToOverride: true,
+          replyTo: 'info@pattayarentacar.com',
+          placeholders,
+        }),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      toast.success(`Reply sent to ${enquiry.email}`);
+    } catch (err) {
+      toast.error('Failed to send email - please try again');
+    } finally {
+      setSendingEnquiryId(null);
+    }
   };
 
   const copyDeliveryEmailTemplate = (enquiry: Booking) => {
@@ -676,10 +721,11 @@ However, we can offer the following alternative...`,
 
                   <div className="mt-auto pt-6 border-t border-black/5 flex flex-col sm:flex-row flex-wrap gap-3">
                     <button
-                      onClick={() => copyEmailTemplate(enquiry)}
-                      className="flex-1 min-w-[140px] bg-white border border-black/10 text-black/60 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center"
+                      onClick={() => sendEmailReply(enquiry)}
+                      disabled={sendingEnquiryId === enquiry.id}
+                      className="flex-1 min-w-[140px] bg-white border border-black/10 text-black/60 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center disabled:opacity-50"
                     >
-                      <Copy size={10} /> Email Reply
+                      {sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Email Reply'}
                     </button>
                     <button
                       onClick={() => copyDeliveryEmailTemplate(enquiry)}
