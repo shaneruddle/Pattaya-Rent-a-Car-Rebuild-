@@ -723,7 +723,7 @@ However, we can offer the following alternative...`,
                     <button
                       onClick={() => sendEmailReply(enquiry)}
                       disabled={sendingEnquiryId === enquiry.id}
-                      className="flex-1 min-w-[140px] bg-green-600 border border-green-700 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-green-700 transition-all text-center disabled:opacity-50"
+                      className="flex-1 min-w-[140px] bg-emerald-500 border border-emerald-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all text-center disabled:opacity-50"
                     >
                       {sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Vehicle Available Auto Response'}
                     </button>
