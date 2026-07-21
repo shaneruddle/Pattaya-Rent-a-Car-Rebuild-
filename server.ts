@@ -924,13 +924,14 @@ app.get("/api/pricing/quote", async (req, res) => {
       console.log(`[Email] Template "${templateId}" — sending to ${tmplFinalTo}...`);
       try {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
-        const info = await transporter.sendMail({
+  const EMAIL_SIGNATURE = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;"><tr><td style="padding-right:20px;vertical-align:top;white-space:nowrap;"><p style="font-size:22px;font-weight:900;line-height:1.1;color:#000;margin:0 0 3px;">Gift<br>Suphaphon</p><p style="font-size:12px;color:#555;margin:0 0 12px;">Manager</p><p style="font-size:12px;line-height:1.9;color:#333;margin:0;"><span style="color:#e8631a;margin-right:6px;">&#9679;</span>+66-83-077-6928<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>www.pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>info@pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>359/119 Moo 12 Nongprue, Pattaya City</p></td><td style="border-left:3px solid #e8631a;padding:0 20px;">&nbsp;</td><td style="vertical-align:middle;"><img src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" alt="Pattaya RentaCar" width="110" style="display:block;"></td></tr></table>`;
+      const info = await transporter.sendMail({
           from: `"${tmplFromName}" <${gmailUser}>`,
           to: tmplFinalTo,
           bcc: templateId === 'rental_confirmation' ? 'info@pattayarentacar.com' : undefined,
           replyTo: tmplReplyTo,
           subject: renderedSubject,
-          html: renderedHtml,
+          html: templateId === "email_reply" ? renderedHtml + EMAIL_SIGNATURE : renderedHtml,
         });
         console.log(`[Email] Template "${templateId}" sent OK:`, info.messageId);
         return res.json({ success: true, messageId: info.messageId });
