@@ -552,7 +552,7 @@ const CarRow: React.FC<CarRowProps> = React.memo(({
         onClick={(e) => handleRowClick(e, car.id)}
         onContextMenu={(e) => handleRowContextMenu(e, car.id)}
       >
-        {[...bookings.filter(b => b.carId === car.id)].sort((a, b) => differenceInDays(parseISO(b.endDate), parseISO(b.startDate)) - differenceInDays(parseISO(a.endDate), parseISO(a.startDate))).map(booking => {
+        {[...bookings.filter(b => b.carId === car.id && (b as any).status !== 'DNR')].sort((a, b) => differenceInDays(parseISO(b.endDate), parseISO(b.startDate)) - differenceInDays(parseISO(a.endDate), parseISO(a.startDate))).map(booking => {
           const style = getBookingStyle(booking);
           if (!style) return null;
           return (
@@ -1909,7 +1909,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                 onClick={(e) => handleRowClick(e, 'unassigned')}
                 onContextMenu={(e) => handleRowContextMenu(e, 'unassigned')}
               >
-                {[...bookings.filter(b => !b.carId || b.carId === '')].sort((a, b) => differenceInDays(parseISO(b.endDate), parseISO(b.startDate)) - differenceInDays(parseISO(a.endDate), parseISO(a.startDate))).map(booking => {
+                {[...bookings.filter(b => (!b.carId || b.carId === '') && (b as any).status !== 'DNR')].sort((a, b) => differenceInDays(parseISO(b.endDate), parseISO(b.startDate)) - differenceInDays(parseISO(a.endDate), parseISO(a.startDate))).map(booking => {
                   const style = getBookingStyle(booking);
                   if (!style) return null;
                   return (
