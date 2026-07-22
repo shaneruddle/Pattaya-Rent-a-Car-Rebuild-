@@ -107,6 +107,9 @@ export interface Booking {
   utmMedium?: string;
   utmCampaign?: string;
   bookingSource?: string; // staff-assigned channel label
+  enquiryMessageId?: string; // Message-ID of the first email sent for this booking; used to thread later replies via In-Reply-To/References
+  vehicleAvailableSentAt?: string; // ISO string — when the Vehicle Available Auto Response reply was sent
+  followUpReminderSentAt?: string; // ISO string — when the Follow Up reminder email was sent
 }
 
 export interface Rental {

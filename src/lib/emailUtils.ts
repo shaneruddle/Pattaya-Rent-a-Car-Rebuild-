@@ -189,7 +189,8 @@ export const sendTemplatedEmail = async (
   templateId: string,
   to: string,
   placeholders: Record<string, any>,
-  replyTo?: string
+  replyTo?: string,
+  bookingId?: string
 ) => {
   try {
     const response = await fetch('/api/send-email', {
@@ -201,6 +202,7 @@ export const sendTemplatedEmail = async (
         placeholders,
         replyTo,
         skipFinalToOverride: true,
+        bookingId,
       }),
     });
 

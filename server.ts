@@ -790,7 +790,8 @@ app.get("/api/pricing/quote", async (req, res) => {
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website,
                   enquiryName, enquiryEmail, enquiryPhone, enquiryType, enquiryNote,
-                  enquiryNationality, enquiryUtmSource, enquiryUtmMedium, enquiryUtmCampaign, enquiryUtmContent, enquiryUtmTerm } = req.body;
+                  enquiryNationality, enquiryUtmSource, enquiryUtmMedium, enquiryUtmCampaign, enquiryUtmContent, enquiryUtmTerm,
+                  bookingId } = req.body;
 
     // Honeypot check — silently return success if bait field filled
     if (website) {
@@ -798,11 +799,44 @@ app.get("/api/pricing/quote", async (req, res) => {
       return res.status(200).json({ success: true });
     }
 
+    // ── Email threading helpers ──────────────────────────────────────────────
+    // A booking's `enquiryMessageId` field, once set, anchors the customer-facing
+    // thread: the FIRST email ever sent for that booking gets its Message-ID stored
+    // here, and every later reply for the same booking sets In-Reply-To/References
+    // to it so Gmail (and other clients) group them as one conversation instead of
+    // starting a brand new thread each time.
+    let resolvedBookingId: string | undefined = bookingId ? String(bookingId) : undefined;
+
+    const lookupInReplyTo = async (bkId?: string): Promise<string | undefined> => {
+      if (!bkId) return undefined;
+      try {
+        const snap = await firestore.collection('bookings').doc(bkId).get();
+        const existing = snap.exists ? (snap.data() as any)?.enquiryMessageId : undefined;
+        return existing || undefined;
+      } catch (e) {
+        console.warn('[Email] Failed to look up enquiryMessageId for threading:', e);
+        return undefined;
+      }
+    };
+
+    const maybeStoreMessageId = async (bkId: string | undefined, messageId: string | undefined) => {
+      if (!bkId || !messageId) return;
+      try {
+        const ref = firestore.collection('bookings').doc(bkId);
+        const snap = await ref.get();
+        if (snap.exists && !(snap.data() as any)?.enquiryMessageId) {
+          await ref.update({ enquiryMessageId: messageId });
+        }
+      } catch (e) {
+        console.warn('[Email] Failed to store enquiryMessageId:', e);
+      }
+    };
+
 // Write marketing site enquiries to bookings collection so they appear in LiveEnquiries
             if (enquiryEmail && enquiryType) {
                           try {
                                             const now = new Date().toISOString();
-                                            await firestore.collection('bookings').add({
+                                            const enquiryDocRef = await firestore.collection('bookings').add({
                                                                   customerName:     enquiryName  || '',
                                                                   email:            enquiryEmail.toLowerCase().trim(),
                                                                   mobileNumber:     enquiryPhone || '',
@@ -823,6 +857,8 @@ app.get("/api/pricing/quote", async (req, res) => {
                                                                   utmContent:       enquiryUtmContent  || null,
                                                                   utmTerm:          enquiryUtmTerm     || null,
                                             });
+                                            // Only used for threading if the caller didn't already pass an explicit bookingId
+                                            if (!resolvedBookingId) resolvedBookingId = enquiryDocRef.id;
                                             console.log(`[Enquiry] Bookings write OK: ${enquiryEmail} (${enquiryType})`);
                           } catch (firestoreErr: any) {
                                             console.error('[Enquiry] Bookings write failed (email send continues):', firestoreErr.message);
@@ -925,6 +961,7 @@ app.get("/api/pricing/quote", async (req, res) => {
       try {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
   const EMAIL_SIGNATURE = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;"><tr><td style="padding-right:20px;vertical-align:top;white-space:nowrap;"><p style="font-size:22px;font-weight:900;line-height:1.1;color:#000;margin:0 0 3px;">Gift<br>Suphaphon</p><p style="font-size:12px;color:#555;margin:0 0 12px;">Manager</p><p style="font-size:12px;line-height:1.9;color:#333;margin:0;"><span style="color:#e8631a;margin-right:6px;">&#9679;</span>+66-83-077-6928<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>www.pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>info@pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>359/119 Moo 12 Nongprue, Pattaya City</p></td><td style="border-left:3px solid #e8631a;padding:0 20px;">&nbsp;</td><td style="vertical-align:middle;"><img src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" alt="Pattaya RentaCar" width="110" style="display:block;"></td></tr></table>`;
+        const tmplInReplyTo = await lookupInReplyTo(resolvedBookingId);
       const info = await transporter.sendMail({
           from: `"${tmplFromName}" <${gmailUser}>`,
           to: tmplFinalTo,
@@ -932,8 +969,10 @@ app.get("/api/pricing/quote", async (req, res) => {
           replyTo: tmplReplyTo,
           subject: renderedSubject,
           html: templateId === "email_reply" ? renderedHtml + EMAIL_SIGNATURE : renderedHtml,
+          ...(tmplInReplyTo ? { inReplyTo: tmplInReplyTo, references: tmplInReplyTo } : {}),
         });
-        console.log(`[Email] Template "${templateId}" sent OK:`, info.messageId);
+        console.log(`[Email] Template "${templateId}" sent OK:`, info.messageId, tmplInReplyTo ? `(threaded, In-Reply-To ${tmplInReplyTo})` : '');
+        await maybeStoreMessageId(resolvedBookingId, info.messageId);
         return res.json({ success: true, messageId: info.messageId });
       } catch (sendErr: any) {
         console.error(`[Email] Template "${templateId}" send failed:`, sendErr);
@@ -966,18 +1005,22 @@ app.get("/api/pricing/quote", async (req, res) => {
           ? "info@pattayarentacar.com"
           : to;
 
+      const legacyInReplyTo = await lookupInReplyTo(resolvedBookingId);
+
       const mailOptions = {
         from: `"${dynamicFromName || 'Company'}" <${gmailUser}>`,
         to: finalTo,
         replyTo: dynamicReplyTo || gmailUser,
         subject: subject || "New Message from Website",
-        html: html
+        html: html,
+        ...(legacyInReplyTo ? { inReplyTo: legacyInReplyTo, references: legacyInReplyTo } : {}),
       };
 
       console.log(`[Email] Sending email to ${mailOptions.to} with subject: ${mailOptions.subject}`);
       const info = await transporter.sendMail(mailOptions);
-      console.log("[Email] Message sent successfully: %s", info.messageId);
-      
+      console.log("[Email] Message sent successfully: %s", info.messageId, legacyInReplyTo ? `(threaded, In-Reply-To ${legacyInReplyTo})` : '');
+      await maybeStoreMessageId(resolvedBookingId, info.messageId);
+
       res.json({ success: true, messageId: info.messageId });
     } catch (error: any) {
       console.error("[Email] Critical Send Error:", error);

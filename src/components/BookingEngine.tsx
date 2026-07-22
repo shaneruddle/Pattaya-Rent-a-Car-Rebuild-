@@ -480,7 +480,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{total_price}}': (bookingData.amount || 0).toLocaleString(),
           '{{delivery_address}}': formData.requireDelivery ? formData.deliveryAddress : '',
           '{{comments}}': formData.comments || ''
-        });
+        }, undefined, docRef.id);
         if (!customerEmailOk) emailSuccess = false;
         console.log('BookingEngine: Customer confirmation triggered');
 

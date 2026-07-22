@@ -447,11 +447,20 @@ Do you wish to proceed with the booking ?`,
           skipFinalToOverride: true,
           replyTo: 'info@pattayarentacar.com',
           placeholders,
+          bookingId: enquiry.id,
         }),
       });
       if (!res.ok) throw new Error('Send failed');
+      const sentAt = new Date().toISOString();
+      if (enquiry.id) {
+        try {
+          await updateDoc(doc(db, 'bookings', enquiry.id), { vehicleAvailableSentAt: sentAt });
+        } catch (persistErr) {
+          console.error('Failed to persist vehicleAvailableSentAt:', persistErr);
+        }
+      }
       toast.success(`Reply sent to ${enquiry.email}`);
-      setSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) }));
+      setSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: sentAt }));
     } catch (err) {
       toast.error('Failed to send email - please try again');
     } finally {
@@ -494,8 +503,16 @@ Do you wish to proceed with the booking ?`,
         }),
       });
       if (!res.ok) throw new Error('Send failed');
+      const sentAt = new Date().toISOString();
+      if (enquiry.id) {
+        try {
+          await updateDoc(doc(db, 'bookings', enquiry.id), { followUpReminderSentAt: sentAt });
+        } catch (persistErr) {
+          console.error('Failed to persist followUpReminderSentAt:', persistErr);
+        }
+      }
       toast.success(`Reminder sent to ${enquiry.email}`);
-      setReminderSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) }));
+      setReminderSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: sentAt }));
     } catch (err) {
       toast.error('Failed to send reminder - please try again');
     } finally {
@@ -711,19 +728,26 @@ However, we can offer the following alternative...`,
                   )}
 
                   <div className="mt-auto pt-4 flex flex-col sm:flex-row flex-wrap gap-3">
-                    <button
-                      onClick={() => sendFollowUpReminder(enquiry)}
-                      disabled={sendingReminderId === enquiry.id}
-                      className="flex-1 min-w-[140px] bg-blue-500 border border-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-blue-600 transition-all text-center disabled:opacity-50"
-                    >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div className="flex items-center gap-2">
-                          {sendingReminderId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
-                          {sendingReminderId === enquiry.id ? 'Sending...' : 'Send Reminder'}
-                        </div>
-                        {reminderSentTimestamps[enquiry.id || ''] && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {reminderSentTimestamps[enquiry.id || '']}</div>}
-                      </div>
-                    </button>
+                    {(() => {
+                      const sentAtIso = (enquiry as any).followUpReminderSentAt || reminderSentTimestamps[enquiry.id || ''];
+                      const isSent = !!sentAtIso;
+                      const isSending = sendingReminderId === enquiry.id;
+                      return (
+                        <button
+                          onClick={() => sendFollowUpReminder(enquiry)}
+                          disabled={isSending || isSent}
+                          className="flex-1 min-w-[140px] bg-blue-500 border border-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-blue-600 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <div className="flex flex-col items-center gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {isSending ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
+                              {isSending ? 'Sending...' : isSent ? 'Reminder Sent' : 'Send Reminder'}
+                            </div>
+                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}</div>}
+                          </div>
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => initiateDnr(enquiry)}
                       className="flex-1 min-w-[140px] bg-white border border-black/10 text-amber-600 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-amber-50 transition-all text-center"
@@ -909,13 +933,26 @@ However, we can offer the following alternative...`,
                   )}
 
                   <div className="mt-auto pt-6 border-t border-black/5 flex flex-col sm:flex-row flex-wrap gap-3">
-                    <button
-                      onClick={() => sendEmailReply(enquiry)}
-                      disabled={sendingEnquiryId === enquiry.id}
-                      className="flex-1 min-w-[140px] bg-emerald-500 border border-emerald-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all text-center disabled:opacity-50"
-                    >
-                      <div className="flex flex-col items-center gap-0.5"><div className="flex items-center gap-2">{sendingEnquiryId === enquiry.id ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />} {sendingEnquiryId === enquiry.id ? 'Sending...' : 'Vehicle Available Auto Response'}</div>{sentTimestamps[enquiry.id || ''] && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {sentTimestamps[enquiry.id || '']}</div>}</div>
-                    </button>
+                    {(() => {
+                      const sentAtIso = (enquiry as any).vehicleAvailableSentAt || sentTimestamps[enquiry.id || ''];
+                      const isSent = !!sentAtIso;
+                      const isSending = sendingEnquiryId === enquiry.id;
+                      return (
+                        <button
+                          onClick={() => sendEmailReply(enquiry)}
+                          disabled={isSending || isSent}
+                          className="flex-1 min-w-[140px] bg-emerald-500 border border-emerald-600 text-white py-3 rounded-xl font-bold uppercase tracking-normal text-[9px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <div className="flex flex-col items-center gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {isSending ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
+                              {isSending ? 'Sending...' : isSent ? 'Reply Sent' : 'Vehicle Available Auto Response'}
+                            </div>
+                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}</div>}
+                          </div>
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => copyDeliveryEmailTemplate(enquiry)}
                       className="flex-1 min-w-[140px] bg-white border border-black/10 text-black/60 py-3 rounded-xl font-bold uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 hover:bg-black/5 transition-all text-center"
