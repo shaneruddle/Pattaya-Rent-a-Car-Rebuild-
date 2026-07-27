@@ -2789,7 +2789,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
                         <div className="grid grid-cols-1 gap-3">
                           <textarea
                             rows={1}
-                            className="w-full bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl text-xs font-medium focus:ring-2 ring-emerald-500 outline-none transition-all resize-none min-h-[52px]"
+                            className="w-full bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl text-xs font-medium focus:ring-2 ring-emerald-500 outline-none transition-all resize-none min-h-[156px]"
                             value={formData.deliveryNotes}
                             onChange={e => setFormData({ ...formData, deliveryNotes: e.target.value })}
                             placeholder="Pick-up/Delivery notes..."
