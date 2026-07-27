@@ -110,6 +110,8 @@ export interface Booking {
   enquiryMessageId?: string; // Message-ID of the first email sent for this booking; used to thread later replies via In-Reply-To/References
   vehicleAvailableSentAt?: string; // ISO string — when the Vehicle Available Auto Response reply was sent
   followUpReminderSentAt?: string; // ISO string — when the Follow Up reminder email was sent
+  vehicleAvailableSentBy?: string; // staff email who sent the Vehicle Available Auto Response reply
+  followUpReminderSentBy?: string; // staff email who sent the Follow Up reminder email
 }
 
 export interface Rental {

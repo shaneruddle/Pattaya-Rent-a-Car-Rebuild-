@@ -40,6 +40,20 @@ interface LiveEnquiriesProps {
   onRefresh?: () => void;
 }
 
+const STAFF_NICKNAMES: Record<string, string> = {
+  'rak@pattayarentacar.com': 'Rak',
+  'pen@pattayarentacar.com': 'Pen',
+  'gift@pattayarentacar.com': 'Gift',
+  'info@pattayarentacar.com': 'Admin',
+};
+
+const getStaffNickname = (email?: string | null): string => {
+  if (!email) return 'Staff';
+  const normalized = email.trim().toLowerCase();
+  if (STAFF_NICKNAMES[normalized]) return STAFF_NICKNAMES[normalized];
+  return email.split('@')[0];
+};
+
 export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], cars = [], onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEnquiry, setSelectedEnquiry] = useState<Booking | null>(null);
@@ -55,12 +69,15 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const [showDnrModal, setShowDnrModal] = useState(false);
   const [dnrTarget, setDnrTarget] = useState<Booking | null>(null);
   const [dnrReason, setDnrReason] = useState('');
+  const [dnrReasonPreset, setDnrReasonPreset] = useState('');
   const [openMenu, setOpenMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const [sendingEnquiryId, setSendingEnquiryId] = useState<string | null>(null);
   const [sentTimestamps, setSentTimestamps] = useState<Record<string, string>>({});
+  const [sentByStaff, setSentByStaff] = useState<Record<string, string>>({});
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
   const [reminderSentTimestamps, setReminderSentTimestamps] = useState<Record<string, string>>({});
+  const [reminderSentByStaff, setReminderSentByStaff] = useState<Record<string, string>>({});
 
   // Fetch templates on mount to avoid async delays during clipboard copy
   useEffect(() => {
@@ -302,6 +319,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
   const initiateDnr = (enquiry: Booking) => {
     setDnrTarget(enquiry);
     setDnrReason('');
+    setDnrReasonPreset('');
     setShowDnrModal(true);
   };
 
@@ -346,6 +364,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
       setShowDnrModal(false);
       setDnrTarget(null);
       setDnrReason('');
+      setDnrReasonPreset('');
       if (onRefresh) onRefresh();
     } catch (error) {
       toast.error('Failed to mark as Did Not Rent');
@@ -454,13 +473,14 @@ Do you wish to proceed with the booking ?`,
       const sentAt = new Date().toISOString();
       if (enquiry.id) {
         try {
-          await updateDoc(doc(db, 'bookings', enquiry.id), { vehicleAvailableSentAt: sentAt });
+          await updateDoc(doc(db, 'bookings', enquiry.id), { vehicleAvailableSentAt: sentAt, vehicleAvailableSentBy: auth.currentUser?.email || '' });
         } catch (persistErr) {
           console.error('Failed to persist vehicleAvailableSentAt:', persistErr);
         }
       }
       toast.success(`Reply sent to ${enquiry.email}`);
       setSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: sentAt }));
+    setSentByStaff(prev => ({ ...prev, [enquiry.id || '']: auth.currentUser?.email || '' }));
     } catch (err) {
       toast.error('Failed to send email - please try again');
     } finally {
@@ -506,13 +526,14 @@ Do you wish to proceed with the booking ?`,
       const sentAt = new Date().toISOString();
       if (enquiry.id) {
         try {
-          await updateDoc(doc(db, 'bookings', enquiry.id), { followUpReminderSentAt: sentAt });
+          await updateDoc(doc(db, 'bookings', enquiry.id), { followUpReminderSentAt: sentAt, followUpReminderSentBy: auth.currentUser?.email || '' });
         } catch (persistErr) {
           console.error('Failed to persist followUpReminderSentAt:', persistErr);
         }
       }
       toast.success(`Reminder sent to ${enquiry.email}`);
       setReminderSentTimestamps(prev => ({ ...prev, [enquiry.id || '']: sentAt }));
+    setReminderSentByStaff(prev => ({ ...prev, [enquiry.id || '']: auth.currentUser?.email || '' }));
     } catch (err) {
       toast.error('Failed to send reminder - please try again');
     } finally {
@@ -730,6 +751,7 @@ However, we can offer the following alternative...`,
                   <div className="mt-auto pt-4 flex flex-col sm:flex-row flex-wrap gap-3">
                     {(() => {
                       const sentAtIso = (enquiry as any).followUpReminderSentAt || reminderSentTimestamps[enquiry.id || ''];
+        const sentByEmail = (enquiry as any).followUpReminderSentBy || reminderSentByStaff[enquiry.id || ''];
                       const isSent = !!sentAtIso;
                       const isSending = sendingReminderId === enquiry.id;
                       return (
@@ -743,7 +765,7 @@ However, we can offer the following alternative...`,
                               {isSending ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
                               {isSending ? 'Sending...' : isSent ? 'Reminder Sent' : 'Send Reminder'}
                             </div>
-                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}</div>}
+                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}{sentByEmail ? ` by ${getStaffNickname(sentByEmail)}` : ''}</div>}
                           </div>
                         </button>
                       );
@@ -935,6 +957,7 @@ However, we can offer the following alternative...`,
                   <div className="mt-auto pt-6 border-t border-black/5 flex flex-col sm:flex-row flex-wrap gap-3">
                     {(() => {
                       const sentAtIso = (enquiry as any).vehicleAvailableSentAt || sentTimestamps[enquiry.id || ''];
+        const sentByEmail = (enquiry as any).vehicleAvailableSentBy || sentByStaff[enquiry.id || ''];
                       const isSent = !!sentAtIso;
                       const isSending = sendingEnquiryId === enquiry.id;
                       return (
@@ -948,7 +971,7 @@ However, we can offer the following alternative...`,
                               {isSending ? <Loader2 size={10} className="animate-spin" /> : <Mail size={10} />}
                               {isSending ? 'Sending...' : isSent ? 'Reply Sent' : 'Vehicle Available Auto Response'}
                             </div>
-                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}</div>}
+                            {isSent && <div className="text-[7px] font-normal normal-case tracking-normal opacity-75">Sent {format(parseISO(sentAtIso), 'dd MMM, HH:mm')}{sentByEmail ? ` by ${getStaffNickname(sentByEmail)}` : ''}</div>}
                           </div>
                         </button>
                       );
@@ -1027,15 +1050,35 @@ However, we can offer the following alternative...`,
               </p>
               <div className="mb-6">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 block mb-2">Reason <span className="text-[#1A1A1A]/20">(optional)</span></label>
-                <input
-                  type="text"
-                  placeholder="e.g. Price too high, went elsewhere..."
-                  value={dnrReason}
-                  onChange={(e) => setDnrReason(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && confirmDnr()}
-                  className="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-sm focus:bg-black/8 outline-none font-medium"
-                  autoFocus
-                />
+                <select
+                  value={dnrReasonPreset}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDnrReasonPreset(val);
+                    setDnrReason(val && val !== 'Other' ? val : '');
+                  }}
+                  className="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-sm focus:bg-black/8 outline-none font-medium mb-2"
+                >
+                  <option value="">Select a common reason...</option>
+                  <option value="Price too high">Price too high</option>
+                  <option value="Went with another company">Went with another company</option>
+                  <option value="Requested dates or car unavailable">Requested dates or car unavailable</option>
+                  <option value="No response from customer">No response from customer</option>
+                  <option value="Booked with a hotel or agent instead">Booked with a hotel or agent instead</option>
+                  <option value="Changed travel plans">Changed travel plans</option>
+                  <option value="Other">Other (type below)</option>
+                </select>
+                {(dnrReasonPreset === '' || dnrReasonPreset === 'Other') && (
+                  <input
+                    type="text"
+                    placeholder="e.g. Price too high, went elsewhere..."
+                    value={dnrReason}
+                    onChange={(e) => setDnrReason(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && confirmDnr()}
+                    className="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-sm focus:bg-black/8 outline-none font-medium"
+                    autoFocus
+                  />
+                )}
               </div>
               <div className="flex gap-3">
                 <button
