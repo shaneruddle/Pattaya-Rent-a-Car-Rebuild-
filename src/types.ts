@@ -87,6 +87,7 @@ export interface Booking {
   amount?: number;
   notes?: string;
   requestedCarType?: string;
+  requestedCarClass?: string; // Car.type of the selected car at enquiry time, for availability lookups
   deliveryAddress?: string;
   deliveryLocation?: {
     lat: number;

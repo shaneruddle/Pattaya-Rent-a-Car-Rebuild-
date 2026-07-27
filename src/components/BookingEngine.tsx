@@ -424,6 +424,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       const bookingData = {
         carId: '',
         requestedCarType: selectedCar.name,
+        requestedCarClass: selectedCar.type,
         nationality:      formData.nationality || null,
         utmSource:        utmParams.source     || null,
         utmMedium:        utmParams.medium     || null,

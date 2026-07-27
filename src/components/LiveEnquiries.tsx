@@ -434,7 +434,10 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
         '{{customer_phone}}': enquiry.mobileNumber || '',
         '{{comments}}': enquiry.notes || '',
         '{{next_available_date}}': (() => {
-          const d = getNextAvailableDate(enquiry.requestedCarType || '', enquiry.id);
+          const carClass = enquiry.requestedCarClass
+            || cars.find(c => c.name === enquiry.requestedCarType)?.type
+            || '';
+          const d = getNextAvailableDate(carClass, enquiry.id);
           return d ? format(parseISO(d), 'dd MMM yyyy') : 'shortly';
         })(),
       };
