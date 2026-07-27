@@ -5,7 +5,7 @@ import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from
 import { onAuthStateChanged } from 'firebase/auth';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
 import { Booking, Car } from '../types';
-import { format, parseISO, isValid, formatDistanceToNow, isToday } from 'date-fns';
+import { format, parseISO, isValid, formatDistanceToNow, isToday, addDays } from 'date-fns';
 import { 
   Search, 
   Filter, 
@@ -374,6 +374,44 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
     }
   };
 
+  // Returns the earliest ISO date (yyyy-MM-dd) on/after today that an active car of the
+  // given type has no overlapping Paid/Pending booking. Null if the fleet has no active
+  // car of that type at all.
+  const getNextAvailableDate = (carType: string, excludeBookingId?: string): string | null => {
+    const matchingCars = cars.filter(c => c.type === carType && c.isActive !== false);
+    if (matchingCars.length === 0) return null;
+  
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const matchingCarIds = new Set(matchingCars.map(c => c.id));
+    const relevantBookings = bookings.filter(b =>
+      matchingCarIds.has(b.carId) &&
+      (b.status === 'Paid' || b.status === 'Pending') &&
+      b.id !== excludeBookingId &&
+      b.endDate >= todayStr
+    );
+  
+    const byCar: Record<string, { start: string; end: string }[]> = {};
+    relevantBookings.forEach(b => {
+      if (!byCar[b.carId]) byCar[b.carId] = [];
+      byCar[b.carId].push({ start: b.startDate, end: b.endDate });
+    });
+  
+    let earliest: string | null = null;
+    matchingCars.forEach(car => {
+      const intervals = (byCar[car.id] || []).slice().sort((a, b) => a.start.localeCompare(b.start));
+      let candidate = todayStr;
+      for (const interval of intervals) {
+        if (candidate < interval.start) break;
+        if (candidate <= interval.end) {
+          candidate = format(addDays(parseISO(interval.end), 1), 'yyyy-MM-dd');
+        }
+      }
+      if (earliest === null || candidate < earliest) earliest = candidate;
+    });
+  
+    return earliest;
+  };
+  
   const copyTemplate = async (enquiry: Booking, templateId: string, fallbackName: string, defaultBody: string, successMsg: string) => {
     try {
       // Use pre-fetched template if available
@@ -394,7 +432,11 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
         '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
         '{{customer_email}}': enquiry.email || '',
         '{{customer_phone}}': enquiry.mobileNumber || '',
-        '{{comments}}': enquiry.notes || ''
+        '{{comments}}': enquiry.notes || '',
+        '{{next_available_date}}': (() => {
+          const d = getNextAvailableDate(enquiry.requestedCarType || '', enquiry.id);
+          return d ? format(parseISO(d), 'dd MMM yyyy') : 'shortly';
+        })(),
       };
 
       const finalBody = htmlToPlainText(processTemplate(bodyTemplate, placeholders));
@@ -584,6 +626,8 @@ See you soon!`,
       `Hi {{customer_name}},
 
 Thank you for your enquiry. Unfortunately, the {{vehicle_model}} is not available for your dates.
+
+The next {{vehicle_model}} we expect to have available is from {{next_available_date}}.
 
 However, we can offer the following alternative...`,
       'Alternative option reply copied!'
