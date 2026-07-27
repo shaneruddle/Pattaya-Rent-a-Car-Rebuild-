@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, getDocs, where, getDoc } from 'firebase/firestore';
 import { upsertCustomer, updateCustomer, findExistingByEmail } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
@@ -147,6 +147,43 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
       })
       .sort((a, b) => new Date((b as any).dnrAt || b.startDate).getTime() - new Date((a as any).dnrAt || a.startDate).getTime());
   }, [bookings, searchQuery]);
+
+  const autoDnrProcessedIds = useRef<Set<string>>(new Set());
+
+  // Auto-expire enquiries whose pick-up date has fully passed without being confirmed into a booking.
+  useEffect(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const stale = bookings.filter(b => {
+      if (autoDnrProcessedIds.current.has(b.id)) return false;
+      const hasCarId = b.carId && b.carId !== '';
+      const status = (b as any).status;
+      const isOpenEnquiry = !hasCarId && status !== 'DNR' && status !== 'Paid' && status !== 'Completed';
+      if (!isOpenEnquiry || !b.startDate || !isValid(parseISO(b.startDate))) return false;
+      const startDay = format(parseISO(b.startDate), 'yyyy-MM-dd');
+      return startDay < todayStr;
+    });
+    if (stale.length === 0) return;
+    stale.forEach(async (b) => {
+      autoDnrProcessedIds.current.add(b.id);
+      try {
+        await updateDoc(doc(db, 'bookings', b.id), {
+          status: 'DNR',
+          dnrAt: new Date().toISOString(),
+          dnrBy: 'System (auto-expired)',
+          dnrNote: 'Automatically marked as Did Not Rent \u2014 pick-up date passed without a confirmed booking.',
+        });
+        await logSystemActivity(
+          'Did Not Rent',
+          `Auto-marked enquiry for ${b.customerName || b.id} as Did Not Rent (pick-up date passed)`,
+          'Bookings',
+          { bookingId: b.id, customerName: b.customerName, reason: 'Pick-up date passed' }
+        );
+      } catch (error) {
+        console.error('Failed to auto-mark stale enquiry as DNR:', b.id, error);
+        autoDnrProcessedIds.current.delete(b.id);
+      }
+    });
+  }, [bookings]);
 
   const followUpEnquiries = useMemo(() => {
     return bookings
@@ -668,9 +705,10 @@ However, we can offer the following alternative...`,
           <div className="flex bg-black/5 rounded-2xl p-1 shrink-0">
             <button
               onClick={() => setActiveTab('active')}
-              className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all", activeTab === 'active' ? "bg-white text-brand-orange shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
+              className={cn("px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2", activeTab === 'active' ? "bg-white text-brand-orange shadow-sm" : "text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60")}
             >
               Active
+              {enquiries.length > 0 && <span className="bg-orange-100 text-brand-orange rounded-full w-4 h-4 flex items-center justify-center text-[8px]">{enquiries.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('followup')}
@@ -759,6 +797,8 @@ However, we can offer the following alternative...`,
                 </motion.div>
               ) : followUpEnquiries.map((enquiry) => {
                 const days = daysSinceEnquiry(enquiry.createdAt);
+                const reminderSentAtIso = (enquiry as any).followUpReminderSentAt || reminderSentTimestamps[enquiry.id || ''];
+                const daysSinceReminder = reminderSentAtIso ? daysSinceEnquiry(reminderSentAtIso) : null;
                 return (
                 <motion.div
                   key={enquiry.id}
@@ -779,6 +819,7 @@ However, we can offer the following alternative...`,
                       <p className={cn("text-sm font-bold mt-1", days !== null && days >= 7 ? "text-red-500" : "text-[#1A1A1A]/60")}>
                         {days !== null ? `${days} ${days === 1 ? 'day' : 'days'}` : '—'}
                       </p>
+                      {daysSinceReminder !== null && <p className="text-[9px] font-medium text-[#1A1A1A]/40 mt-1">Reminder sent {daysSinceReminder === 0 ? 'today' : `${daysSinceReminder} ${daysSinceReminder === 1 ? 'day' : 'days'} ago`}</p>}
                     </div>
                   </div>
 
