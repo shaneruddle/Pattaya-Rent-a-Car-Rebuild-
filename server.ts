@@ -1553,6 +1553,221 @@ app.get("/api/pricing/quote", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// --- Gmail Inbox Integration (info@pattayarentacar.com only, read + reply) ---
+// Read access via Gmail API using a dedicated OAuth client (Internal user type,
+// so refresh tokens do not expire). Sending reuses the existing Nodemailer
+// mechanism above so all outbound mail keeps flowing through the same proven path.
+const GMAIL_OAUTH_CLIENT_ID = "700448424476-dq43t9du8mvcri226n3cb3g0br6n75tj.apps.googleusercontent.com";
+const GMAIL_INBOX_MAILBOX = "info@pattayarentacar.com";
+
+async function getSecretValue(secretName: string): Promise<string> {
+  const { google } = await import('googleapis');
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+  const secretmanager = google.secretmanager({ version: 'v1' });
+  const adcAuth = new google.auth.GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const adcClient = await adcAuth.getClient();
+  const secretResp = await secretmanager.projects.secrets.versions.access({
+    auth: adcClient as any,
+    name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
+  });
+  return Buffer.from(secretResp.data.payload!.data! as string, 'base64').toString('utf8');
+}
+
+let cachedGmailAccessToken: { token: string; expiresAt: number } | null = null;
+
+async function getGmailAccessToken(): Promise<string> {
+  if (cachedGmailAccessToken && cachedGmailAccessToken.expiresAt > Date.now() + 30000) {
+    return cachedGmailAccessToken.token;
+  }
+  const [clientSecret, refreshToken] = await Promise.all([
+    getSecretValue('gmail-oauth-client-secret'),
+    getSecretValue('gmail-oauth-refresh-token'),
+  ]);
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GMAIL_OAUTH_CLIENT_ID,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }).toString(),
+  });
+  const data = await response.json() as any;
+  if (!response.ok) {
+    throw new Error(`Failed to refresh Gmail access token: ${JSON.stringify(data)}`);
+  }
+  cachedGmailAccessToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in || 3000) * 1000,
+  };
+  return data.access_token;
+}
+
+async function gmailApiFetch(path: string): Promise<any> {
+  const accessToken = await getGmailAccessToken();
+  const resp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(`Gmail API error: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+function gmailHeader(headers: any[], name: string): string {
+  const found = (headers || []).find((h: any) => h.name?.toLowerCase() === name.toLowerCase());
+  return found?.value || '';
+}
+
+function decodeBase64Url(data: string): string {
+  return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+}
+
+function extractGmailBody(payload: any): { text: string; html: string } {
+  let text = '';
+  let html = '';
+  function walk(part: any) {
+    if (!part) return;
+    const mime = part.mimeType || '';
+    if (mime === 'text/plain' && part.body?.data) {
+      text += decodeBase64Url(part.body.data);
+    } else if (mime === 'text/html' && part.body?.data) {
+      html += decodeBase64Url(part.body.data);
+    } else if (part.parts) {
+      part.parts.forEach(walk);
+    }
+  }
+  walk(payload);
+  return { text, html };
+}
+
+function requireStaffAuth(req: any, res: any): boolean {
+  const authHeader = req.headers['authorization'] as string | undefined;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+// List recent inbox threads (subject/from/date/snippet only - no bodies)
+app.get('/api/mail/threads', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken : undefined;
+    const listResp = await gmailApiFetch(
+      `/threads?labelIds=INBOX&maxResults=20${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`
+    );
+    const threadStubs = listResp.threads || [];
+    const threads = await Promise.all(threadStubs.map(async (t: any) => {
+      const full = await gmailApiFetch(
+        `/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`
+      );
+      const messages = full.messages || [];
+      const lastMsg = messages[messages.length - 1];
+      const headers = lastMsg?.payload?.headers || [];
+      return {
+        id: t.id,
+        snippet: lastMsg?.snippet || t.snippet || '',
+        subject: gmailHeader(headers, 'Subject'),
+        from: gmailHeader(headers, 'From'),
+        date: gmailHeader(headers, 'Date'),
+        messageCount: messages.length,
+        unread: messages.some((m: any) => (m.labelIds || []).includes('UNREAD')),
+      };
+    }));
+    res.json({ threads, nextPageToken: listResp.nextPageToken || null });
+  } catch (err: any) {
+    console.error('[Mail] threads list error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full thread detail, including message bodies, for the reply view
+app.get('/api/mail/threads/:id', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const full = await gmailApiFetch(`/threads/${req.params.id}?format=full`);
+    const messages = (full.messages || []).map((m: any) => {
+      const headers = m.payload?.headers || [];
+      const { text, html } = extractGmailBody(m.payload);
+      return {
+        id: m.id,
+        messageIdHeader: gmailHeader(headers, 'Message-ID') || gmailHeader(headers, 'Message-Id'),
+        from: gmailHeader(headers, 'From'),
+        to: gmailHeader(headers, 'To'),
+        subject: gmailHeader(headers, 'Subject'),
+        date: gmailHeader(headers, 'Date'),
+        bodyText: text,
+        bodyHtml: html,
+        unread: (m.labelIds || []).includes('UNREAD'),
+      };
+    });
+    res.json({ id: full.id, messages });
+  } catch (err: any) {
+    console.error('[Mail] thread detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reply within a thread - reuses the existing Nodemailer send mechanism above,
+// so all outbound mail (automated and staff replies) goes through one proven path.
+app.post('/api/mail/reply', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const { to, subject, html, inReplyToMessageId } = req.body || {};
+    if (!to || !html) return res.status(400).json({ error: 'Missing to/html' });
+
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+    const gmailUser = process.env.GMAIL_USER || GMAIL_INBOX_MAILBOX;
+    if (!gmailPass) return res.status(500).json({ error: 'GMAIL_APP_PASSWORD not configured' });
+
+    const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
+    const finalSubject = subject && /^re:/i.test(subject) ? subject : `Re: ${subject || ''}`;
+
+    const info = await transporter.sendMail({
+      from: `"Pattaya Rent A Car" <${gmailUser}>`,
+      to,
+      subject: finalSubject,
+      html,
+      ...(inReplyToMessageId ? { inReplyTo: inReplyToMessageId, references: inReplyToMessageId } : {}),
+    });
+    console.log(`[Mail] Reply sent OK: ${info.messageId}`);
+    res.json({ success: true, messageId: info.messageId });
+  } catch (err: any) {
+    console.error('[Mail] reply send error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer history - match the sender's email against past bookings/enquiries
+app.get('/api/mail/history', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const email = typeof req.query.email === 'string' ? req.query.email.toLowerCase().trim() : '';
+    if (!email) return res.json({ bookings: [] });
+    const snap = await firestore.collection('bookings')
+      .where('email', '==', email)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+    const bookings = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    res.json({ bookings });
+  } catch (err: any) {
+    console.error('[Mail] history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Catch-all for unhandled API routes
   app.use(growthExecutorApp);
   app.all("/api/*", (req, res) => {
