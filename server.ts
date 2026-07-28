@@ -1757,10 +1757,12 @@ app.get('/api/mail/history', async (req: any, res: any) => {
     if (!email) return res.json({ bookings: [] });
     const snap = await firestore.collection('bookings')
       .where('email', '==', email)
-      .orderBy('createdAt', 'desc')
-      .limit(20)
       .get();
-    const bookings = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    const toMillis = (v: any) => (v && v.toMillis) ? v.toMillis() : (v ? new Date(v).getTime() : 0);
+    const bookings = snap.docs
+      .map((d: any) => ({ id: d.id, ...d.data() }))
+      .sort((a: any, b: any) => toMillis(b.createdAt) - toMillis(a.createdAt))
+      .slice(0, 20);
     res.json({ bookings });
   } catch (err: any) {
     console.error('[Mail] history error:', err.message);
