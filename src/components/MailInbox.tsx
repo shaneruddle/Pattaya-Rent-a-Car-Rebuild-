@@ -50,6 +50,18 @@ function formatShortDate(dateStr: string): string {
   }
 }
 
+// Resolve the customer's email for a thread. Prefers the most recent inbound
+// message (from someone other than the info@ mailbox). Threads that are
+// entirely outbound (e.g. an automated Rental Confirmation with no customer
+// reply yet) have no such message, so fall back to the "To" address of the
+// most recent outbound message instead of misreading info@ as the customer.
+function resolveCustomerEmail(msgs: MailMessage[]): string {
+  const inbound = [...msgs].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX);
+  if (inbound) return extractEmail(inbound.from);
+  const outbound = [...msgs].reverse().find(m => m.to && extractEmail(m.to) !== INFO_MAILBOX);
+  return outbound ? extractEmail(outbound.to) : '';
+}
+
 async function authedFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const idToken = await auth.currentUser?.getIdToken();
   if (!idToken) throw new Error('Not authenticated');
@@ -107,9 +119,8 @@ export const MailInbox: React.FC = () => {
       const msgs: MailMessage[] = data.messages || [];
       setMessages(msgs);
 
-      const customerMsg = [...msgs].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX) || msgs[msgs.length - 1];
-      if (customerMsg) {
-        const senderEmail = extractEmail(customerMsg.from);
+      const senderEmail = resolveCustomerEmail(msgs);
+      if (senderEmail) {
         setHistoryLoading(true);
         try {
           const histRes = await authedFetch(`/api/mail/history?email=${encodeURIComponent(senderEmail)}`);
@@ -133,13 +144,13 @@ export const MailInbox: React.FC = () => {
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
   const lastMessage = messages[messages.length - 1] || null;
-  const customerMessage = [...messages].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX) || lastMessage;
+  const customerEmail = resolveCustomerEmail(messages);
 
   const handleSend = async () => {
-    if (!replyBody.trim() || !customerMessage || !lastMessage || !selectedThread) return;
+    if (!replyBody.trim() || !customerEmail || !lastMessage || !selectedThread) return;
     setSending(true);
     try {
-      const toEmail = extractEmail(customerMessage.from);
+      const toEmail = customerEmail;
       const html = replyBody.split('\n').map(line => `<p>${line || '&nbsp;'}</p>`).join('');
       const res = await authedFetch('/api/mail/reply', {
         method: 'POST',
