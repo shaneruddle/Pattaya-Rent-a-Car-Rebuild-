@@ -2920,6 +2920,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                                 <option value="Repayment">Repayment</option>
                                 <option value="Utilities">Utilities</option>
                                 <option value="Marketing">Marketing</option>
+                                <option value="Customer Deposit Refund">Customer Deposit Refund</option>
+                                <option value="Vehicle Loan/Finance Payment">Vehicle Loan/Finance Payment</option>
+                                <option value="Repairs">Repairs</option>
+                                <option value="Office Supplies">Office Supplies</option>
+                                <option value="Staff Transport/Taxi">Staff Transport/Taxi</option>
+                                <option value="Investment Returned">Investment Returned</option>
                                 <option value="Other Expense">Other Expense</option>
                               </>
                             )}
