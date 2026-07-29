@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { auth } from '../firebase';
-import { Booking } from '../types';
+import { Booking, Customer } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
 import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft } from 'lucide-react';
@@ -74,6 +74,21 @@ async function authedFetch(path: string, options: RequestInit = {}): Promise<Res
   });
 }
 
+const PROFILE_FIELDS: { key: keyof Customer; label: string; type?: 'text' | 'textarea' | 'checkbox' }[] = [
+  { key: 'firstName', label: 'First name' },
+  { key: 'lastName', label: 'Last name' },
+  { key: 'mobileNumber', label: 'Mobile' },
+  { key: 'nationality', label: 'Nationality' },
+  { key: 'address', label: 'Address' },
+  { key: 'addressHotel', label: 'Hotel address' },
+  { key: 'dob', label: 'Date of birth' },
+  { key: 'drivingLicence', label: 'Driving licence' },
+  { key: 'carLicenceExpiry', label: 'Car licence expiry' },
+  { key: 'bikeLicenceExpiry', label: 'Bike licence expiry' },
+  { key: 'notes', label: 'Notes', type: 'textarea' },
+  { key: 'marketingConsent', label: 'Marketing consent', type: 'checkbox' },
+];
+
 export const MailInbox: React.FC = () => {
   const [threads, setThreads] = useState<MailThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -84,6 +99,11 @@ export const MailInbox: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<Booking[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [customerForm, setCustomerForm] = useState<Partial<Customer>>({});
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -134,6 +154,9 @@ export const MailInbox: React.FC = () => {
     setShowMobileDetail(true);
     setMessages([]);
     setHistory([]);
+    setCustomer(null);
+    setEditingCustomer(false);
+    setCustomerForm({});
     setReplyBody('');
     setMessagesLoading(true);
     try {
@@ -157,6 +180,19 @@ export const MailInbox: React.FC = () => {
           console.error('Failed to load customer history:', err);
         } finally {
           setHistoryLoading(false);
+        }
+
+        setCustomerLoading(true);
+        try {
+          const custRes = await authedFetch(`/api/customers?email=${encodeURIComponent(senderEmail)}`);
+          if (custRes.ok) {
+            const custData = await custRes.json();
+            setCustomer(custData.customer || null);
+          }
+        } catch (err) {
+          console.error('Failed to load customer profile:', err);
+        } finally {
+          setCustomerLoading(false);
         }
       }
     } catch (err: any) {
@@ -212,6 +248,56 @@ export const MailInbox: React.FC = () => {
       toast.error(err.message || 'Failed to send reply');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleStartEditCustomer = () => {
+    setCustomerForm({
+      firstName: customer?.firstName || '',
+      lastName: customer?.lastName || '',
+      mobileNumber: customer?.mobileNumber || '',
+      nationality: customer?.nationality || '',
+      address: customer?.address || '',
+      addressHotel: customer?.addressHotel || '',
+      dob: customer?.dob || '',
+      drivingLicence: customer?.drivingLicence || '',
+      carLicenceExpiry: customer?.carLicenceExpiry || '',
+      bikeLicenceExpiry: customer?.bikeLicenceExpiry || '',
+      notes: customer?.notes || '',
+      marketingConsent: customer?.marketingConsent || false,
+      source: customer?.source || '',
+    });
+    setEditingCustomer(true);
+  };
+
+  const handleCancelEditCustomer = () => {
+    setEditingCustomer(false);
+    setCustomerForm({});
+  };
+
+  const handleCustomerFieldChange = (field: keyof Customer, value: string | boolean) => {
+    setCustomerForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveCustomer = async () => {
+    if (!customerEmail) return;
+    setSavingCustomer(true);
+    try {
+      const res = await authedFetch('/api/customers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: customerEmail, ...customerForm }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCustomer(data.customer || null);
+      setEditingCustomer(false);
+      toast.success('Customer profile saved');
+    } catch (err: any) {
+      console.error('Failed to save customer profile:', err);
+      toast.error('Failed to save customer profile');
+    } finally {
+      setSavingCustomer(false);
     }
   };
 
@@ -345,6 +431,89 @@ export const MailInbox: React.FC = () => {
 
         {selectedThreadId && (
           <div className="hidden lg:flex w-72 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col overflow-y-auto custom-scrollbar p-4">
+            <div className="mb-4 pb-4 border-b border-black/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <User size={16} className="text-brand-orange" />
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer Profile</h3>
+                </div>
+                {!customerLoading && !editingCustomer && (
+                  <button
+                    onClick={handleStartEditCustomer}
+                    className="text-[11px] font-medium text-brand-orange hover:underline"
+                  >
+                    {customer ? 'Edit' : 'Add details'}
+                  </button>
+                )}
+              </div>
+              {customerLoading ? (
+                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
+              ) : editingCustomer ? (
+                <div className="space-y-2">
+                  {PROFILE_FIELDS.map(f => (
+                    <div key={f.key}>
+                      <label className="text-[10px] uppercase tracking-wide text-[#1A1A1A]/40">{f.label}</label>
+                      {f.type === 'textarea' ? (
+                        <textarea
+                          value={(customerForm[f.key] as string) || ''}
+                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
+                          rows={2}
+                        />
+                      ) : f.type === 'checkbox' ? (
+                        <input
+                          type="checkbox"
+                          checked={!!customerForm[f.key]}
+                          onChange={e => handleCustomerFieldChange(f.key, e.target.checked)}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={(customerForm[f.key] as string) || ''}
+                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={handleSaveCustomer}
+                      disabled={savingCustomer}
+                      className="text-xs font-bold text-white bg-brand-orange rounded-lg px-3 py-1.5 disabled:opacity-50"
+                    >
+                      {savingCustomer ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={handleCancelEditCustomer}
+                      disabled={savingCustomer}
+                      className="text-xs font-medium text-[#1A1A1A]/60 px-3 py-1.5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : customer ? (
+                <div className="space-y-1.5">
+                  {PROFILE_FIELDS.filter(f => f.type !== 'checkbox').map(f => (
+                    customer[f.key] ? (
+                      <p key={f.key} className="text-xs text-[#1A1A1A]">
+                        <span className="text-[#1A1A1A]/40">{f.label}: </span>
+                        {String(customer[f.key])}
+                      </p>
+                    ) : null
+                  ))}
+                  {customer.marketingConsent ? (
+                    <p className="text-xs text-[#1A1A1A]">
+                      <span className="text-[#1A1A1A]/40">Marketing consent: </span>Yes
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-xs text-[#1A1A1A]/40">No profile on file for this email.</p>
+              )}
+            </div>
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-brand-orange" />
               <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer History</h3>
