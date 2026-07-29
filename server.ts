@@ -1679,10 +1679,23 @@ app.get('/api/mail/threads', async (req: any, res: any) => {
         from: gmailHeader(headers, 'From'),
         date: gmailHeader(headers, 'Date'),
         messageCount: messages.length,
-        unread: messages.some((m: any) => (m.labelIds || []).includes('UNREAD')),
+        lastMessageId: lastMsg?.id || null,
       };
     }));
-    res.json({ threads, nextPageToken: listResp.nextPageToken || null });
+    // Read/unread is tracked entirely inside our own app (Firestore), not via Gmail's
+    // real UNREAD label. A thread is unread until opened here, and becomes unread
+    // again if a new message arrives after that (lastMessageId will no longer match
+    // what was recorded as read). There is deliberately no way to mark a thread back
+    // to unread.
+    const readSnaps = await Promise.all(
+      threads.map((t: any) => firestore.collection('mail_read_state').doc(t.id).get())
+    );
+    const threadsWithRead = threads.map((t: any, i: number) => {
+      const readData = readSnaps[i].exists ? readSnaps[i].data() : null;
+      const unread = !readData || readData!.readMessageId !== t.lastMessageId;
+      return { ...t, unread };
+    });
+    res.json({ threads: threadsWithRead, nextPageToken: listResp.nextPageToken || null });
   } catch (err: any) {
     console.error('[Mail] threads list error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1710,6 +1723,16 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
         unread: (m.labelIds || []).includes('UNREAD'),
       };
     });
+    // Mark read in our own app-level tracking only (does not touch the real Gmail
+    // UNREAD label). Recorded against the current last message, so a later reply on
+    // this thread makes it unread again automatically. No route exists to reverse this.
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage) {
+      await firestore.collection('mail_read_state').doc(full.id).set({
+        readMessageId: lastMessage.id,
+        readAt: FieldValue.serverTimestamp(),
+      });
+    }
     res.json({ id: full.id, messages });
   } catch (err: any) {
     console.error('[Mail] thread detail error:', err.message);
@@ -1766,6 +1789,52 @@ app.get('/api/mail/history', async (req: any, res: any) => {
     res.json({ bookings });
   } catch (err: any) {
     console.error('[Mail] history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer profile lookup, matched by email (same key as the history endpoint above)
+app.get('/api/customers', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const email = typeof req.query.email === 'string' ? req.query.email.toLowerCase().trim() : '';
+    if (!email) return res.json({ customer: null });
+    const snap = await firestore.collection('customers').where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.json({ customer: null });
+    const doc = snap.docs[0];
+    res.json({ customer: { id: doc.id, ...doc.data() } });
+  } catch (err: any) {
+    console.error('[Mail] customer lookup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer profile create/update, upserted by email (creates a new record if none exists)
+app.put('/api/customers', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    const { id: _ignoreId, ...fields } = req.body;
+    const snap = await firestore.collection('customers').where('email', '==', email).limit(1).get();
+    if (snap.empty) {
+      const newDoc = await firestore.collection('customers').add({
+        ...fields,
+        email,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      const saved = await newDoc.get();
+      return res.json({ customer: { id: newDoc.id, ...saved.data() } });
+    }
+    const doc = snap.docs[0];
+    await doc.ref.set({ ...fields, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const updated = await doc.ref.get();
+    res.json({ customer: { id: doc.id, ...updated.data() } });
+  } catch (err: any) {
+    console.error('[Mail] customer update error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
