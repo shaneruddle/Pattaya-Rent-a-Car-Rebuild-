@@ -1725,7 +1725,8 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
     });
     // Mark read in our own app-level tracking only (does not touch the real Gmail
     // UNREAD label). Recorded against the current last message, so a later reply on
-    // this thread makes it unread again automatically. No route exists to reverse this.
+    // this thread makes it unread again automatically. Staff can reverse this via
+    // DELETE /api/mail/threads/:id/read-state, which clears this record.
     const lastMessage = messages[messages.length - 1];
     if (lastMessage) {
       await firestore.collection('mail_read_state').doc(full.id).set({
@@ -1835,6 +1836,21 @@ app.put('/api/customers', async (req: any, res: any) => {
     res.json({ customer: { id: doc.id, ...updated.data() } });
   } catch (err: any) {
     console.error('[Mail] customer update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark a thread unread in our own app-level tracking only (does not touch the real
+// Gmail UNREAD label). Deletes the stored read-state record so the thread shows as
+// unread/bold again until it is next opened.
+app.delete('/api/mail/threads/:id/read-state', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    await firestore.collection('mail_read_state').doc(req.params.id).delete();
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[Mail] mark unread error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -3,7 +3,7 @@ import { auth } from '../firebase';
 import { Booking, Customer } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 
@@ -105,6 +105,7 @@ export const MailInbox: React.FC = () => {
   const [customerForm, setCustomerForm] = useState<Partial<Customer>>({});
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const [markingUnread, setMarkingUnread] = useState(false);
 
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -301,6 +302,24 @@ export const MailInbox: React.FC = () => {
     }
   };
 
+  const handleMarkUnread = async () => {
+    if (!selectedThreadId) return;
+    setMarkingUnread(true);
+    try {
+      const res = await authedFetch(`/api/mail/threads/${selectedThreadId}/read-state`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const threadId = selectedThreadId;
+      setThreads(prev => prev.map(t => (t.id === threadId ? { ...t, unread: true } : t)));
+      setSelectedThreadId(null);
+      toast.success('Marked as unread');
+    } catch (err: any) {
+      console.error('Failed to mark thread unread:', err);
+      toast.error('Failed to mark as unread');
+    } finally {
+      setMarkingUnread(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="mb-6 flex items-center justify-between">
@@ -383,6 +402,15 @@ export const MailInbox: React.FC = () => {
                   <ChevronLeft size={20} />
                 </button>
                 <h2 className="font-bold text-[#1A1A1A] truncate">{selectedThread?.subject || '(no subject)'}</h2>
+                <button
+                  onClick={handleMarkUnread}
+                  disabled={markingUnread}
+                  className="ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium text-[#1A1A1A]/60 hover:text-brand-orange px-2 py-1 rounded-lg hover:bg-black/5 transition-all disabled:opacity-40"
+                  title="Mark as unread"
+                >
+                  <MailOpen size={14} />
+                  Mark unread
+                </button>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                 {messagesLoading ? (
