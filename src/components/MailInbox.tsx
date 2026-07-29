@@ -86,13 +86,20 @@ export const MailInbox: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const sortUnreadFirst = (list: MailThread[]) =>
+    [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
+
   const fetchThreads = useCallback(async () => {
     setThreadsLoading(true);
     try {
       const res = await authedFetch('/api/mail/threads');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setThreads(data.threads || []);
+      setThreads(sortUnreadFirst(data.threads || []));
+      setNextPageToken(data.nextPageToken || null);
     } catch (err: any) {
       console.error('Failed to load threads:', err);
       toast.error('Failed to load inbox');
@@ -100,6 +107,23 @@ export const MailInbox: React.FC = () => {
       setThreadsLoading(false);
     }
   }, []);
+
+  const loadMoreThreads = useCallback(async () => {
+    if (!nextPageToken || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await authedFetch(`/api/mail/threads?pageToken=${encodeURIComponent(nextPageToken)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setThreads(prev => sortUnreadFirst([...prev, ...(data.threads || [])]));
+      setNextPageToken(data.nextPageToken || null);
+    } catch (err: any) {
+      console.error('Failed to load more threads:', err);
+      toast.error('Failed to load more emails');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextPageToken, loadingMore]);
 
   useEffect(() => {
     fetchThreads();
@@ -118,6 +142,7 @@ export const MailInbox: React.FC = () => {
       const data = await res.json();
       const msgs: MailMessage[] = data.messages || [];
       setMessages(msgs);
+      setThreads(prev => prev.map(t => (t.id === threadId ? { ...t, unread: false } : t)));
 
       const senderEmail = resolveCustomerEmail(msgs);
       if (senderEmail) {
@@ -243,6 +268,17 @@ export const MailInbox: React.FC = () => {
                 <p className="text-xs text-[#1A1A1A]/40 truncate mt-0.5">{t.snippet}</p>
               </button>
             ))
+          )}
+          {nextPageToken && (
+            <div className="p-3 text-center">
+              <button
+                onClick={loadMoreThreads}
+                disabled={loadingMore}
+                className="text-xs font-medium text-brand-orange hover:underline disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
           )}
         </div>
 
