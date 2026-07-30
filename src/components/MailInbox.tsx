@@ -100,6 +100,7 @@ export const MailInbox: React.FC = () => {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MailMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(new Set());
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<Booking[]>([]);
@@ -159,6 +160,7 @@ export const MailInbox: React.FC = () => {
     setSelectedThreadId(threadId);
     setShowMobileDetail(true);
     setMessages([]);
+    setExpandedMessageIds(new Set());
     setHistory([]);
     setCustomer(null);
     setEditingCustomer(false);
@@ -212,6 +214,15 @@ export const MailInbox: React.FC = () => {
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
   const lastMessage = messages[messages.length - 1] || null;
   const customerEmail = resolveCustomerEmail(messages);
+
+  const toggleMessageExpanded = (id: string) => {
+    setExpandedMessageIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleSend = async () => {
     if (!replyBody.trim() || !customerEmail || !lastMessage || !selectedThread) return;
@@ -421,22 +432,45 @@ export const MailInbox: React.FC = () => {
                 {messagesLoading ? (
                   <div className="flex justify-center p-8"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
                 ) : (
-                  messages.map(m => (
-                    <div key={m.id} className="bg-white/60 rounded-2xl border border-black/10 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-bold text-[#1A1A1A]">{extractName(m.from)}</span>
-                        <span className="text-[10px] text-[#1A1A1A]/40">{m.date}</span>
-                      </div>
-                      {m.bodyHtml ? (
+                  messages.map((m, i) => {
+                    const isDefaultExpanded = i === messages.length - 1 || m.unread;
+                    const isExpanded = expandedMessageIds.has(m.id) ? !isDefaultExpanded : isDefaultExpanded;
+                    if (!isExpanded) {
+                      const snippet = (m.bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+                      return (
                         <div
-                          className="text-sm text-[#1A1A1A]/80 [&_a]:text-brand-orange [&_a]:underline"
-                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(m.bodyHtml) }}
-                        />
-                      ) : (
-                        <p className="text-sm text-[#1A1A1A]/80 whitespace-pre-wrap">{m.bodyText}</p>
-                      )}
-                    </div>
-                  ))
+                          key={m.id}
+                          onClick={() => toggleMessageExpanded(m.id)}
+                          className="bg-white/60 rounded-2xl border border-black/10 px-4 py-2 cursor-pointer hover:bg-white/80 transition-colors flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-bold text-[#1A1A1A] shrink-0">{extractName(m.from)}</span>
+                            <span className="text-xs text-[#1A1A1A]/50 truncate">{snippet}</span>
+                          </div>
+                          <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{m.date}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={m.id} className="bg-white/60 rounded-2xl border border-black/10 p-4">
+                        <div
+                          className="flex items-center justify-between mb-2 cursor-pointer"
+                          onClick={() => toggleMessageExpanded(m.id)}
+                        >
+                          <span className="text-sm font-bold text-[#1A1A1A]">{extractName(m.from)}</span>
+                          <span className="text-[10px] text-[#1A1A1A]/40">{m.date}</span>
+                        </div>
+                        {m.bodyHtml ? (
+                          <div
+                            className="text-sm text-[#1A1A1A]/80 [&_a]:text-brand-orange [&_a]:underline"
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(m.bodyHtml) }}
+                          />
+                        ) : (
+                          <p className="text-sm text-[#1A1A1A]/80 whitespace-pre-wrap">{m.bodyText}</p>
+                        )}
+                      </div>
+                      );
+                  })
                 )}
               </div>
               <div className="p-4 border-t border-black/10">
