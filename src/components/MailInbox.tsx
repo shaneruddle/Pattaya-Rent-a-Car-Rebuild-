@@ -74,11 +74,16 @@ async function authedFetch(path: string, options: RequestInit = {}): Promise<Res
   });
 }
 
-const PROFILE_FIELDS: { key: keyof Customer; label: string; type?: 'text' | 'textarea' | 'checkbox' }[] = [
+const NATIONALITY_OPTIONS = [
+  'Thai', 'British', 'American', 'Australian', 'German', 'French',
+  'Russian', 'Chinese', 'Japanese', 'Korean', 'Indian', 'Other',
+];
+
+const PROFILE_FIELDS: { key: keyof Customer; label: string; type?: 'text' | 'textarea' | 'checkbox' | 'select'; options?: string[] }[] = [
   { key: 'firstName', label: 'First name' },
   { key: 'lastName', label: 'Last name' },
   { key: 'mobileNumber', label: 'Mobile' },
-  { key: 'nationality', label: 'Nationality' },
+  { key: 'nationality', label: 'Nationality', type: 'select', options: NATIONALITY_OPTIONS },
   { key: 'address', label: 'Address' },
   { key: 'addressHotel', label: 'Hotel address' },
   { key: 'dob', label: 'Date of birth' },
@@ -495,6 +500,17 @@ export const MailInbox: React.FC = () => {
                           onChange={e => handleCustomerFieldChange(f.key, e.target.checked)}
                           className="mt-1"
                         />
+                      ) : f.type === 'select' ? (
+                        <select
+                          value={(customerForm[f.key] as string) || ''}
+                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5 bg-white"
+                        >
+                          <option value="">Select...</option>
+                          {(f.options || []).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           type="text"
