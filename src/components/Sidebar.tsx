@@ -28,7 +28,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     bookings: 0,
     rentals: 0,
     crm: 0,
-    enquiries: 0
+    enquiries: 0,
+    mailUnread: 0
   });
 
   useEffect(() => {
@@ -55,6 +56,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
           rentals: rentalsSnap.data().count,
           crm: crmSnap.data().count
         }));
+
+        try {
+          const idToken = await auth.currentUser?.getIdToken();
+          const mailRes = await fetch('/api/mail/unread-count', {
+            headers: { Authorization: `Bearer ${idToken}` },
+          });
+          if (mailRes.ok) {
+            const mailData = await mailRes.json();
+            setCounts(prev => ({ ...prev, mailUnread: mailData.unreadCount || 0 }));
+          }
+        } catch (mailErr) {
+          console.error('Sidebar: Error fetching mail unread count:', mailErr);
+        }
       } catch (error) {
         console.error('Sidebar: Error fetching counts:', error);
       }
@@ -425,6 +439,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                   )}
                 >
                   <Inbox size={18} /> Inbox
+                  {counts.mailUnread > 0 && !isCollapsed && (
+                    <span className={cn(
+                      "ml-auto px-2 py-0.5 rounded-full text-[8px] font-bold",
+                      currentView === 'mail'
+                        ? "bg-white/20 text-white"
+                        : "bg-brand-orange/10 text-brand-orange"
+                    )}>
+                      {counts.mailUnread}
+                    </span>
+                  )}
                 </button>
                 {(!isMobile || isAdmin) && (
                   <>

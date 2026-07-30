@@ -1685,8 +1685,8 @@ app.get('/api/mail/threads', async (req: any, res: any) => {
     // Read/unread is tracked entirely inside our own app (Firestore), not via Gmail's
     // real UNREAD label. A thread is unread until opened here, and becomes unread
     // again if a new message arrives after that (lastMessageId will no longer match
-    // what was recorded as read). There is deliberately no way to mark a thread back
-    // to unread.
+    // what was recorded as read). Staff can reverse this via
+    // DELETE /api/mail/threads/:id/read-state, which clears the record.
     const readSnaps = await Promise.all(
       threads.map((t: any) => firestore.collection('mail_read_state').doc(t.id).get())
     );
@@ -1851,6 +1851,49 @@ app.delete('/api/mail/threads/:id/read-state', async (req: any, res: any) => {
     res.json({ ok: true });
   } catch (err: any) {
     console.error('[Mail] mark unread error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lightweight unread count over recently loaded threads only (NOT a true mailbox-wide
+// total, and NOT based on Gmail's real UNREAD label). Scans a bounded number of the
+// most recent inbox pages using the same app-level read/unread logic as
+// GET /api/mail/threads, and reports how many of those are unread.
+app.get('/api/mail/unread-count', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const MAX_PAGES = 5; // ~100 most recently loaded threads
+    let pageToken: string | undefined = undefined;
+    let unreadCount = 0;
+    let scanned = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const listResp = await gmailApiFetch(
+        `/threads?labelIds=INBOX&maxResults=20${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`
+      );
+      const threadStubs = listResp.threads || [];
+      if (threadStubs.length === 0) break;
+      const threads = await Promise.all(threadStubs.map(async (t: any) => {
+        const full = await gmailApiFetch(`/threads/${t.id}?format=metadata`);
+        const messages = full.messages || [];
+        const lastMsg = messages[messages.length - 1];
+        return { id: t.id, lastMessageId: lastMsg?.id || null };
+      }));
+      const readSnaps = await Promise.all(
+        threads.map((t: any) => firestore.collection('mail_read_state').doc(t.id).get())
+      );
+      threads.forEach((t: any, i: number) => {
+        scanned++;
+        const readData = readSnaps[i].exists ? readSnaps[i].data() : null;
+        const unread = !readData || readData!.readMessageId !== t.lastMessageId;
+        if (unread) unreadCount++;
+      });
+      pageToken = listResp.nextPageToken || undefined;
+      if (!pageToken) break;
+    }
+    res.json({ unreadCount, scanned });
+  } catch (err: any) {
+    console.error('[Mail] unread count error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
