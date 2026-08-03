@@ -1905,6 +1905,204 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           </div>
         </header>
 
+        {showSummaryReport ? (
+          <div className="space-y-6">
+            <div className="bg-white/40 backdrop-blur-md border border-white/60 rounded-[40px] shadow-xl overflow-hidden">
+              <div className="p-8 border-b border-black/5 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h2 className="font-serif italic text-3xl text-[#141414]">Financial Overview</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">Yearly Category Matrix</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex bg-gray-100 p-1 rounded-xl">
+                    {(() => {
+                      const years = Array.from(new Set(transactions.map(t => format(parseISO(t.date), 'yyyy'))))
+                        .sort()
+                        .reverse();
+                      
+                      // Auto-select latest year if 'All' is selected when entering overview
+                      if (filterYear === 'All' && years.length > 0 && showSummaryReport) {
+                        setTimeout(() => setFilterYear(years[0]), 0);
+                      }
+
+                      return years.map(year => (
+                        <button
+                          key={year}
+                          onClick={() => setFilterYear(year)}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                            filterYear === year ? "bg-white text-brand-orange shadow-sm" : "text-black/40 hover:text-black"
+                          )}
+                        >
+                          {year}
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                  <button 
+                    onClick={() => setShowSummaryReport(false)}
+                    className="p-2 hover:bg-gray-200 rounded-full transition-all"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto p-8 custom-scrollbar">
+                <div className="min-w-[1000px]">
+                  <table className="w-full border-separate border-spacing-0">
+                    {/* Matrix Generation */}
+                    {(() => {
+                      const colRange = (() => {
+                        if (filterYear !== 'All') {
+                          return Array.from({ length: 12 }, (_, i) => {
+                            const date = new Date(parseInt(filterYear), i, 1);
+                            return {
+                              key: format(date, 'yyyy-MM'),
+                              label: format(date, 'MMM yy')
+                            };
+                          });
+                        }
+                        
+                        if (transactions.length === 0) return [];
+                        
+                        const dates = transactions.map(t => parseISO(t.date));
+                        const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+                        const maxDate = new Date(Math.max(...dates.map(d => d.getTime()), new Date().getTime()));
+                        
+                        const range = [];
+                        let curr = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+                        const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+                        
+                        while (curr <= end) {
+                          range.push({
+                            key: format(curr, 'yyyy-MM'),
+                            label: format(curr, 'MMM yy')
+                          });
+                          curr.setMonth(curr.getMonth() + 1);
+                        }
+                        return range;
+                      })();
+
+                      const categories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
+                      
+                      const matrix: { [cat: string]: { [mKey: string]: number } } = {};
+                      const colIncomeTotals: { [mKey: string]: number } = {};
+                      const colExpenseTotals: { [mKey: string]: number } = {};
+                      const colGrandTotals: { [mKey: string]: number } = {};
+                      let grandTotal = 0;
+                      let totalIncome = 0;
+                      let totalExpense = 0;
+
+                      categories.forEach(cat => {
+                        matrix[cat] = {};
+                        colRange.forEach(col => {
+                          const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
+                          const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
+                          const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
+                          const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
+                          
+                          matrix[cat][col.key] = val;
+                          colIncomeTotals[col.key] = (colIncomeTotals[col.key] || 0) + inc;
+                          colExpenseTotals[col.key] = (colExpenseTotals[col.key] || 0) + exp;
+                          colGrandTotals[col.key] = (colGrandTotals[col.key] || 0) + val;
+                          grandTotal += val;
+                          totalIncome += inc;
+                          totalExpense += exp;
+                        });
+                      });
+
+                      return (
+                        <>
+                          <thead className="sticky top-0 z-30">
+                            <tr>
+                              <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Category</th>
+                              {colRange.map((col, i) => (
+                                <th key={i} className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">
+                                  {col.label}
+                                </th>
+                              ))}
+                              <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {categories.map((cat, idx) => (
+                              <tr key={idx} className="group hover:bg-gray-50/50">
+                                <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                                  {cat}
+                                </td>
+                                {colRange.map(col => {
+                                  const val = matrix[cat][col.key];
+                                  return (
+                                    <td key={col.key} className={cn(
+                                      "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
+                                      val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-black/20"
+                                    )}>
+                                      {val !== 0 ? `฿${Math.abs(val).toLocaleString()}` : '-'}
+                                    </td>
+                                  );
+                                })}
+                                <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                                  {(() => {
+                                    const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
+                                    return (
+                                      <span className={rowTotal > 0 ? "text-green-600" : rowTotal < 0 ? "text-red-600" : ""}>
+                                        ฿{Math.abs(rowTotal).toLocaleString()}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className="bg-gray-100 font-bold sticky bottom-[64px] z-30">
+                              <td className="sticky left-0 z-40 bg-gray-100 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.05)]">NET PROFIT</td>
+                              {colRange.map(col => (
+                                <td key={col.key} className={cn(
+                                  "p-4 text-center font-mono text-xs border-t-2 border-black/10",
+                                  colGrandTotals[col.key] > 0 ? "text-green-600" : colGrandTotals[col.key] < 0 ? "text-red-600" : ""
+                                )}>
+                                  ฿{colGrandTotals[col.key] ? Math.abs(colGrandTotals[col.key]).toLocaleString() : 0}
+                                </td>
+                              ))}
+                              <td className={cn(
+                                "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-200 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]",
+                                grandTotal > 0 ? "text-green-600" : grandTotal < 0 ? "text-red-600" : ""
+                              )}>
+                                ฿{Math.abs(grandTotal).toLocaleString()}
+                              </td>
+                            </tr>
+                            <tr className="bg-green-50 font-bold sticky bottom-[32px] z-30">
+                              <td className="sticky left-0 z-40 bg-green-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">INCOME</td>
+                              {colRange.map(col => (
+                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-green-600">
+                                  ฿{colIncomeTotals[col.key] ? colIncomeTotals[col.key].toLocaleString() : 0}
+                                </td>
+                              ))}
+                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-green-100/50 text-green-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                                ฿{totalIncome.toLocaleString()}
+                              </td>
+                            </tr>
+                            <tr className="bg-red-50 font-bold sticky bottom-0 z-30">
+                              <td className="sticky left-0 z-40 bg-red-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-red-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">EXPENSES</td>
+                              {colRange.map(col => (
+                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-red-600">
+                                  ฿{colExpenseTotals[col.key] ? colExpenseTotals[col.key].toLocaleString() : 0}
+                                </td>
+                              ))}
+                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-red-100/50 text-red-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                                ฿{totalExpense.toLocaleString()}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </>
+                      );
+                    })()}
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Progress Bar */}
         <AnimatePresence>
           {importProgress && (
@@ -2207,6 +2405,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           )}
         </div>
       </div>
+          </>
+        )}
     </div>
 
       {/* Vehicle Loans Modal */}
@@ -2493,219 +2693,6 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         )}
       </AnimatePresence>
 
-      {/* Summary Report Modal */}
-      <AnimatePresence>
-        {showSummaryReport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowSummaryReport(false)}
-              className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-xl"
-            />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-7xl h-[85vh] bg-white rounded-[40px] shadow-2xl flex flex-col overflow-hidden"
-            >
-              <div className="p-8 border-b border-black/5 flex justify-between items-center bg-gray-50/50">
-                <div>
-                  <h2 className="font-serif italic text-3xl text-[#141414]">Financial Overview</h2>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">Yearly Category Matrix</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex bg-gray-100 p-1 rounded-xl">
-                    {(() => {
-                      const years = Array.from(new Set(transactions.map(t => format(parseISO(t.date), 'yyyy'))))
-                        .sort()
-                        .reverse();
-                      
-                      // Auto-select latest year if 'All' is selected when entering overview
-                      if (filterYear === 'All' && years.length > 0 && showSummaryReport) {
-                        setTimeout(() => setFilterYear(years[0]), 0);
-                      }
-
-                      return years.map(year => (
-                        <button
-                          key={year}
-                          onClick={() => setFilterYear(year)}
-                          className={cn(
-                            "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
-                            filterYear === year ? "bg-white text-brand-orange shadow-sm" : "text-black/40 hover:text-black"
-                          )}
-                        >
-                          {year}
-                        </button>
-                      ));
-                    })()}
-                  </div>
-                  <button 
-                    onClick={() => setShowSummaryReport(false)}
-                    className="p-2 hover:bg-gray-200 rounded-full transition-all"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-auto p-8 custom-scrollbar">
-                <div className="min-w-[1000px]">
-                  <table className="w-full border-separate border-spacing-0">
-                    {/* Matrix Generation */}
-                    {(() => {
-                      const colRange = (() => {
-                        if (filterYear !== 'All') {
-                          return Array.from({ length: 12 }, (_, i) => {
-                            const date = new Date(parseInt(filterYear), i, 1);
-                            return {
-                              key: format(date, 'yyyy-MM'),
-                              label: format(date, 'MMM yy')
-                            };
-                          });
-                        }
-                        
-                        if (transactions.length === 0) return [];
-                        
-                        const dates = transactions.map(t => parseISO(t.date));
-                        const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
-                        const maxDate = new Date(Math.max(...dates.map(d => d.getTime()), new Date().getTime()));
-                        
-                        const range = [];
-                        let curr = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-                        const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
-                        
-                        while (curr <= end) {
-                          range.push({
-                            key: format(curr, 'yyyy-MM'),
-                            label: format(curr, 'MMM yy')
-                          });
-                          curr.setMonth(curr.getMonth() + 1);
-                        }
-                        return range;
-                      })();
-
-                      const categories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
-                      
-                      const matrix: { [cat: string]: { [mKey: string]: number } } = {};
-                      const colIncomeTotals: { [mKey: string]: number } = {};
-                      const colExpenseTotals: { [mKey: string]: number } = {};
-                      const colGrandTotals: { [mKey: string]: number } = {};
-                      let grandTotal = 0;
-                      let totalIncome = 0;
-                      let totalExpense = 0;
-
-                      categories.forEach(cat => {
-                        matrix[cat] = {};
-                        colRange.forEach(col => {
-                          const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
-                          const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
-                          const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
-                          const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
-                          
-                          matrix[cat][col.key] = val;
-                          colIncomeTotals[col.key] = (colIncomeTotals[col.key] || 0) + inc;
-                          colExpenseTotals[col.key] = (colExpenseTotals[col.key] || 0) + exp;
-                          colGrandTotals[col.key] = (colGrandTotals[col.key] || 0) + val;
-                          grandTotal += val;
-                          totalIncome += inc;
-                          totalExpense += exp;
-                        });
-                      });
-
-                      return (
-                        <>
-                          <thead className="sticky top-0 z-30">
-                            <tr>
-                              <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Category</th>
-                              {colRange.map((col, i) => (
-                                <th key={i} className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">
-                                  {col.label}
-                                </th>
-                              ))}
-                              <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {categories.map((cat, idx) => (
-                              <tr key={idx} className="group hover:bg-gray-50/50">
-                                <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                                  {cat}
-                                </td>
-                                {colRange.map(col => {
-                                  const val = matrix[cat][col.key];
-                                  return (
-                                    <td key={col.key} className={cn(
-                                      "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
-                                      val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-black/20"
-                                    )}>
-                                      {val !== 0 ? `฿${Math.abs(val).toLocaleString()}` : '-'}
-                                    </td>
-                                  );
-                                })}
-                                <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                  {(() => {
-                                    const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
-                                    return (
-                                      <span className={rowTotal > 0 ? "text-green-600" : rowTotal < 0 ? "text-red-600" : ""}>
-                                        ฿{Math.abs(rowTotal).toLocaleString()}
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className="bg-gray-100 font-bold sticky bottom-[64px] z-30">
-                              <td className="sticky left-0 z-40 bg-gray-100 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.05)]">NET PROFIT</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className={cn(
-                                  "p-4 text-center font-mono text-xs border-t-2 border-black/10",
-                                  colGrandTotals[col.key] > 0 ? "text-green-600" : colGrandTotals[col.key] < 0 ? "text-red-600" : ""
-                                )}>
-                                  ฿{colGrandTotals[col.key] ? Math.abs(colGrandTotals[col.key]).toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className={cn(
-                                "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-200 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]",
-                                grandTotal > 0 ? "text-green-600" : grandTotal < 0 ? "text-red-600" : ""
-                              )}>
-                                ฿{Math.abs(grandTotal).toLocaleString()}
-                              </td>
-                            </tr>
-                            <tr className="bg-green-50 font-bold sticky bottom-[32px] z-30">
-                              <td className="sticky left-0 z-40 bg-green-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">INCOME</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-green-600">
-                                  ฿{colIncomeTotals[col.key] ? colIncomeTotals[col.key].toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-green-100/50 text-green-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                ฿{totalIncome.toLocaleString()}
-                              </td>
-                            </tr>
-                            <tr className="bg-red-50 font-bold sticky bottom-0 z-30">
-                              <td className="sticky left-0 z-40 bg-red-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-red-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">EXPENSES</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-red-600">
-                                  ฿{colExpenseTotals[col.key] ? colExpenseTotals[col.key].toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-red-100/50 text-red-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                ฿{totalExpense.toLocaleString()}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </>
-                      );
-                    })()}
-                  </table>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Modal */}
       <AnimatePresence>
