@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   collection, query, orderBy, addDoc, updateDoc, setDoc,
   deleteDoc, writeBatch, getDocs, getDoc, doc, onSnapshot,
@@ -30,7 +30,9 @@ import {
   Download,
   Upload,
   Lock,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -300,6 +302,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const [filterCarId, setFilterCarId] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
   const [filterMonth, setFilterMonth] = useState('All');
+
+  const overviewScrollRef = useRef<HTMLDivElement>(null);
+  const [overviewCanScrollLeft, setOverviewCanScrollLeft] = useState(false);
+  const [overviewCanScrollRight, setOverviewCanScrollRight] = useState(false);
+
+  const updateOverviewScrollState = () => {
+    const el = overviewScrollRef.current;
+    if (!el) return;
+    setOverviewCanScrollLeft(el.scrollLeft > 4);
+    setOverviewCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    if (!showSummaryReport) return;
+    const id = setTimeout(updateOverviewScrollState, 50);
+    window.addEventListener('resize', updateOverviewScrollState);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener('resize', updateOverviewScrollState);
+    };
+  }, [showSummaryReport, filterYear, filterCarId, transactions.length]);
+
+  const scrollOverview = (dir: 'left' | 'right') => {
+    overviewScrollRef.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
+  };
   const [successAction, setSuccessAction] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
@@ -1947,7 +1974,11 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto p-8 custom-scrollbar">
+              <div
+                ref={overviewScrollRef}
+                onScroll={updateOverviewScrollState}
+                className="relative overflow-x-auto p-8 custom-scrollbar"
+              >
                 <div className="min-w-[1000px]">
                   <table className="w-full border-separate border-spacing-0">
                     {/* Matrix Generation */}
@@ -2098,6 +2129,25 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                     })()}
                   </table>
                 </div>
+
+                {overviewCanScrollLeft && (
+                  <button
+                    onClick={() => scrollOverview('left')}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 z-50 w-9 h-9 rounded-full bg-white shadow-lg border border-black/10 flex items-center justify-center hover:bg-brand-orange hover:text-white hover:border-brand-orange transition-all"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                )}
+                {overviewCanScrollRight && (
+                  <button
+                    onClick={() => scrollOverview('right')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 z-50 w-9 h-9 rounded-full bg-white shadow-lg border border-black/10 flex items-center justify-center hover:bg-brand-orange hover:text-white hover:border-brand-orange transition-all"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
