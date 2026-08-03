@@ -51,6 +51,7 @@ interface FinanceProps {
     category?: string;
   } | null;
   onClearPreFill?: () => void;
+  openOverview?: boolean;
 }
 
 const txDataToId = (date: string, amount: number, description: string, account: string) => {
@@ -265,7 +266,7 @@ const TransactionRow: React.FC<{
   );
 });
 
-export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preFill, onClearPreFill }) => {
+export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preFill, onClearPreFill, openOverview }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicleFinances, setVehicleFinances] = useState<VehicleFinance[]>([]);
@@ -273,6 +274,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showSummaryReport, setShowSummaryReport] = useState(false);
+
+  useEffect(() => {
+    if (openOverview) {
+      setShowSummaryReport(true);
+    }
+  }, [openOverview]);
   const [showDepositsModal, setShowDepositsModal] = useState(false);
   const [modalType, setModalType] = useState<'Income' | 'Expense' | 'Transfer' | 'AccountEdit' | 'TransactionEdit'>('Income');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, CalendarDays, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Inbox, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2, BarChart2, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, CalendarDays, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Inbox, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2, BarChart2, TrendingUp, Wallet, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
@@ -13,14 +13,15 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'mail';
-  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'calendar' | 'competitor_pricing' | 'mail') => void;
+  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'mail';
+  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'calendar' | 'competitor_pricing' | 'mail') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMarketingExpanded, setIsMarketingExpanded] = useState(false);
+  const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const SHOW_MARKETING = false; // Marketing sidebar section hidden from staff nav - flip to true to restore
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [bookingsCount, setBookingsCount] = useState(0);
@@ -102,6 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
 
   const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
   const isMarketingView = ['marketing_blog', 'marketing_calendar', 'marketing_faq'].includes(currentView);
+  const isFinanceView = ['finance', 'finance_overview'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
   useEffect(() => {
@@ -111,7 +113,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     if (isMarketingView) {
       setIsMarketingExpanded(true);
     }
-  }, [isSettingsView, isMarketingView]);
+    if (isFinanceView) {
+      setIsFinanceExpanded(true);
+    }
+  }, [isSettingsView, isMarketingView, isFinanceView]);
 
   return (
     <>
@@ -233,20 +238,63 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <Calendar size={18} /> Bike Timeline
                     </button>
-                    <button
-                      onClick={() => {
-                        onViewChange('finance');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'finance' 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <DollarSign size={18} /> Finance
-                    </button>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setIsFinanceExpanded(!isFinanceExpanded)}
+                        className={cn(
+                          "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-between px-6 transition-all",
+                          isFinanceView
+                            ? "bg-brand-orange/10 text-brand-orange border border-brand-orange/20"
+                            : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <DollarSign size={18} />
+                          Finance
+                        </div>
+                        {isFinanceExpanded ? <ChevronLeft size={14} className="-rotate-90" /> : <ChevronRight size={14} className="rotate-90" />}
+                      </button>
+
+                      <AnimatePresence>
+                        {isFinanceExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden pl-4 space-y-1"
+                          >
+                            <button
+                              onClick={() => {
+                                onViewChange('finance');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'finance'
+                                  ? "bg-brand-orange text-white shadow-md"
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <Wallet size={14} /> Transactions
+                            </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('finance_overview');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'finance_overview'
+                                  ? "bg-brand-orange text-white shadow-md"
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <LayoutDashboard size={14} /> Overview
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                     {SHOW_MARKETING && (
                     <>
                     {/* Marketing Group */}

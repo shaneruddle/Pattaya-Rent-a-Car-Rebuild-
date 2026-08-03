@@ -107,7 +107,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'price_quote' | 'mail'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'price_quote' | 'mail'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -757,12 +757,13 @@ function AppContent() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
-              {currentView === 'finance' ? (
-                <Finance 
-                  cars={cars} 
+              {currentView === 'finance' || currentView === 'finance_overview' ? (
+                <Finance
+                  cars={cars}
                   bookings={bookings}
-                  preFill={financePreFill} 
-                  onClearPreFill={() => setFinancePreFill(null)} 
+                  preFill={financePreFill}
+                  onClearPreFill={() => setFinancePreFill(null)}
+                  openOverview={currentView === 'finance_overview'}
                 />
               ) : currentView === 'company_settings' ? (
                 <CompanySettings />
