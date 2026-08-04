@@ -3063,7 +3063,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                             <option value="">Select category...</option>
                             {(modalType === 'Income' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Income')) ? (
                               <>
-                                <option value="Rental">Rental</option>
+                                <option value="Income Car">Income Car</option>
                                 <option value="Deposit">Deposit</option>
                                 <option value="Insurance Claim">Insurance Claim</option>
                                 <option value="Other Income">Other Income</option>
