@@ -1913,14 +1913,6 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 md:gap-3">
             <button 
-              onClick={() => setShowSummaryReport(true)}
-              className="h-12 px-6 bg-white/60 text-[#141414]/60 border border-white/60 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-white hover:text-brand-orange transition-all shadow-lg flex items-center gap-2"
-              title="View month-by-month category breakdown"
-            >
-              <LayoutDashboard size={16} /> 
-              Overview
-            </button>
-            <button 
               onClick={() => setShowVehicleLoans(true)}
               className="h-12 px-6 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2"
               title="View vehicle financing and loan progress"
@@ -2072,11 +2064,11 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         return range;
                       })();
 
-                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned'];
+                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer'];
                     const EXPENSE_GROUPS = [
                       { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Repairs', 'Insurance', 'Vehicle Loan/Finance Payment'] },
                       { label: 'Staff Costs', categories: ['Staff Salary', 'Staff Transport/Taxi'] },
-                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent', 'Transfer', 'Repayment'] },
+                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent', 'Repayment'] },
                     ];
 
                     const allCategories = overviewData?.categories || [];
@@ -2126,12 +2118,17 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                     );
 
                     const renderGroupHeaderRow = (label: string, key: string) => (
-                      <tr key={key} className="bg-black/5">
-                        <td colSpan={colRange.length + 2} className="sticky left-0 z-20 bg-[#f3f2ee] p-2 pl-4 border-b border-black/5 font-bold text-[10px] uppercase tracking-widest text-black/50">
-                          {label}
-                        </td>
-                      </tr>
-                    );
+    <tr key={key} className="bg-black/5">
+      <td className="sticky left-0 z-20 bg-[#f3f2ee] p-2 pl-4 border-b border-black/5 font-bold text-[10px] uppercase tracking-widest text-black/50">
+        {label}
+      </td>
+      {colRange.map(col => (
+        <td key={col.key} className="bg-[#f3f2ee] border-b border-black/5" />
+      ))}
+      <td className="sticky right-0 z-10 bg-[#f3f2ee] border-b border-black/5" />
+    </tr>
+  );
+
 
                     return (
                       <>
