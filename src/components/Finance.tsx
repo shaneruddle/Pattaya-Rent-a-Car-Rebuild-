@@ -280,6 +280,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   useEffect(() => {
     if (openOverview) {
       setShowSummaryReport(true);
+    } else {
+      setShowSummaryReport(false);
     }
   }, [openOverview]);
   const [showDepositsModal, setShowDepositsModal] = useState(false);
