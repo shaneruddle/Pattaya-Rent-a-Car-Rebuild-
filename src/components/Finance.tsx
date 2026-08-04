@@ -311,6 +311,10 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const [filterYear, setFilterYear] = useState('All');
   const [filterMonth, setFilterMonth] = useState('All');
 
+  const [serverResults, setServerResults] = useState<Transaction[] | null>(null);
+  const [serverResultsLoading, setServerResultsLoading] = useState(false);
+  const hasActiveTxFilter = filterCategory !== 'All' || filterCarId !== 'All' || filterYear !== 'All' || filterMonth !== 'All' || !!searchTerm;
+
   const [overviewYears, setOverviewYears] = useState<string[]>([]);
   const [overviewData, setOverviewData] = useState<{
     categories: string[];
@@ -362,6 +366,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     })();
     return () => { cancelled = true; };
   }, [showSummaryReport, filterYear, filterCarId]);
+
+  useEffect(() => {
+    if (!hasActiveTxFilter) { setServerResults(null); return; }
+    let cancelled = false;
+    setServerResultsLoading(true);
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filterCategory !== 'All') params.set('category', filterCategory);
+        if (filterCarId !== 'All') params.set('carId', filterCarId);
+        if (filterYear !== 'All') params.set('year', filterYear);
+        if (filterMonth !== 'All') params.set('month', filterMonth);
+        const res = await fetchFinanceApi(`/api/finance/transactions?${params.toString()}`);
+        if (!res.ok) throw new Error(`transactions fetch failed: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setServerResults(data.transactions || []);
+      } catch (err) {
+        console.error('Failed to load filtered transactions', err);
+        if (!cancelled) setServerResults([]);
+      } finally {
+        if (!cancelled) setServerResultsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filterCategory, filterCarId, filterYear, filterMonth, hasActiveTxFilter]);
 
   const overviewScrollRef = useRef<HTMLDivElement>(null);
   const [overviewCanScrollLeft, setOverviewCanScrollLeft] = useState(false);
@@ -500,7 +529,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   ], [cars]);
 
   const filteredTransactions = useMemo(() => {
-    let result = transactions;
+    let result = (hasActiveTxFilter && serverResults !== null) ? serverResults : transactions;
 
     // Filter by Category
     if (filterCategory !== 'All') {
@@ -540,7 +569,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
     // Sort by date desc - ensure latest is first
     return [...result].sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, searchTerm, filterCategory, filterCarId, filterYear, filterMonth, accounts, cars]);
+  }, [transactions, serverResults, hasActiveTxFilter, searchTerm, filterCategory, filterCarId, filterYear, filterMonth, accounts, cars]);
 
   const monthlyStats = useMemo(() => {
     const categoryTotals: { [key: string]: { income: number; expense: number } } = {};

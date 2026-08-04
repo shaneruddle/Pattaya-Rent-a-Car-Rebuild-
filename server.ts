@@ -1890,6 +1890,37 @@ app.get('/api/finance/overview', async (req: any, res: any) => {
   }
 });
 
+// Server-side search for the Recent Transactions list. Queries the full
+// transactions collection (bounded by category/carId/year/month filters when
+// given) instead of the client's capped 500-doc recent-transactions snapshot,
+// so filtering/search covers the whole history, not just the most recent 500
+// rows. Free-text search still happens client-side against this result, since
+// it needs joins against the accounts/cars collections already cached in the
+// browser (account name, car name).
+app.get('/api/finance/transactions', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const category = typeof req.query.category === 'string' && req.query.category !== 'All' ? req.query.category : null;
+    const carId = typeof req.query.carId === 'string' && req.query.carId !== 'All' ? req.query.carId : null;
+    const year = typeof req.query.year === 'string' && req.query.year !== 'All' ? req.query.year : null;
+    const month = typeof req.query.month === 'string' && req.query.month !== 'All' ? req.query.month : null;
+
+    const snap = await firestore.collection('transactions').orderBy('date', 'desc').get();
+    let results = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    if (category) results = results.filter((t: any) => t.category === category);
+    if (carId) results = results.filter((t: any) => t.carId === carId);
+    if (year) results = results.filter((t: any) => typeof t.date === 'string' && t.date.slice(0, 4) === year);
+    if (month) results = results.filter((t: any) => typeof t.date === 'string' && t.date.slice(5, 7) === month);
+
+    res.json({ transactions: results });
+  } catch (err: any) {
+    console.error('[Finance] transactions search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/customers', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
