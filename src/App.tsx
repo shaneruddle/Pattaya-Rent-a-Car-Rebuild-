@@ -749,7 +749,7 @@ function AppContent() {
                     carId: booking.carId,
                     bookingId: booking.id,
                     description: `Rental payment from ${booking.customerName}`,
-                    category: 'Rental'
+                    category: cars.find(c => c.id === booking.carId)?.category === 'Motorbike' ? 'Income Bike' : 'Income Car'
                   });
                   setCurrentView('finance');
                 }}
