@@ -268,6 +268,12 @@ const TransactionRow: React.FC<{
   );
 });
 
+async function fetchFinanceApi(path: string): Promise<Response> {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error('Not authenticated');
+  return fetch(path, { headers: { Authorization: `Bearer ${idToken}` } });
+}
+
 export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preFill, onClearPreFill, openOverview }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -304,6 +310,58 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const [filterCarId, setFilterCarId] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
   const [filterMonth, setFilterMonth] = useState('All');
+
+  const [overviewYears, setOverviewYears] = useState<string[]>([]);
+  const [overviewData, setOverviewData] = useState<{
+    categories: string[];
+    matrix: Record<string, Record<string, number>>;
+    colIncomeTotals: Record<string, number>;
+    colExpenseTotals: Record<string, number>;
+    colGrandTotals: Record<string, number>;
+    totalIncome: number;
+    totalExpense: number;
+    grandTotal: number;
+  } | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showSummaryReport) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchFinanceApi('/api/finance/years');
+        if (!res.ok) throw new Error(`years fetch failed: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setOverviewYears(data.years || []);
+      } catch (err) {
+        console.error('Failed to load Overview years', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSummaryReport]);
+
+  useEffect(() => {
+    if (!showSummaryReport || filterYear === 'All') return;
+    let cancelled = false;
+    setOverviewLoading(true);
+    setOverviewError(null);
+    (async () => {
+      try {
+        const params = new URLSearchParams({ year: filterYear, carId: filterCarId });
+        const res = await fetchFinanceApi(`/api/finance/overview?${params.toString()}`);
+        if (!res.ok) throw new Error(`overview fetch failed: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setOverviewData(data);
+      } catch (err: any) {
+        console.error('Failed to load Financial Overview', err);
+        if (!cancelled) setOverviewError(err.message || 'Failed to load');
+      } finally {
+        if (!cancelled) setOverviewLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSummaryReport, filterYear, filterCarId]);
 
   const overviewScrollRef = useRef<HTMLDivElement>(null);
   const [overviewCanScrollLeft, setOverviewCanScrollLeft] = useState(false);
@@ -1939,15 +1997,13 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
             <div className="bg-white/40 backdrop-blur-md border border-white/60 rounded-[40px] shadow-xl overflow-hidden">
               <div className="p-8 border-b border-black/5 flex justify-between items-center bg-gray-50/50">
                 <div>
-                  <h2 className="font-serif italic text-3xl text-[#141414]">Financial Overview</h2>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">Yearly Category Matrix</p>
+                  <h2 className="font-serif italic text-3xl text-[#141414]">Financial Overview{overviewLoading ? ' (loading...)' : ''}</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/40 mt-1">Yearly Category Matrix{overviewError ? ' - ' + overviewError : ''}</p>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex bg-gray-100 p-1 rounded-xl">
                     {(() => {
-                      const years = Array.from(new Set(transactions.map(t => format(parseISO(t.date), 'yyyy'))))
-                        .sort()
-                        .reverse();
+                      const years = overviewYears;
                       
                       // Auto-select latest year if 'All' is selected when entering overview
                       if (filterYear === 'All' && years.length > 0 && showSummaryReport) {
@@ -2023,7 +2079,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                       { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent', 'Transfer', 'Repayment'] },
                     ];
 
-                    const allCategories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
+                    const allCategories = overviewData?.categories || [];
 
                     const movementCategories = allCategories.filter(c => MOVEMENT_CATEGORIES.includes(c));
                     const expenseGroups = EXPENSE_GROUPS.map(g => ({ label: g.label, categories: allCategories.filter(c => g.categories.includes(c)) })).filter(g => g.categories.length > 0);
@@ -2032,34 +2088,13 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
                     const categories = allCategories;
 
-                    const matrix: { [cat: string]: { [mKey: string]: number } } = {};
-                    const colIncomeTotals: { [mKey: string]: number } = {};
-                    const colExpenseTotals: { [mKey: string]: number } = {};
-                    const colGrandTotals: { [mKey: string]: number } = {};
-                    let grandTotal = 0;
-                    let totalIncome = 0;
-                    let totalExpense = 0;
-
-                    categories.forEach(cat => {
-                      matrix[cat] = {};
-                      const isMovement = MOVEMENT_CATEGORIES.includes(cat);
-                      colRange.forEach(col => {
-                        const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
-                        const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
-                        const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
-                        const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
-
-                        matrix[cat][col.key] = val;
-                        if (!isMovement) {
-                          colIncomeTotals[col.key] = (colIncomeTotals[col.key] || 0) + inc;
-                          colExpenseTotals[col.key] = (colExpenseTotals[col.key] || 0) + exp;
-                          colGrandTotals[col.key] = (colGrandTotals[col.key] || 0) + val;
-                          grandTotal += val;
-                          totalIncome += inc;
-                          totalExpense += exp;
-                        }
-                      });
-                    });
+                    const matrix: { [cat: string]: { [mKey: string]: number } } = overviewData?.matrix || {};
+                    const colIncomeTotals: { [mKey: string]: number } = overviewData?.colIncomeTotals || {};
+                    const colExpenseTotals: { [mKey: string]: number } = overviewData?.colExpenseTotals || {};
+                    const colGrandTotals: { [mKey: string]: number } = overviewData?.colGrandTotals || {};
+                    const grandTotal = overviewData?.grandTotal || 0;
+                    const totalIncome = overviewData?.totalIncome || 0;
+                    const totalExpense = overviewData?.totalExpense || 0;
 
                     const renderCategoryRow = (cat: string, idx: string | number) => (
                       <tr key={idx} className="group hover:bg-gray-50/50">
@@ -2067,7 +2102,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                           {cat}
                         </td>
                         {colRange.map(col => {
-                          const val = matrix[cat][col.key];
+                          const val = matrix[cat]?.[col.key] ?? 0;
                           return (
                             <td key={col.key} className={cn(
                               "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
@@ -2079,7 +2114,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         })}
                         <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
                           {(() => {
-                            const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
+                            const rowTotal = colRange.reduce((sum, col) => sum + (matrix[cat]?.[col.key] ?? 0), 0);
                             return (
                               <span className={rowTotal > 0 ? "text-green-600" : rowTotal < 0 ? "text-red-600" : ""}>
                                 {'\u0E3F'}{Math.abs(rowTotal).toLocaleString()}

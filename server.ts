@@ -1795,6 +1795,101 @@ app.get('/api/mail/history', async (req: any, res: any) => {
 });
 
 // Customer profile lookup, matched by email (same key as the history endpoint above)
+const FINANCE_MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned'];
+
+// Distinct years that have transaction data, derived cheaply from the earliest/latest
+// transaction dates (avoids scanning the full transactions collection just to build
+// the Financial Overview year picker).
+app.get('/api/finance/years', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const earliestSnap = await firestore.collection('transactions').orderBy('date', 'asc').limit(1).get();
+    const latestSnap = await firestore.collection('transactions').orderBy('date', 'desc').limit(1).get();
+    if (earliestSnap.empty || latestSnap.empty) return res.json({ years: [] });
+    const earliestYear = parseInt(String(earliestSnap.docs[0].data().date).slice(0, 4), 10);
+    const latestYear = parseInt(String(latestSnap.docs[0].data().date).slice(0, 4), 10);
+    const years: string[] = [];
+    for (let y = latestYear; y >= earliestYear; y--) years.push(String(y));
+    res.json({ years });
+  } catch (err: any) {
+    console.error('[Finance] years lookup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Server-side aggregation for the Financial Overview matrix. Queries only the
+// selected year's transactions directly from Firestore (not the client's capped
+// 500-doc recent-transactions list) and computes per-category-per-month totals
+// in memory here, returning a compact payload instead of shipping thousands of
+// full transaction documents to the browser.
+app.get('/api/finance/overview', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const year = typeof req.query.year === 'string' ? req.query.year : '';
+    if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'year is required (yyyy)' });
+    const carId = typeof req.query.carId === 'string' && req.query.carId !== 'All' ? req.query.carId : null;
+
+    const startISO = `${year}-01-01T00:00:00.000Z`;
+    const endISO = `${Number(year) + 1}-01-01T00:00:00.000Z`;
+    const snap = await firestore.collection('transactions')
+      .where('date', '>=', startISO)
+      .where('date', '<', endISO)
+      .get();
+
+    const matrix: { [cat: string]: { [mKey: string]: number } } = {};
+    const colIncomeTotals: { [mKey: string]: number } = {};
+    const colExpenseTotals: { [mKey: string]: number } = {};
+    const colGrandTotals: { [mKey: string]: number } = {};
+    let grandTotal = 0;
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const categoriesSet = new Set<string>();
+
+    snap.docs.forEach(doc => {
+      const t = doc.data() as any;
+      if (carId && t.carId !== carId) return;
+      const cat = t.category || 'Uncategorized';
+      const dateStr = typeof t.date === 'string' ? t.date : '';
+      const mKey = dateStr.slice(0, 7);
+      if (!mKey) return;
+      categoriesSet.add(cat);
+      if (!matrix[cat]) matrix[cat] = {};
+      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      const signed = t.type === 'Adjustment' ? amount : (t.type === 'Income' ? amount : -amount);
+      matrix[cat][mKey] = (matrix[cat][mKey] || 0) + signed;
+
+      const isMovement = FINANCE_MOVEMENT_CATEGORIES.includes(cat);
+      if (!isMovement) {
+        if (t.type === 'Income') {
+          colIncomeTotals[mKey] = (colIncomeTotals[mKey] || 0) + amount;
+          totalIncome += amount;
+        } else if (t.type === 'Expense') {
+          colExpenseTotals[mKey] = (colExpenseTotals[mKey] || 0) + amount;
+          totalExpense += amount;
+        }
+        colGrandTotals[mKey] = (colGrandTotals[mKey] || 0) + signed;
+        grandTotal += signed;
+      }
+    });
+
+    res.json({
+      categories: Array.from(categoriesSet).sort(),
+      matrix,
+      colIncomeTotals,
+      colExpenseTotals,
+      colGrandTotals,
+      totalIncome,
+      totalExpense,
+      grandTotal,
+    });
+  } catch (err: any) {
+    console.error('[Finance] overview aggregation error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/customers', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
