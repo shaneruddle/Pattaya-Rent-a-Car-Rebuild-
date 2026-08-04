@@ -2064,7 +2064,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         return range;
                       })();
 
-                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer'];
+                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer', 'Transfer Between Accounts'];
                     const EXPENSE_GROUPS = [
                       { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Repairs', 'Insurance', 'Vehicle Loan/Finance Payment'] },
                       { label: 'Staff Costs', categories: ['Staff Salary', 'Staff Transport/Taxi'] },

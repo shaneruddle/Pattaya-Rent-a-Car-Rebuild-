@@ -1795,7 +1795,7 @@ app.get('/api/mail/history', async (req: any, res: any) => {
 });
 
 // Customer profile lookup, matched by email (same key as the history endpoint above)
-const FINANCE_MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer'];
+const FINANCE_MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer', 'Transfer Between Accounts'];
 
 // Distinct years that have transaction data, derived cheaply from the earliest/latest
 // transaction dates (avoids scanning the full transactions collection just to build
