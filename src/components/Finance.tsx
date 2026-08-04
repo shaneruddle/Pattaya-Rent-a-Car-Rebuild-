@@ -2100,6 +2100,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                     ];
 
                     const allCategories = overviewData?.categories || [];
+    const categoryTypes: { [cat: string]: string } = overviewData?.categoryTypes || {};
 
                     const movementCategories = allCategories.filter(c => categoryTypes[c] === 'Movement');
       const expenseCatsAll = allCategories.filter(c => categoryTypes[c] === 'Expense');
