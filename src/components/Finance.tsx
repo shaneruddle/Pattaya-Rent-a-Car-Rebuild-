@@ -292,6 +292,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   }, [openOverview]);
   const [showDepositsModal, setShowDepositsModal] = useState(false);
   const [modalType, setModalType] = useState<'Income' | 'Expense' | 'Transfer' | 'AccountEdit' | 'TransactionEdit'>('Income');
+  const [incomeMode, setIncomeMode] = useState<'rental' | 'other'>('rental');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -810,7 +811,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     
     // For new Income transactions, we use the sum of rental and deposit amounts
     const isNewIncome = modalType === 'Income' && !editingTransactionId;
-    const effectiveAmount = isNewIncome ? (formData.rentalAmount + formData.depositAmount) : formData.amount;
+    const effectiveAmount = isNewIncome ? (incomeMode === 'other' ? formData.amount : (formData.rentalAmount + formData.depositAmount)) : formData.amount;
 
     if (effectiveAmount <= 0) {
       toast.error("Amount must be greater than 0");
@@ -820,7 +821,53 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     try {
       const batch = writeBatch(db);
 
-      if (isNewIncome) {
+    if (isNewIncome) {
+      if (incomeMode === 'other') {
+        // Handle single-category income (Customer Fines Income, Extra Charges, Income Bike, Income Car, Insurance Claim, Other Income, Rental Extension)
+        if (!formData.category) {
+          toast.error("Please select a category");
+          return;
+        }
+        if (formData.amount <= 0) {
+          toast.error("Amount must be greater than 0");
+          return;
+        }
+        if (!formData.accountId) {
+          toast.error("Please select an account");
+          return;
+        }
+
+        const acc = accounts.find(a => a.id === formData.accountId);
+        if (!acc) {
+          toast.error("Account not found");
+          return;
+        }
+
+        const txRef = doc(collection(db, 'transactions'));
+        batch.set(txRef, {
+          type: 'Income',
+          amount: formData.amount,
+          date: formData.date,
+          category: formData.category,
+          carId: formData.carId || null,
+          bookingId: formData.bookingId || null,
+          accountId: formData.accountId,
+          description: formData.description || formData.category
+        });
+
+        batch.update(doc(db, 'accounts', acc.id), {
+          balance: increment(formData.amount)
+        });
+
+        if (formData.bookingId) {
+          batch.update(doc(db, 'bookings', formData.bookingId), {
+            status: 'Paid'
+          });
+        }
+
+        await batch.commit();
+        setSuccessAction("Income logged successfully");
+      } else {
         // Handle Split Income (Rental + Deposit)
         if (formData.rentalAmount <= 0 && formData.depositAmount <= 0) {
           toast.error("At least one amount must be greater than 0");
@@ -847,11 +894,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
         // 1. Log Rental Transaction
         if (formData.rentalAmount > 0) {
           const rentalTxRef = doc(collection(db, 'transactions'));
+          const rentalCar = cars.find(c => c.id === formData.carId);
           batch.set(rentalTxRef, {
             type: 'Income',
             amount: formData.rentalAmount,
             date: formData.date,
-            category: 'Rental',
+            category: rentalCar?.category === 'Motorbike' ? 'Income Bike' : 'Income Car',
             carId: formData.carId || null,
             bookingId: formData.bookingId || null,
             accountId: formData.accountId,
@@ -896,7 +944,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
         await batch.commit();
         setSuccessAction("Income logged successfully (Split)");
-      } else if (editingTransactionId) {
+      }
+    } else if (editingTransactionId) {
         const oldTx = transactions.find(t => t.id === editingTransactionId);
         if (!oldTx) return;
 
@@ -1024,7 +1073,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     setModalType(tx.type === 'Transfer' ? 'Transfer' : 'TransactionEdit');
     setFormData({
       amount: tx.amount,
-      rentalAmount: tx.category === 'Rental' ? tx.amount : 0,
+      rentalAmount: (tx.category === 'Income Car' || tx.category === 'Income Bike') ? tx.amount : 0,
       depositAmount: tx.category === 'Deposit' ? tx.amount : 0,
       date: tx.date,
       category: tx.category,
@@ -1143,25 +1192,27 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
     setDepositAccountManuallySet(false);
     setSelectedAccount(null);
     setEditingTransactionId(null);
+    setIncomeMode('rental');
   };
 
   const openModal = (type: typeof modalType, account?: Account) => {
     setModalType(type);
+    setIncomeMode('rental');
     if (account) {
       setSelectedAccount(account);
-      setFormData(prev => ({ 
-        ...prev, 
-        accountId: account.id, 
+      setFormData(prev => ({
+        ...prev,
+        accountId: account.id,
         depositAccountId: account.id, // Default deposit account to the same one
-        amount: account.balance 
+        amount: account.balance
       }));
     } else {
       const defaultAccId = accounts[0]?.id || '';
-      setFormData(prev => ({ 
-        ...prev, 
+      setFormData(prev => ({
+        ...prev,
         accountId: defaultAccId,
         depositAccountId: defaultAccId,
-        category: type === 'Income' ? 'Rental' : '' // Set default category for Income
+        category: ''
       }));
     }
     setShowModal(true);
@@ -2915,86 +2966,155 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   </form>
                 ) : (
                   <form onSubmit={handleTransactionSubmit} className="space-y-5">
-                    {modalType === 'Income' && !editingTransactionId ? (
-                      <div className="space-y-6">
-                        {/* Split Income Layout */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2 bg-green-50/50 p-4 rounded-3xl border border-green-100">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-green-600 ml-2">Rental Amount (THB)</label>
-                            <input 
-                              type="number"
-                              step="0.01"
-                              className="w-full bg-white/60 border-b-2 border-green-200 p-2 text-lg font-bold focus:border-green-500 outline-none transition-all rounded-t-xl"
-                              value={formData.rentalAmount}
-                              onChange={e => setFormData({ ...formData, rentalAmount: Number(e.target.value) })}
-                              placeholder="0.00"
-                            />
-                            <div className="mt-2">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-green-600/60 ml-2">Account</label>
-                              <select 
-                                className="w-full bg-white/40 border-b border-green-100 p-2 text-[10px] uppercase font-bold focus:border-green-500 outline-none rounded-t-lg appearance-none"
-                                value={formData.accountId}
-                                onChange={e => {
-                                  const newAccountId = e.target.value;
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    accountId: newAccountId,
-                                    depositAccountId: depositAccountManuallySet ? prev.depositAccountId : newAccountId
-                                  }));
-                                }}
-                              >
-                                {accounts.map(acc => (
-                                  <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
+      {modalType === 'Income' && !editingTransactionId ? (
+        <div className="space-y-6">
+          <div className="flex gap-2 p-1 bg-black/5 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setIncomeMode('rental')}
+              className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${incomeMode === 'rental' ? 'bg-white shadow-sm text-brand-orange' : 'text-gray-500'}`}
+            >
+              Rental Payment
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncomeMode('other')}
+              className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${incomeMode === 'other' ? 'bg-white shadow-sm text-brand-orange' : 'text-gray-500'}`}
+            >
+              Other Income
+            </button>
+          </div>
 
-                          <div className="space-y-2 bg-blue-50/50 p-4 rounded-3xl border border-blue-100">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-blue-600 ml-2">Deposit Amount (THB)</label>
-                            <input 
-                              type="number"
-                              step="0.01"
-                              className="w-full bg-white/60 border-b-2 border-blue-200 p-2 text-lg font-bold focus:border-blue-500 outline-none transition-all rounded-t-xl"
-                              value={formData.depositAmount}
-                              onChange={e => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
-                              placeholder="0.00"
-                            />
-                            <div className="mt-2">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-blue-600/60 ml-2">Account</label>
-                              <select 
-                                className="w-full bg-white/40 border-b border-blue-100 p-2 text-[10px] uppercase font-bold focus:border-blue-500 outline-none rounded-t-lg appearance-none"
-                                value={formData.depositAccountId}
-                                onChange={e => {
-                                  setFormData({ ...formData, depositAccountId: e.target.value });
-                                  setDepositAccountManuallySet(true);
-                                }}
-                              >
-                                {accounts.map(acc => (
-                                  <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        </div>
+          {incomeMode === 'rental' ? (
+            <>
+              {/* Split Income Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 bg-green-50/50 p-4 rounded-3xl border border-green-100">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-green-600 ml-2">Rental Amount (THB)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-white/60 border-b-2 border-green-200 p-2 text-lg font-bold focus:border-green-500 outline-none transition-all rounded-t-xl"
+                    value={formData.rentalAmount}
+                    onChange={e => setFormData({ ...formData, rentalAmount: Number(e.target.value) })}
+                    placeholder="0.00"
+                  />
+                  <div className="mt-2">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-green-600/60 ml-2">Account</label>
+                    <select
+                      className="w-full bg-white/40 border-b border-green-100 p-2 text-[10px] uppercase font-bold focus:border-green-500 outline-none rounded-t-lg appearance-none"
+                      value={formData.accountId}
+                      onChange={e => {
+                        const newAccountId = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          accountId: newAccountId,
+                          depositAccountId: depositAccountManuallySet ? prev.depositAccountId : newAccountId
+                        }));
+                      }}
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-                        <div className="flex justify-between items-center px-4 py-3 bg-[#141414] rounded-2xl text-white">
-                          <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Income</span>
-                          <span className="text-xl font-bold">฿{(formData.rentalAmount + formData.depositAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        </div>
+                <div className="space-y-2 bg-blue-50/50 p-4 rounded-3xl border border-blue-100">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-blue-600 ml-2">Deposit Amount (THB)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-white/60 border-b-2 border-blue-200 p-2 text-lg font-bold focus:border-blue-500 outline-none transition-all rounded-t-xl"
+                    value={formData.depositAmount}
+                    onChange={e => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                    placeholder="0.00"
+                  />
+                  <div className="mt-2">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-blue-600/60 ml-2">Account</label>
+                    <select
+                      className="w-full bg-white/40 border-b border-blue-100 p-2 text-[10px] uppercase font-bold focus:border-blue-500 outline-none rounded-t-lg appearance-none"
+                      value={formData.depositAccountId}
+                      onChange={e => {
+                        setFormData({ ...formData, depositAccountId: e.target.value });
+                        setDepositAccountManuallySet(true);
+                      }}
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
 
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Date & Time</label>
-                          <input 
-                            type="datetime-local"
-                            className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl"
-                            value={formData.date}
-                            onChange={e => setFormData({ ...formData, date: e.target.value })}
-                            required
-                          />
-                        </div>
-                      </div>
-                    ) : (
+              <div className="flex justify-between items-center px-4 py-3 bg-[#141414] rounded-2xl text-white">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Income</span>
+                <span className="text-xl font-bold">{(formData.rentalAmount + formData.depositAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Category</label>
+                <select
+                  className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl appearance-none"
+                  value={formData.category}
+                  onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  required
+                >
+                  <option value="">Select category...</option>
+                  <option value="Customer Fines Income">Customer Fines Income</option>
+                  <option value="Extra Charges">Extra Charges</option>
+                  <option value="Income Bike">Income Bike</option>
+                  <option value="Income Car">Income Car</option>
+                  <option value="Insurance Claim">Insurance Claim</option>
+                  <option value="Other Income">Other Income</option>
+                  <option value="Rental Extension">Rental Extension</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 bg-green-50/50 p-4 rounded-3xl border border-green-100">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-green-600 ml-2">Amount (THB)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="w-full bg-white/60 border-b-2 border-green-200 p-2 text-lg font-bold focus:border-green-500 outline-none transition-all rounded-t-xl"
+                  value={formData.amount}
+                  onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                  placeholder="0.00"
+                  required
+                />
+                <div className="mt-2">
+                  <label className="text-[9px] font-bold uppercase tracking-wider text-green-600/60 ml-2">Account</label>
+                  <select
+                    className="w-full bg-white/40 border-b border-green-100 p-2 text-[10px] uppercase font-bold focus:border-green-500 outline-none rounded-t-lg appearance-none"
+                    value={formData.accountId}
+                    onChange={e => setFormData({ ...formData, accountId: e.target.value })}
+                    required
+                  >
+                    <option value="">Select account...</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Date & Time</label>
+            <input
+              type="datetime-local"
+              className="w-full bg-white/40 border-b-2 border-white/60 p-3 text-sm focus:border-brand-orange outline-none transition-all rounded-t-2xl"
+              value={formData.date}
+              onChange={e => setFormData({ ...formData, date: e.target.value })}
+              required
+            />
+          </div>
+        </div>
+      ) : (
                       <>
                         <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
