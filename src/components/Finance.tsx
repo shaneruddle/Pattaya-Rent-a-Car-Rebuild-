@@ -2094,9 +2094,9 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                       })();
 
                     const EXPENSE_GROUPS = [
-                      { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Car Maintenance & Repairs', 'Car Insurance', 'Vehicle Loan/Finance Payment'] },
+                      { label: 'Vehicle Costs', categories: ['Fuel', 'Car Maintenance & Repairs', 'Car Insurance', 'Vehicle Loan/Finance Payment', 'Car Tax'] },
                       { label: 'Staff Costs', categories: ['Salaries', 'Staff Transport/Taxi'] },
-                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent'] },
+                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Advertising & Promotion', 'Rent'] },
                     ];
 
                     const allCategories = overviewData?.categories || [];
@@ -3070,14 +3070,12 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                               </>
                             ) : (
                               <>
-                                <option value="Maintenance">Maintenance</option>
                                 <option value="Fuel">Fuel</option>
                                 <option value="Car Insurance">Car Insurance</option>
                                 <option value="Tax">Tax</option>
                                 <option value="Salaries">Salaries</option>
                                 <option value="Rent">Rent</option>
                                 <option value="Utilities">Utilities</option>
-                                <option value="Marketing">Marketing</option>
                                 <option value="Deposit Refund">Deposit Refund</option>
                                 <option value="Vehicle Loan/Finance Payment">Vehicle Loan/Finance Payment</option>
                                 <option value="Car Maintenance & Repairs">Car Maintenance & Repairs</option>
