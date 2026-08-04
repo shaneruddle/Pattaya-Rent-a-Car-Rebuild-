@@ -277,7 +277,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <Wallet size={14} /> Transactions
                             </button>
-                            <button
+                                                        {auth.currentUser?.email === 'info@pattayarentacar.com' && (
+<button
                               onClick={() => {
                                 onViewChange('finance_overview');
                                 if (isMobile) setIsMobileMenuOpen(false);
@@ -291,6 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <LayoutDashboard size={14} /> Overview
                             </button>
+                            )}
                           </motion.div>
                         )}
                       </AnimatePresence>
