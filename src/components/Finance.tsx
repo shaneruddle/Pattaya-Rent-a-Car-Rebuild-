@@ -2016,116 +2016,165 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         return range;
                       })();
 
-                      const categories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
-                      
-                      const matrix: { [cat: string]: { [mKey: string]: number } } = {};
-                      const colIncomeTotals: { [mKey: string]: number } = {};
-                      const colExpenseTotals: { [mKey: string]: number } = {};
-                      const colGrandTotals: { [mKey: string]: number } = {};
-                      let grandTotal = 0;
-                      let totalIncome = 0;
-                      let totalExpense = 0;
+                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned'];
+                    const EXPENSE_GROUPS = [
+                      { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Repairs', 'Insurance', 'Vehicle Loan/Finance Payment'] },
+                      { label: 'Staff Costs', categories: ['Staff Salary', 'Staff Transport/Taxi'] },
+                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent', 'Transfer', 'Repayment'] },
+                    ];
 
-                      categories.forEach(cat => {
-                        matrix[cat] = {};
-                        colRange.forEach(col => {
-                          const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
-                          const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
-                          const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
-                          const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
-                          
-                          matrix[cat][col.key] = val;
+                    const allCategories = [...new Set(transactions.filter(t => (filterYear === 'All' || format(parseISO(t.date), 'yyyy') === filterYear) && (filterCarId === 'All' || t.carId === filterCarId)).map(t => t.category))].sort();
+
+                    const movementCategories = allCategories.filter(c => MOVEMENT_CATEGORIES.includes(c));
+                    const expenseGroups = EXPENSE_GROUPS.map(g => ({ label: g.label, categories: allCategories.filter(c => g.categories.includes(c)) })).filter(g => g.categories.length > 0);
+                    const groupedExpenseCats = expenseGroups.flatMap(g => g.categories);
+                    const incomeCategories = allCategories.filter(c => !MOVEMENT_CATEGORIES.includes(c) && !groupedExpenseCats.includes(c));
+
+                    const categories = allCategories;
+
+                    const matrix: { [cat: string]: { [mKey: string]: number } } = {};
+                    const colIncomeTotals: { [mKey: string]: number } = {};
+                    const colExpenseTotals: { [mKey: string]: number } = {};
+                    const colGrandTotals: { [mKey: string]: number } = {};
+                    let grandTotal = 0;
+                    let totalIncome = 0;
+                    let totalExpense = 0;
+
+                    categories.forEach(cat => {
+                      matrix[cat] = {};
+                      const isMovement = MOVEMENT_CATEGORIES.includes(cat);
+                      colRange.forEach(col => {
+                        const txs = transactions.filter(t => t.category === cat && format(parseISO(t.date), 'yyyy-MM') === col.key && (filterCarId === 'All' || t.carId === filterCarId));
+                        const val = txs.reduce((sum, t) => sum + (t.type === 'Adjustment' ? t.amount : (t.type === 'Income' ? t.amount : -t.amount)), 0);
+                        const inc = txs.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
+                        const exp = txs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0);
+
+                        matrix[cat][col.key] = val;
+                        if (!isMovement) {
                           colIncomeTotals[col.key] = (colIncomeTotals[col.key] || 0) + inc;
                           colExpenseTotals[col.key] = (colExpenseTotals[col.key] || 0) + exp;
                           colGrandTotals[col.key] = (colGrandTotals[col.key] || 0) + val;
                           grandTotal += val;
                           totalIncome += inc;
                           totalExpense += exp;
-                        });
+                        }
                       });
+                    });
 
-                      return (
-                        <>
-                          <thead className="sticky top-0 z-30">
-                            <tr>
-                              <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Category</th>
-                              {colRange.map((col, i) => (
-                                <th key={i} className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">
-                                  {col.label}
-                                </th>
-                              ))}
-                              <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {categories.map((cat, idx) => (
-                              <tr key={idx} className="group hover:bg-gray-50/50">
-                                <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                                  {cat}
-                                </td>
-                                {colRange.map(col => {
-                                  const val = matrix[cat][col.key];
-                                  return (
-                                    <td key={col.key} className={cn(
-                                      "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
-                                      val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-black/20"
-                                    )}>
-                                      {val !== 0 ? `฿${Math.abs(val).toLocaleString()}` : '-'}
-                                    </td>
-                                  );
-                                })}
-                                <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                  {(() => {
-                                    const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
-                                    return (
-                                      <span className={rowTotal > 0 ? "text-green-600" : rowTotal < 0 ? "text-red-600" : ""}>
-                                        ฿{Math.abs(rowTotal).toLocaleString()}
-                                      </span>
-                                    );
-                                  })()}
+                    const renderCategoryRow = (cat: string, idx: string | number) => (
+                      <tr key={idx} className="group hover:bg-gray-50/50">
+                        <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50/50 p-4 border-b border-black/5 font-bold text-xs uppercase tracking-wider text-[#141414] shadow-[2px_0_5px_rgba(0,0,0,0.05)] pl-8">
+                          {cat}
+                        </td>
+                        {colRange.map(col => {
+                          const val = matrix[cat][col.key];
+                          return (
+                            <td key={col.key} className={cn(
+                              "p-4 text-center font-mono text-xs border-b border-black/5 bg-white/40",
+                              val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-black/20"
+                            )}>
+                              {val !== 0 ? `\u0E3F${Math.abs(val).toLocaleString()}` : '-'}
+                            </td>
+                          );
+                        })}
+                        <td className="p-4 text-center font-mono text-xs font-bold border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                          {(() => {
+                            const rowTotal = colRange.reduce((sum, col) => sum + matrix[cat][col.key], 0);
+                            return (
+                              <span className={rowTotal > 0 ? "text-green-600" : rowTotal < 0 ? "text-red-600" : ""}>
+                                {'\u0E3F'}{Math.abs(rowTotal).toLocaleString()}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+                    );
+
+                    const renderGroupHeaderRow = (label: string, key: string) => (
+                      <tr key={key} className="bg-black/5">
+                        <td colSpan={colRange.length + 2} className="sticky left-0 z-20 bg-[#f3f2ee] p-2 pl-4 border-b border-black/5 font-bold text-[10px] uppercase tracking-widest text-black/50">
+                          {label}
+                        </td>
+                      </tr>
+                    );
+
+                    return (
+                      <>
+                        <thead className="sticky top-0 z-30">
+                          <tr>
+                            <th className="sticky left-0 z-40 bg-gray-50 p-4 text-left font-serif italic text-lg border-b border-black/5 min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Category</th>
+
+                            {colRange.map((col, i) => (
+                              <th key={i} className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50">
+                                {col.label}
+                              </th>
+                            ))}
+                            <th className="p-4 text-center text-[10px] font-bold uppercase tracking-widest text-black/40 border-b border-black/5 bg-gray-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expenseGroups.flatMap(group => [
+                            renderGroupHeaderRow(group.label, group.label),
+                            ...group.categories.map((cat, idx) => renderCategoryRow(cat, `${group.label}-${idx}`))
+                          ])}
+                          {incomeCategories.length > 0 && renderGroupHeaderRow('Income', 'income-header')}
+                          {incomeCategories.map((cat, idx) => renderCategoryRow(cat, `income-${idx}`))}
+
+
+                          <tr className="bg-red-50 font-bold sticky bottom-[64px] z-30">
+                            <td className="sticky left-0 z-40 bg-red-50 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest text-red-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">EXPENSES</td>
+
+                            {colRange.map(col => (
+                              <td key={col.key} className="p-4 text-center font-mono text-xs border-t-2 border-black/10 text-red-600">
+                                {'\u0E3F'}{colExpenseTotals[col.key] ? colExpenseTotals[col.key].toLocaleString() : 0}
+                              </td>
+                            ))}
+                            <td className="p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-red-100/50 text-red-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                              {'\u0E3F'}{totalExpense.toLocaleString()}
+                            </td>
+                          </tr>
+                          <tr className="bg-green-50 font-bold sticky bottom-[32px] z-30">
+                            <td className="sticky left-0 z-40 bg-green-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">INCOME</td>
+
+                            {colRange.map(col => (
+                              <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-green-600">
+                                {'\u0E3F'}{colIncomeTotals[col.key] ? colIncomeTotals[col.key].toLocaleString() : 0}
+                              </td>
+                            ))}
+                            <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-green-100/50 text-green-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
+                              {'\u0E3F'}{totalIncome.toLocaleString()}
+                            </td>
+                          </tr>
+                          <tr className="bg-gray-100 font-bold sticky bottom-0 z-30">
+                            <td className="sticky left-0 z-40 bg-gray-100 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.05)]">NET PROFIT</td>
+
+                            {colRange.map(col => (
+                              <td key={col.key} className={cn(
+                                "p-4 text-center font-mono text-xs border-t-2 border-black/10",
+                                colGrandTotals[col.key] > 0 ? "text-green-600" : colGrandTotals[col.key] < 0 ? "text-red-600" : ""
+                              )}>
+                                {'\u0E3F'}{colGrandTotals[col.key] ? Math.abs(colGrandTotals[col.key]).toLocaleString() : 0}
+                              </td>
+                            ))}
+                            <td className={cn(
+                              "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-200 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]",
+                              grandTotal > 0 ? "text-green-600" : grandTotal < 0 ? "text-red-600" : ""
+                            )}>
+                              {'\u0E3F'}{Math.abs(grandTotal).toLocaleString()}
+                            </td>
+                          </tr>
+
+                          {movementCategories.length > 0 && (
+                            <>
+                              <tr className="bg-black/10">
+                                <td colSpan={colRange.length + 2} className="sticky left-0 z-20 bg-[#e8e6df] p-2 pl-4 border-t-2 border-black/10 font-bold text-[10px] uppercase tracking-widest text-black/50">
+                                  Movements (not counted in profit)
                                 </td>
                               </tr>
-                            ))}
-                            <tr className="bg-gray-100 font-bold sticky bottom-[64px] z-30">
-                              <td className="sticky left-0 z-40 bg-gray-100 p-4 border-t-2 border-black/10 text-xs uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.05)]">NET PROFIT</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className={cn(
-                                  "p-4 text-center font-mono text-xs border-t-2 border-black/10",
-                                  colGrandTotals[col.key] > 0 ? "text-green-600" : colGrandTotals[col.key] < 0 ? "text-red-600" : ""
-                                )}>
-                                  ฿{colGrandTotals[col.key] ? Math.abs(colGrandTotals[col.key]).toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className={cn(
-                                "p-4 text-center font-mono text-xs border-t-2 border-black/10 bg-gray-200 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]",
-                                grandTotal > 0 ? "text-green-600" : grandTotal < 0 ? "text-red-600" : ""
-                              )}>
-                                ฿{Math.abs(grandTotal).toLocaleString()}
-                              </td>
-                            </tr>
-                            <tr className="bg-green-50 font-bold sticky bottom-[32px] z-30">
-                              <td className="sticky left-0 z-40 bg-green-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-green-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">INCOME</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-green-600">
-                                  ฿{colIncomeTotals[col.key] ? colIncomeTotals[col.key].toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-green-100/50 text-green-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                ฿{totalIncome.toLocaleString()}
-                              </td>
-                            </tr>
-                            <tr className="bg-red-50 font-bold sticky bottom-0 z-30">
-                              <td className="sticky left-0 z-40 bg-red-50 p-4 border-t border-black/5 text-xs uppercase tracking-widest text-red-600 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">EXPENSES</td>
-                              {colRange.map(col => (
-                                <td key={col.key} className="p-4 text-center font-mono text-xs border-t border-black/5 text-red-600">
-                                  ฿{colExpenseTotals[col.key] ? colExpenseTotals[col.key].toLocaleString() : 0}
-                                </td>
-                              ))}
-                              <td className="p-4 text-center font-mono text-xs border-t border-black/5 bg-red-100/50 text-red-600 sticky right-0 z-40 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
-                                ฿{totalExpense.toLocaleString()}
-                              </td>
-                            </tr>
-                          </tbody>
+                              {movementCategories.map((cat, idx) => renderCategoryRow(cat, `movement-${idx}`))}
+                            </>
+                          )}
+                        </tbody>
                         </>
                       );
                     })()}
