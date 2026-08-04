@@ -1795,7 +1795,7 @@ app.get('/api/mail/history', async (req: any, res: any) => {
 });
 
 // Customer profile lookup, matched by email (same key as the history endpoint above)
-const FINANCE_MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer', 'Transfer Between Accounts'];
+const FINANCE_MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Customer Deposit Refund', 'Investment Returned', 'Transfer', 'Transfer Between Accounts', 'Purchased Bike', 'Purchased Car', 'Sold Car', 'Sold Bike'];
 
 // Distinct years that have transaction data, derived cheaply from the earliest/latest
 // transaction dates (avoids scanning the full transactions collection just to build
@@ -1846,6 +1846,7 @@ app.get('/api/finance/overview', async (req: any, res: any) => {
     let totalIncome = 0;
     let totalExpense = 0;
     const categoriesSet = new Set<string>();
+  const categoryTypeSums: { [cat: string]: { income: number; expense: number } } = {};
 
     snap.docs.forEach(doc => {
       const t = doc.data() as any;
@@ -1859,6 +1860,10 @@ app.get('/api/finance/overview', async (req: any, res: any) => {
       const amount = typeof t.amount === 'number' ? t.amount : 0;
       const signed = t.type === 'Adjustment' ? amount : (t.type === 'Income' ? amount : -amount);
       matrix[cat][mKey] = (matrix[cat][mKey] || 0) + signed;
+
+    if (!categoryTypeSums[cat]) categoryTypeSums[cat] = { income: 0, expense: 0 };
+    if (t.type === 'Income') categoryTypeSums[cat].income += amount;
+    else if (t.type === 'Expense') categoryTypeSums[cat].expense += amount;
 
       const isMovement = FINANCE_MOVEMENT_CATEGORIES.includes(cat);
       if (!isMovement) {
@@ -1874,8 +1879,19 @@ app.get('/api/finance/overview', async (req: any, res: any) => {
       }
     });
 
-    res.json({
+    const categoryTypes: { [cat: string]: string } = {};
+  categoriesSet.forEach(cat => {
+    if (FINANCE_MOVEMENT_CATEGORIES.includes(cat)) {
+      categoryTypes[cat] = 'Movement';
+    } else {
+      const sums = categoryTypeSums[cat] || { income: 0, expense: 0 };
+      categoryTypes[cat] = sums.income >= sums.expense ? 'Income' : 'Expense';
+    }
+  });
+
+  res.json({
       categories: Array.from(categoriesSet).sort(),
+    categoryTypes,
       matrix,
       colIncomeTotals,
       colExpenseTotals,

@@ -2093,19 +2093,21 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                         return range;
                       })();
 
-                    const MOVEMENT_CATEGORIES = ['Deposit', 'Deposit Refund', 'Security Deposit', 'Customer Deposit Refund', 'Investment Returned', 'Transfer', 'Transfer Between Accounts'];
                     const EXPENSE_GROUPS = [
-                      { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Repairs', 'Insurance', 'Vehicle Loan/Finance Payment'] },
+                      { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Car Maintenance & Repairs', 'Car Insurance', 'Vehicle Loan/Finance Payment'] },
                       { label: 'Staff Costs', categories: ['Staff Salary', 'Staff Transport/Taxi'] },
-                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent', 'Repayment'] },
+                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent'] },
                     ];
 
                     const allCategories = overviewData?.categories || [];
 
-                    const movementCategories = allCategories.filter(c => MOVEMENT_CATEGORIES.includes(c));
-                    const expenseGroups = EXPENSE_GROUPS.map(g => ({ label: g.label, categories: allCategories.filter(c => g.categories.includes(c)) })).filter(g => g.categories.length > 0);
+                    const movementCategories = allCategories.filter(c => categoryTypes[c] === 'Movement');
+      const expenseCatsAll = allCategories.filter(c => categoryTypes[c] === 'Expense');
+                    const expenseGroups = EXPENSE_GROUPS.map(g => ({ label: g.label, categories: allCategories.filter(c => g.categories.includes(c) && categoryTypes[c] === 'Expense') })).filter(g => g.categories.length > 0);
                     const groupedExpenseCats = expenseGroups.flatMap(g => g.categories);
-                    const incomeCategories = allCategories.filter(c => !MOVEMENT_CATEGORIES.includes(c) && !groupedExpenseCats.includes(c));
+      const ungroupedExpenseCats = expenseCatsAll.filter(c => !groupedExpenseCats.includes(c));
+      if (ungroupedExpenseCats.length > 0) expenseGroups.push({ label: 'Other', categories: ungroupedExpenseCats });
+                    const incomeCategories = allCategories.filter(c => categoryTypes[c] === 'Income');
 
                     const categories = allCategories;
 
@@ -3069,16 +3071,15 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                               <>
                                 <option value="Maintenance">Maintenance</option>
                                 <option value="Fuel">Fuel</option>
-                                <option value="Insurance">Insurance</option>
+                                <option value="Car Insurance">Car Insurance</option>
                                 <option value="Tax">Tax</option>
                                 <option value="Staff Salary">Staff Salary</option>
                                 <option value="Rent">Rent</option>
-                                <option value="Repayment">Repayment</option>
                                 <option value="Utilities">Utilities</option>
                                 <option value="Marketing">Marketing</option>
                                 <option value="Customer Deposit Refund">Customer Deposit Refund</option>
                                 <option value="Vehicle Loan/Finance Payment">Vehicle Loan/Finance Payment</option>
-                                <option value="Repairs">Repairs</option>
+                                <option value="Car Maintenance & Repairs">Car Maintenance & Repairs</option>
                                 <option value="Office Supplies">Office Supplies</option>
                                 <option value="Staff Transport/Taxi">Staff Transport/Taxi</option>
                                 <option value="Investment Returned">Investment Returned</option>
@@ -3092,7 +3093,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   </>
                 )}
 
-                    {formData.category === 'Repayment' && (
+                    {formData.category === 'Vehicle Loan/Finance Payment' && (
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4">Select Financed Vehicle</label>
                         <select 
@@ -3103,7 +3104,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                             const vf = vehicleFinances.find(v => v.id === vfId);
                             if (vf) {
                               const car = cars.find(c => c.id === vf.vehicleId);
-                              const repaymentsCount = transactions.filter(t => t.category === 'Repayment' && t.carId === vf.vehicleId).length;
+                              const repaymentsCount = transactions.filter(t => t.category === 'Vehicle Loan/Finance Payment' && t.carId === vf.vehicleId).length;
                               const description = `Monthly Repayment - ${car?.plateNumber || 'Unknown'} (Installment ${repaymentsCount + 1} of ${vf.totalInstallments})`;
                               setFormData({
                                 ...formData,
@@ -3131,7 +3132,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                       </div>
                     )}
 
-                    {modalType !== 'Transfer' && formData.category !== 'Repayment' && (
+                    {modalType !== 'Transfer' && formData.category !== 'Vehicle Loan/Finance Payment' && (
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 ml-4 flex items-center gap-2">
                           Vehicle (Optional)
