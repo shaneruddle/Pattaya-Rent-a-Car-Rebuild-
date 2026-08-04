@@ -2095,7 +2095,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
 
                     const EXPENSE_GROUPS = [
                       { label: 'Vehicle Costs', categories: ['Fuel', 'Maintenance', 'Car Maintenance & Repairs', 'Car Insurance', 'Vehicle Loan/Finance Payment'] },
-                      { label: 'Staff Costs', categories: ['Staff Salary', 'Staff Transport/Taxi'] },
+                      { label: 'Staff Costs', categories: ['Salaries', 'Staff Transport/Taxi'] },
                       { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Marketing', 'Rent'] },
                     ];
 
@@ -3074,17 +3074,31 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                                 <option value="Fuel">Fuel</option>
                                 <option value="Car Insurance">Car Insurance</option>
                                 <option value="Tax">Tax</option>
-                                <option value="Staff Salary">Staff Salary</option>
+                                <option value="Salaries">Salaries</option>
                                 <option value="Rent">Rent</option>
                                 <option value="Utilities">Utilities</option>
                                 <option value="Marketing">Marketing</option>
-                                <option value="Customer Deposit Refund">Customer Deposit Refund</option>
+                                <option value="Deposit Refund">Deposit Refund</option>
                                 <option value="Vehicle Loan/Finance Payment">Vehicle Loan/Finance Payment</option>
                                 <option value="Car Maintenance & Repairs">Car Maintenance & Repairs</option>
                                 <option value="Office Supplies">Office Supplies</option>
                                 <option value="Staff Transport/Taxi">Staff Transport/Taxi</option>
                                 <option value="Investment Returned">Investment Returned</option>
                                 <option value="Other Expense">Other Expense</option>
+                                        <option value="Accounting Fees">Accounting Fees</option>
+                                        <option value="Advertising & Promotion">Advertising & Promotion</option>
+                                        <option value="Bank Charges">Bank Charges</option>
+                                        <option value="Bike Insurance">Bike Insurance</option>
+                                        <option value="Bike Maintenance & Repairs">Bike Maintenance & Repairs</option>
+                                        <option value="Car Tax">Car Tax</option>
+                                        <option value="Customer Fines Expense">Customer Fines Expense</option>
+                                        <option value="Customer Refund">Customer Refund</option>
+                                        <option value="Electric">Electric</option>
+                                        <option value="Internet Bill">Internet Bill</option>
+                                        <option value="Miscellaneous">Miscellaneous</option>
+                                        <option value="Office Stuff">Office Stuff</option>
+                                        <option value="Phone Bills">Phone Bills</option>
+                                        <option value="VAT Tax">VAT Tax</option>
                               </>
                             )}
                           </select>
