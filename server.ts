@@ -1953,6 +1953,36 @@ app.get('/api/customers', async (req: any, res: any) => {
   }
 });
 
+let cachedTransactionCategories: { categories: string[]; expiresAt: number } | null = null;
+
+// Complete, always-current list of every category value used anywhere in
+// the transactions collection (not capped like the Recent Transactions
+// client list, which only loads the most recent 500 rows and therefore
+// misses rare categories like "Sold Car"). Powers the Category Filter
+// dropdown on the Transactions page. Requires a full collection scan, so
+// the result is cached in memory for 1 hour.
+app.get('/api/finance/categories', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (cachedTransactionCategories && cachedTransactionCategories.expiresAt > Date.now()) {
+      return res.json({ categories: cachedTransactionCategories.categories });
+    }
+    const snap = await firestore.collection('transactions').select('category').get();
+    const categoriesSet = new Set<string>();
+    snap.docs.forEach(doc => {
+      const cat = doc.data().category;
+      if (typeof cat === 'string' && cat.trim()) categoriesSet.add(cat);
+    });
+    const categories = Array.from(categoriesSet).sort();
+    cachedTransactionCategories = { categories, expiresAt: Date.now() + 60 * 60 * 1000 };
+    res.json({ categories });
+  } catch (err: any) {
+    console.error('[Finance] categories fetch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Customer profile create/update, upserted by email (creates a new record if none exists)
 app.put('/api/customers', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;

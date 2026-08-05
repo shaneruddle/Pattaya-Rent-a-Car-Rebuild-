@@ -311,6 +311,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   const [filterCarId, setFilterCarId] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
   const [filterMonth, setFilterMonth] = useState('All');
+  const [allCategories, setAllCategories] = useState<string[]>([]);
 
   const [serverResults, setServerResults] = useState<Transaction[] | null>(null);
   const [serverResultsLoading, setServerResultsLoading] = useState(false);
@@ -329,6 +330,21 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
   } | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchFinanceApi('/api/finance/categories');
+        if (!res.ok) throw new Error(`categories fetch failed: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setAllCategories(data.categories || []);
+      } catch (err) {
+        console.error('Failed to load full category list', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!showSummaryReport) return;
@@ -2516,7 +2532,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   className="pl-10 pr-6 py-2.5 bg-white/40 border border-white/60 rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:border-brand-orange focus:bg-white/60 outline-none transition-all appearance-none min-w-[140px]"
                 >
                   <option value="All">All Categories</option>
-                  {[...new Set(transactions.map(t => t.category))].filter(Boolean).sort().map(cat => (
+                  {(allCategories.length > 0 ? allCategories : [...new Set(transactions.map(t => t.category))].filter(Boolean).sort()).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
