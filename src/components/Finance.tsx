@@ -3064,13 +3064,17 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                   required
                 >
                   <option value="">Select category...</option>
+                  <option value="Bike Profit">Bike Profit</option>
                   <option value="Customer Fines Income">Customer Fines Income</option>
                   <option value="Extra Charges">Extra Charges</option>
+                  <option value="Fuel Charge">Fuel Charge</option>
                   <option value="Income Bike">Income Bike</option>
                   <option value="Income Car">Income Car</option>
                   <option value="Insurance Claim">Insurance Claim</option>
                   <option value="Other Income">Other Income</option>
                   <option value="Rental Extension">Rental Extension</option>
+                  <option value="Service Charge">Service Charge</option>
+                  <option value="Vehicle Damage">Vehicle Damage</option>
                 </select>
               </div>
 
@@ -3183,10 +3187,18 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                             <option value="">Select category...</option>
                             {(modalType === 'Income' || (modalType === 'TransactionEdit' && transactions.find(t => t.id === editingTransactionId)?.type === 'Income')) ? (
                               <>
-                                <option value="Income Car">Income Car</option>
+                                <option value="Bike Profit">Bike Profit</option>
+                                <option value="Customer Fines Income">Customer Fines Income</option>
                                 <option value="Deposit">Deposit</option>
+                                <option value="Extra Charges">Extra Charges</option>
+                                <option value="Fuel Charge">Fuel Charge</option>
+                                <option value="Income Bike">Income Bike</option>
+                                <option value="Income Car">Income Car</option>
                                 <option value="Insurance Claim">Insurance Claim</option>
                                 <option value="Other Income">Other Income</option>
+                                <option value="Rental Extension">Rental Extension</option>
+                                <option value="Service Charge">Service Charge</option>
+                                <option value="Vehicle Damage">Vehicle Damage</option>
                               </>
                             ) : (
                               <>
