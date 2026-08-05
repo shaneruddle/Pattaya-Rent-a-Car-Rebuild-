@@ -2147,7 +2147,7 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                     const EXPENSE_GROUPS = [
                       { label: 'Vehicle Costs', categories: ['Fuel', 'Car Maintenance & Repairs', 'Car Insurance', 'Vehicle Loan/Finance Payment', 'Car Tax'] },
                       { label: 'Staff Costs', categories: ['Salaries', 'Staff Transport/Taxi'] },
-                      { label: 'Admin & Other', categories: ['Office Supplies', 'Tax', 'Utilities', 'Other Expense', 'Advertising & Promotion', 'Rent'] },
+                      { label: 'Admin & Other', categories: ['Office Supplies', 'Other Expense', 'Advertising & Promotion', 'Rent'] },
                     ];
 
                     const allCategories = overviewData?.categories || [];
@@ -3204,10 +3204,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                               <>
                                 <option value="Fuel">Fuel</option>
                                 <option value="Car Insurance">Car Insurance</option>
-                                <option value="Tax">Tax</option>
                                 <option value="Salaries">Salaries</option>
                                 <option value="Rent">Rent</option>
-                                <option value="Utilities">Utilities</option>
                                 <option value="Deposit Refund">Deposit Refund</option>
                                 <option value="Vehicle Loan/Finance Payment">Vehicle Loan/Finance Payment</option>
                                 <option value="Car Maintenance & Repairs">Car Maintenance & Repairs</option>
@@ -3226,8 +3224,8 @@ export const Finance: React.FC<FinanceProps> = ({ cars = [], bookings = [], preF
                                         <option value="Electric">Electric</option>
                                         <option value="Internet Bill">Internet Bill</option>
                                         <option value="Miscellaneous">Miscellaneous</option>
-                                        <option value="Office Stuff">Office Stuff</option>
                                         <option value="Phone Bills">Phone Bills</option>
+                                        <option value="Water">Water</option>
                                         <option value="VAT Tax">VAT Tax</option>
                               </>
                             )}
