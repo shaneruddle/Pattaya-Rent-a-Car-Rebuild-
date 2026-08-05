@@ -138,6 +138,12 @@ export const EmailTemplates: React.FC = () => {
             body: 'Dear {{customer_name}},\n\nThank you for your enquiry for a {{vehicle_model}}.\n\nRental Period: {{return_date}}\nTotal Price: {{total_price}} THB\n\nWe have received your request and will get back to you as soon as possible.\n\nBest regards.',
           },
           {
+            id: 'new_booking_website',
+            name: 'New Booking Enquiry - Staff Notification',
+            subject: '{{monthly_flag}}New Booking Enquiry: {{vehicle_model}} - {{customer_name}}',
+            body: '<h3>New Booking Enquiry</h3><p><strong>Vehicle:</strong> {{vehicle_model}}</p><p><strong>Customer:</strong> {{customer_name}}</p><p><strong>Email:</strong> {{customer_email}}</p><p><strong>Mobile:</strong> {{customer_phone}}</p><p><strong>Dates:</strong> {{rental_period}}</p><p><strong>Times:</strong> {{pickup_time}} to {{return_time}}</p><p><strong>Total Amount:</strong> {{total_price}}</p>{{delivery_section}}<hr><p><strong>Comments:</strong></p><p>{{comments}}</p>',
+          },
+          {
             id: 'website_enquiry',
             name: 'Website Enquiry Confirmation',
             subject: 'We have received your message',

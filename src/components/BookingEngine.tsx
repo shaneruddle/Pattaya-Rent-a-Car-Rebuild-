@@ -485,41 +485,31 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         if (!customerEmailOk) emailSuccess = false;
         console.log('BookingEngine: Customer confirmation triggered');
 
-        // 2. Send Notification to Staff
-        const emailResponse = await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: config.email,
-            replyTo: formData.email,
-            subject: `${!bookingData.amount ? "[MONTHLY ENQUIRY] " : ""}New Booking Enquiry: ${selectedCar.name} - ${bookingData.customerName}`,
-            html: `
-              <h3>New Booking Enquiry</h3>
-              <p><strong>Vehicle:</strong> ${selectedCar.name}</p>
-              <p><strong>Customer:</strong> ${bookingData.customerName}</p>
-              <p><strong>Email:</strong> ${bookingData.email}</p>
-              <p><strong>Mobile:</strong> ${bookingData.mobileNumber}</p>
-              <p><strong>Dates:</strong> ${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}</p>
-              <p><strong>Times:</strong> ${pickUpTime} to ${dropOffTime}</p>
-              <p><strong>Total Amount:</strong> THB ${(bookingData.amount || 0).toLocaleString()}${!bookingData.amount ? " (Monthly – price TBC)" : ""}</p>
-              ${bookingData.deliveryAddress ? `
-                <hr />
-                <h4>Delivery Requested</h4>
-                <p><strong>Address:</strong> ${bookingData.deliveryAddress}</p>
-                ${bookingData.deliveryLocation ? `<p><strong>Location:</strong> ${bookingData.deliveryLocation.lat}, ${bookingData.deliveryLocation.lng}</p>` : ''}
-                <p><strong>Delivery Notes:</strong> ${bookingData.deliveryNotes}</p>
-                <p><a href="https://www.google.com/maps?q=${bookingData.deliveryLocation?.lat},${bookingData.deliveryLocation?.lng}">View on Google Maps</a></p>
-              ` : ''}
-              <hr />
-              <p><strong>Comments:</strong></p>
-              <p>${bookingData.notes.replace(/\n/g, '<br>')}</p>
-            `,
-          }),
-        });
-        
-        if (!emailResponse.ok) {
-          const errorData = await emailResponse.json();
-          console.error('BookingEngine: Staff email API failed:', errorData);
+        // 2. Send Notification to Staff using the new_booking_website template
+        const isMonthlyEnquiry = !bookingData.amount;
+        const deliverySection = bookingData.deliveryAddress ? `
+          <hr />
+          <h4>Delivery Requested</h4>
+          <p><strong>Address:</strong> ${bookingData.deliveryAddress}</p>
+          ${bookingData.deliveryLocation ? `<p><strong>Location:</strong> ${bookingData.deliveryLocation.lat}, ${bookingData.deliveryLocation.lng}</p>` : ''}
+          <p><strong>Delivery Notes:</strong> ${bookingData.deliveryNotes}</p>
+          <p><a href="https://www.google.com/maps?q=${bookingData.deliveryLocation?.lat},${bookingData.deliveryLocation?.lng}">View on Google Maps</a></p>
+        ` : '';
+        const staffEmailOk = await sendTemplatedEmail('new_booking_website', config.email, {
+          '{{monthly_flag}}': isMonthlyEnquiry ? '[MONTHLY ENQUIRY] ' : '',
+          '{{vehicle_model}}': selectedCar.name,
+          '{{customer_name}}': bookingData.customerName,
+          '{{customer_email}}': bookingData.email,
+          '{{customer_phone}}': bookingData.mobileNumber,
+          '{{rental_period}}': `${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}`,
+          '{{pickup_time}}': pickUpTime,
+          '{{return_time}}': dropOffTime,
+          '{{total_price}}': isMonthlyEnquiry ? 'TBC (Monthly enquiry - price to be confirmed)' : `THB ${bookingData.amount.toLocaleString()}`,
+          '{{delivery_section}}': deliverySection,
+          '{{comments}}': bookingData.notes.replace(/\n/g, '<br>'),
+        }, undefined, docRef.id);
+        if (!staffEmailOk) {
+          console.error('BookingEngine: Staff notification template send failed');
           emailSuccess = false;
         } else {
           console.log('BookingEngine: Staff notification sent successfully');
