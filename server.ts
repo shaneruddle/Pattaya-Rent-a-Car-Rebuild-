@@ -690,9 +690,10 @@ app.get("/api/pricing/quote", async (req, res) => {
     const billableDays = (Number.isFinite(parsedDuration) && parsedDuration > 0) ? parsedDuration : days;
 
     // Tier
-    const isWeekly = billableDays >= cfg.thresholds.weeklyFromDays;
-    const tierRate = isWeekly ? cls.weekly : cls.daily;
-    const tierName = isWeekly ? "weekly" : "daily";
+    const hasMonthly = cls.monthly != null && cls.monthlyFromDays != null && billableDays >= cls.monthlyFromDays;
+    const isWeekly = !hasMonthly && billableDays >= cfg.thresholds.weeklyFromDays;
+    const tierRate = hasMonthly ? cls.monthly : (isWeekly ? cls.weekly : cls.daily);
+    const tierName = hasMonthly ? "monthly" : (isWeekly ? "weekly" : "daily");
 
     // Season (recurring month-day, by START date; handles year-end wrap)
     const xs = fromISO.slice(0,10).split('-').map(Number);
