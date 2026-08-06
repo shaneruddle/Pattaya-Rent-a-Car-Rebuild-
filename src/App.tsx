@@ -47,6 +47,7 @@ import { safeLocalStorage } from './lib/storage';
 import { NewRental } from './components/NewRental';
 import { BookingEngine } from './components/BookingEngine';
 import { PriceQuote } from './components/PriceQuote';
+import { BikePriceQuote } from './components/BikePriceQuote';
 import { Marketing } from './components/Marketing';
 import { LanguageProvider } from './LanguageContext';
 import { PricingProvider } from './contexts/PricingContext';
@@ -107,7 +108,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'price_quote' | 'mail'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'price_quote' | 'bike_price_quote' | 'mail'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -807,6 +808,8 @@ function AppContent() {
                 <ImageManagement />
               ) : currentView === 'price_quote' ? (
                 <PriceQuote />
+              ) : currentView === 'bike_price_quote' ? (
+                <BikePriceQuote />
               ) : (
                 <BookingEngine onLoginClick={() => {}} />
               )}
