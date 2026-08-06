@@ -508,7 +508,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{total_price}}': isMonthlyEnquiry ? 'TBC (Monthly enquiry - price to be confirmed)' : `THB ${bookingData.amount.toLocaleString()}`,
           '{{delivery_section}}': deliverySection,
           '{{comments}}': bookingData.notes.replace(/\n/g, '<br>'),
-        }, undefined, docRef.id);
+        }, bookingData.email, docRef.id);
         if (!staffEmailOk) {
           console.error('BookingEngine: Staff notification template send failed');
           emailSuccess = false;
