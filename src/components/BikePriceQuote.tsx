@@ -5,7 +5,8 @@ import { Loader2, Tag } from 'lucide-react';
 
 const BIKE_CLASSES = [
   { id: 'GT', label: 'GT', icon: '' },
-  { id: 'Aerox', label: 'Aerox', icon: '' },
+  { id: 'New GT', label: 'New GT', icon: '' },
+  { id: 'New Aerox', label: 'New Aerox', icon: '' },
   { id: 'Premium Scooter', label: 'Premium Scooter', icon: '' },
 ];
 
