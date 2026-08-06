@@ -249,7 +249,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       toast.error('Please select a rental fee account before completing the rental.');
       return;
     }
-    if (formData.depositAmount > 0 && !formData.depositAccountId) {
+    if (formData.depositAmount > 0 && !formData.depositAccountId && vehicleType !== 'Motorbike') {
       toast.error('Please select a deposit account before completing the rental.');
       return;
     }
@@ -402,7 +402,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
             balanceDeltas[formData.accountId] = (balanceDeltas[formData.accountId] || 0) + Number(formData.totalCharge);
           }
 
-          if (formData.depositAmount > 0 && formData.depositAccountId) {
+          if (formData.depositAmount > 0 && formData.depositAccountId && vehicleType !== 'Motorbike') {
             await addDoc(collection(db, 'transactions'), {
               type: 'Income',
               amount: Number(formData.depositAmount),
@@ -866,24 +866,33 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                        </select>
                      </div>
 
-                     <div className="space-y-2">
-                       <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Deposit Account</label>
-                       <select
-                         value={formData.depositAccountId}
-                         onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
-                         className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
-                       >
-                         <option value="" disabled>Select Account</option>
-                         {accounts.map(acc => (
-                           <option key={acc.id} value={acc.id}>{acc.name}</option>
-                         ))}
-                       </select>
-                     </div>
+                     {vehicleType === 'Motorbike' ? (
+                       <div className="space-y-2">
+                         <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Deposit Account</label>
+                         <div className="w-full bg-black/5 border border-dashed border-gray-300 p-3 rounded-2xl text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                           Cash to contract - not posted to accounts
+                         </div>
+                       </div>
+                     ) : (
+                       <div className="space-y-2">
+                         <label className="text-[8px] font-bold uppercase tracking-widest text-gray-400 ml-1">Deposit Account</label>
+                         <select
+                           value={formData.depositAccountId}
+                           onChange={(e) => setFormData({ ...formData, depositAccountId: e.target.value })}
+                           className="w-full bg-black/5 border-0 p-3 rounded-2xl text-sm font-bold focus:ring-2 ring-brand-orange outline-none transition-all appearance-none"
+                         >
+                           <option value="" disabled>Select Account</option>
+                           {accounts.map(acc => (
+                             <option key={acc.id} value={acc.id}>{acc.name}</option>
+                           ))}
+                         </select>
+                       </div>
+                     )}
                    </div>
 
                    <button
                      onClick={() => setStep('photos')}
-                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail || (formData.totalCharge > 0 && !formData.accountId) || (formData.depositAmount > 0 && !formData.depositAccountId)}
+                     disabled={!formData.carId || !formData.customerName || !formData.customerEmail || (formData.totalCharge > 0 && !formData.accountId) || (formData.depositAmount > 0 && !formData.depositAccountId && vehicleType !== 'Motorbike')}
                      className="w-full h-14 bg-brand-orange text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 hover:bg-[#1A1A1A] transition-all shadow-lg shadow-brand-orange/20 disabled:opacity-50 disabled:cursor-not-allowed"
                    >
                      Continue to Photos
