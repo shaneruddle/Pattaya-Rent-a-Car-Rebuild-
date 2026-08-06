@@ -502,6 +502,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{customer_email}}': bookingData.email,
           '{{customer_phone}}': bookingData.mobileNumber,
           '{{rental_period}}': `${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}`,
+          '{{duration}}': `${totalDays} ${totalDays === 1 ? 'day' : 'days'}`,
           '{{pickup_time}}': pickUpTime,
           '{{return_time}}': dropOffTime,
           '{{total_price}}': isMonthlyEnquiry ? 'TBC (Monthly enquiry - price to be confirmed)' : `THB ${bookingData.amount.toLocaleString()}`,

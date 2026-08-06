@@ -141,7 +141,7 @@ export const EmailTemplates: React.FC = () => {
             id: 'new_booking_website',
             name: 'New Booking Enquiry - Staff Notification',
             subject: '{{monthly_flag}}New Booking Enquiry: {{vehicle_model}} - {{customer_name}}',
-            body: '<h3>New Booking Enquiry</h3><p><strong>Vehicle:</strong> {{vehicle_model}}</p><p><strong>Customer:</strong> {{customer_name}}</p><p><strong>Email:</strong> {{customer_email}}</p><p><strong>Mobile:</strong> {{customer_phone}}</p><p><strong>Dates:</strong> {{rental_period}}</p><p><strong>Times:</strong> {{pickup_time}} to {{return_time}}</p><p><strong>Total Amount:</strong> {{total_price}}</p>{{delivery_section}}<hr><p><strong>Comments:</strong></p><p>{{comments}}</p>',
+            body: '<h3>New Booking Enquiry</h3><p><strong>Vehicle:</strong> {{vehicle_model}}</p><p><strong>Customer:</strong> {{customer_name}}</p><p><strong>Email:</strong> {{customer_email}}</p><p><strong>Mobile:</strong> {{customer_phone}}</p><p><strong>Dates:</strong> {{rental_period}} ({{duration}})</p><p><strong>Times:</strong> {{pickup_time}} to {{return_time}}</p><p><strong>Total Amount:</strong> {{total_price}}</p>{{delivery_section}}<hr><p><strong>Comments:</strong></p><p>{{comments}}</p>',
           },
           {
             id: 'website_enquiry',
