@@ -161,18 +161,6 @@ function AppContent() {
     }
   }, [location, loading, user]);
 
-  // Track page views on view change - only for staff and when authenticated
-  useEffect(() => {
-    const ga_id = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FHJNX2F1T';
-    if (ga_id && user && isStaff) {
-      ReactGA.send({ 
-        hitType: "pageview", 
-        page: `/admin/${currentView}`,
-        title: `Dashboard - ${currentView.replace(/_/g, ' ').toUpperCase()}`
-      });
-    }
-  }, [currentView, user, isStaff]);
-
   const isAdmin = useMemo(() => {
     const email = (user?.email || '').toLowerCase();
     return [
