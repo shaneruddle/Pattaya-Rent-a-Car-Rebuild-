@@ -153,7 +153,7 @@ function AppContent() {
   // Track page views for public (unauthenticated) visitors on every route change
   const location = useLocation();
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !location.pathname.startsWith('/admin')) {
       ReactGA.send({
         hitType: "pageview",
         page: location.pathname + location.search,
