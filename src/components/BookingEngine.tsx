@@ -634,6 +634,17 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     }
   }, [location.pathname]);
 
+  // Swap the browser-tab favicon to match the active brand: PRAB icon in bike
+  // mode, PRAC icon otherwise. Staff dashboard never mounts this component, so
+  // the internal CRM keeps the default PRAC icon.
+  useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) return;
+    link.href = isBikeMode
+      ? 'https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAB-Icon.jpg?alt=media&token=bef9127c-502f-4f4a-bfe5-038fef2839ba'
+      : 'https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Icon.jpg?alt=media&token=f5935b90-df97-4241-bb73-149a8ea1b939';
+  }, [isBikeMode]);
+
   // Sync view state with URL
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
