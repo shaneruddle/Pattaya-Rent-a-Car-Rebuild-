@@ -551,9 +551,11 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
             transaction_id: docRef.id,
             value: bookingData.amount || 0,
             currency: 'THB',
+            vehicle_category: isBikeMode ? 'bike' : 'car',
             items: [{
               item_id: bookingData.carId,
               item_name: bookingData.requestedCarType,
+              item_category: isBikeMode ? 'Motorbike' : 'Car',
               quantity: 1,
               price: bookingData.amount || 0
             }]
