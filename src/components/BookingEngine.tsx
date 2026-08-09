@@ -621,6 +621,19 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     window.scrollTo(0, 0);
   };
 
+  // Sync isBikeMode with the URL path independently of query params. This must NOT
+  // be gated on the from/to early-return below - a date-prefilled deep link like
+  // /rent-a-bike?from=...&to=... (the same handoff pattern the marketing sites use)
+  // still needs to land in bike mode, not silently fall back to car mode.
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === '/rent-a-bike') {
+      setIsBikeMode(true);
+    } else if (path === '/rent-a-car' || path === '/') {
+      setIsBikeMode(false);
+    }
+  }, [location.pathname]);
+
   // Sync view state with URL
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -638,10 +651,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       setView('blog-post');
     } else if (path === '/rent-a-bike') {
       setView('rent-a-bike');
-      setIsBikeMode(true);
     } else if (path === '/rent-a-car') {
       setView('landing');
-      setIsBikeMode(false);
     } else if (path === '/about') {
       setView('about');
     } else if (path === '/contact') {
@@ -663,7 +674,6 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       setView('marketing-page');
     } else if (path === '/') {
       setView('landing');
-      setIsBikeMode(false);
     }
   }, [location.pathname]);
 
