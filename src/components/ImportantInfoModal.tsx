@@ -75,18 +75,23 @@ export const ImportantInfoModal: React.FC<ImportantInfoModalProps> = ({ isOpen, 
 
               {/* Security Deposit */}
               <section className="space-y-4">
-                <h3 className="text-xl font-bold border-b-2 border-black/5 pb-2">Security Deposit - THB 5000</h3>
+                <h3 className="text-xl font-bold border-b-2 border-black/5 pb-2">
+                  {isBikeMode ? "Security Deposit - THB 1,000" : "Security Deposit - THB 5000"}
+                </h3>
                 <div className="flex gap-4">
                   <div className="mt-1">
                     <CreditCard size={24} className={cn(isBikeMode ? "text-brand-blue" : "text-brand-orange")} />
                   </div>
                   <p className="text-sm text-black/60 leading-relaxed">
-                    When you receive the vehicle the main driver will need to leave a refundable security deposit of THB 5,000.00 . Cash, credit card or bank transfer is accepted 
+                    {isBikeMode
+                      ? "When you receive the bike the main driver will need to leave a refundable security deposit of THB 1,000.00 in cash."
+                      : "When you receive the vehicle the main driver will need to leave a refundable security deposit of THB 5,000.00 . Cash, credit card or bank transfer is accepted"}
                   </p>
                 </div>
               </section>
 
-              {/* Damage Excess */}
+              {/* Damage Excess - cars only, no bike-specific figure published yet */}
+              {!isBikeMode && (
               <section className="space-y-4">
                 <h3 className="text-xl font-bold border-b-2 border-black/5 pb-2">Damage Excess - THB 5000</h3>
                 <div className="flex gap-4">
@@ -98,6 +103,7 @@ export const ImportantInfoModal: React.FC<ImportantInfoModalProps> = ({ isOpen, 
                   </p>
                 </div>
               </section>
+              )}
 
               {/* Rates Exclude */}
               <section className="space-y-4">
@@ -114,7 +120,20 @@ export const ImportantInfoModal: React.FC<ImportantInfoModalProps> = ({ isOpen, 
                 </div>
               </section>
 
-              {/* First Class Insurance */}
+              {/* Insurance - car wording (First Class / Viriyah) vs bike wording (compulsory Po Lo Bo) */}
+              {isBikeMode ? (
+              <section className="space-y-4">
+                <h3 className="text-xl font-bold border-b-2 border-black/5 pb-2">Insurance</h3>
+                <div className="flex gap-4 mb-6">
+                  <div className="mt-1 text-green-500">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <p className="text-sm text-black/60 leading-relaxed">
+                    Every bike comes with the compulsory government insurance (Po Lo Bo), which covers basic medical costs. Insurance is included in your rental rate.
+                  </p>
+                </div>
+              </section>
+              ) : (
               <section className="space-y-4">
                 <h3 className="text-xl font-bold border-b-2 border-black/5 pb-2">First Class Insurance</h3>
                 <div className="flex gap-4 mb-6">
@@ -129,6 +148,7 @@ export const ImportantInfoModal: React.FC<ImportantInfoModalProps> = ({ isOpen, 
                   All our vehicles have fully comprehensive rental insurance with Thailand´s leading insurance company, Viriyah Insurance. Insurance is compulsory and included in our rental rates
                 </div>
               </section>
+              )}
 
               {/* Other Remarks */}
               <section className="space-y-6 pb-4">
