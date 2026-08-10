@@ -1389,12 +1389,21 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
               <div className="p-12">
                 <div className="flex flex-col md:flex-row gap-12 mb-12">
                   <div className="flex-1">
-                    <img 
-                      src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
-                      alt="Logo" 
-                      className="h-10 mb-10"
-                      referrerPolicy="no-referrer"
-                    />
+                    {isBikeMode ? (
+                      <StorageImage
+                        path="PRAB-Logo-1.png"
+                        alt="Pattaya Rent A Bike"
+                        className="h-10 mb-10"
+                        fallback="https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0665145746.firebasestorage.app/o/PRAB-Logo-1.png?alt=media"
+                      />
+                    ) : (
+                      <img
+                        src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media"
+                        alt="Pattaya Rent A Car"
+                        className="h-10 mb-10"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
                     <h2 className="text-4xl font-bold text-black tracking-tight mb-4">{selectedCar.name} <span className="text-black/20 font-normal text-2xl">{t('car.orSimilar')}</span></h2>
                     <div className={cn(
                       "inline-flex px-3 py-1 rounded-full mb-10",
