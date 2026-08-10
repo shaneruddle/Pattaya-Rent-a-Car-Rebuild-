@@ -1546,7 +1546,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       onChange={e => setFormData({...formData, comments: e.target.value})}
                     />
 
-                    {/* Delivery Section */}
+                    {/* Delivery Section - cars only, bikes are pickup/return at our office only */}
+                    {!isBikeMode && (
                     <div className="space-y-6 pt-6 border-t border-black/5">
                       <button
                         type="button"
@@ -1627,7 +1628,8 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                         )}
                       </AnimatePresence>
                     </div>
-                    
+                    )}
+
                     <div className="text-[10px] font-bold uppercase tracking-widest text-black/20 mb-8 leading-relaxed">
                       {t('bookingModal.disclaimer')}
                     </div>
