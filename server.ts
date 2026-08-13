@@ -19,6 +19,7 @@ import { growthAnalyserApp, analyseWeek } from "./src/agent/growthAnalyser.js";
 import { runAnalysis } from "./src/agent/growthAgent.js";
 import { growthOutcomeScorerApp } from "./src/agent/growthOutcomeScorer.js";
 import { growthExecutorApp } from "./src/agent/growthExecutor.js";
+import Anthropic from "@anthropic-ai/sdk";
 
 const getDirname = () => {
   if (typeof __dirname !== 'undefined') return __dirname;
@@ -1769,6 +1770,102 @@ app.post('/api/mail/reply', async (req: any, res: any) => {
     res.json({ success: true, messageId: info.messageId });
   } catch (err: any) {
     console.error('[Mail] reply send error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Same "who's the customer" heuristic the frontend uses (MailInbox.tsx
+// resolveCustomerEmail): prefer the most recent inbound message (from someone
+// other than the info@ mailbox), falling back to the "To" address of the most
+// recent outbound message for threads that are entirely outbound so far.
+function resolveThreadCustomerEmail(msgs: { from: string; to: string }[]): string {
+  const emailOf = (header: string) => {
+    const match = header.match(/<([^>]+)>/);
+    return (match ? match[1] : header).trim().toLowerCase();
+  };
+  const inbound = [...msgs].reverse().find(m => emailOf(m.from) !== GMAIL_INBOX_MAILBOX);
+  if (inbound) return emailOf(inbound.from);
+  const outbound = [...msgs].reverse().find(m => m.to && emailOf(m.to) !== GMAIL_INBOX_MAILBOX);
+  return outbound ? emailOf(outbound.to) : '';
+}
+
+// AI-drafted reply suggestion for a thread. Staff review and edit before sending -
+// nothing here sends mail. Grounded only in the thread transcript plus whatever
+// customer profile/booking history we have on file; does not touch pricing or
+// booking logic.
+app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+
+    const full = await gmailApiFetch(`/threads/${req.params.id}?format=full`);
+    const rawMessages = full.messages || [];
+    if (rawMessages.length === 0) return res.status(404).json({ error: 'Thread not found' });
+
+    const messages = rawMessages.map((m: any) => {
+      const headers = m.payload?.headers || [];
+      const { text, html } = extractGmailBody(m.payload);
+      return {
+        from: gmailHeader(headers, 'From'),
+        to: gmailHeader(headers, 'To'),
+        date: gmailHeader(headers, 'Date'),
+        body: (text || stripHtmlTags(html) || '').trim(),
+      };
+    });
+    const subject = gmailHeader(rawMessages[rawMessages.length - 1]?.payload?.headers || [], 'Subject');
+    const customerEmail = resolveThreadCustomerEmail(messages);
+
+    let customerProfile: any = null;
+    let bookingHistory: any[] = [];
+    if (customerEmail) {
+      const [custSnap, bookingsSnap] = await Promise.all([
+        firestore.collection('customers').where('email', '==', customerEmail).limit(1).get(),
+        firestore.collection('bookings').where('email', '==', customerEmail).get(),
+      ]);
+      if (!custSnap.empty) customerProfile = custSnap.docs[0].data();
+      const toMillis = (v: any) => (v && v.toMillis) ? v.toMillis() : (v ? new Date(v).getTime() : 0);
+      bookingHistory = bookingsSnap.docs
+        .map((d: any) => d.data())
+        .sort((a: any, b: any) => toMillis(b.createdAt) - toMillis(a.createdAt))
+        .slice(0, 10)
+        .map((b: any) => ({ startDate: b.startDate, endDate: b.endDate, status: b.status, amount: b.amount, carName: b.carName }));
+    }
+
+    const transcript = messages
+      .map((m: any) => `From: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\n\n${m.body}`)
+      .join('\n\n---\n\n');
+
+    const promptParts = [
+      `You are drafting a reply email for staff at Pattaya Rent A Car, a car rental company in Pattaya, Thailand (operating since 2009). A staff member will review and edit this draft before sending, so write it as a complete, ready-to-send reply to the customer's most recent message below.`,
+      `Only use information given in this prompt - do not invent prices, dates, availability, or other specifics you have not been given.`,
+      `Write in plain text only (no HTML, no markdown, no subject line). Keep it warm, professional and concise. Sign off as "Pattaya Rent A Car".`,
+      `\nEmail subject: ${subject || '(no subject)'}`,
+      `\nThread so far (oldest to newest):\n${transcript}`,
+    ];
+    if (customerProfile) {
+      promptParts.push(`\nCustomer profile on file: ${JSON.stringify(customerProfile)}`);
+    }
+    if (bookingHistory.length > 0) {
+      promptParts.push(`\nCustomer's past bookings on file: ${JSON.stringify(bookingHistory)}`);
+    }
+    const prompt = promptParts.join('\n');
+
+    const anthropicKey = await getSecretValue('ANTHROPIC_API_KEY');
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 700,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const draft = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+
+    res.json({ draft });
+  } catch (err: any) {
+    console.error('[Mail] suggest-reply error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

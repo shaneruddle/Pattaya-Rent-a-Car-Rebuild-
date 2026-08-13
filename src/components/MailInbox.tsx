@@ -3,7 +3,7 @@ import { auth } from '../firebase';
 import { Booking, Customer } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen, Check } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen, Check, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 
@@ -118,6 +118,8 @@ export const MailInbox: React.FC = () => {
 
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
   const [bulkMarkingRead, setBulkMarkingRead] = useState(false);
+
+  const [suggestingReply, setSuggestingReply] = useState(false);
 
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
@@ -317,6 +319,29 @@ export const MailInbox: React.FC = () => {
       toast.error(err.message || 'Failed to send reply');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSuggestReply = async () => {
+    if (!selectedThreadId) return;
+    setSuggestingReply(true);
+    try {
+      const res = await authedFetch(`/api/mail/threads/${selectedThreadId}/suggest-reply`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.draft) {
+        setReplyBody(data.draft);
+      } else {
+        toast.error('No suggestion returned');
+      }
+    } catch (err: any) {
+      console.error('Failed to suggest reply:', err);
+      toast.error(err.message || 'Failed to suggest a reply');
+    } finally {
+      setSuggestingReply(false);
     }
   };
 
@@ -577,7 +602,16 @@ export const MailInbox: React.FC = () => {
                   rows={3}
                   className="w-full rounded-xl border border-black/10 bg-white/60 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/40 resize-none"
                 />
-                <div className="flex justify-end mt-2">
+                <div className="flex justify-between items-center mt-2">
+                  <button
+                    onClick={handleSuggestReply}
+                    disabled={suggestingReply}
+                    className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                    title="Draft a reply with AI - review before sending"
+                  >
+                    {suggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Suggest reply
+                  </button>
                   <button
                     onClick={handleSend}
                     disabled={sending || !replyBody.trim()}
