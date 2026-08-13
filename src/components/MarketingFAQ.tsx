@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from '../firebase';
-import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { translations } from '../translations';
@@ -14,7 +14,11 @@ interface FAQ {
   a: string;
   category: string;
   order: number;
+  published?: boolean;
 }
+
+// Docs with no `published` field are treated as published (existing FAQs default to public).
+const isPublished = (faq: FAQ) => faq.published !== false;
 
 export const MarketingFAQ: React.FC = () => {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -23,7 +27,7 @@ export const MarketingFAQ: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [formData, setFormData] = useState({ q: '', a: '', category: 'General', order: 0 });
+  const [formData, setFormData] = useState({ q: '', a: '', category: 'General', order: 0, published: true });
 
   const [lastFetch, setLastFetch] = useState(() => {
     const cached = safeLocalStorage.getItem('prac_faq_last_fetch');
@@ -85,7 +89,7 @@ export const MarketingFAQ: React.FC = () => {
         order: nextOrder
       });
       setIsAdding(false);
-      setFormData({ q: '', a: '', category: 'General', order: 0 });
+      setFormData({ q: '', a: '', category: 'General', order: 0, published: true });
       toast.success('FAQ added successfully');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'faqs');
@@ -118,6 +122,17 @@ export const MarketingFAQ: React.FC = () => {
         }
       }
     });
+  };
+
+  const handleTogglePublished = async (faq: FAQ) => {
+    const nextPublished = !isPublished(faq);
+    try {
+      await updateDoc(doc(db, 'faqs', faq.id), { published: nextPublished });
+      setFaqs(prev => prev.map(f => f.id === faq.id ? { ...f, published: nextPublished } : f));
+      toast.success(nextPublished ? 'FAQ published to website' : 'FAQ unpublished from website');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `faqs/${faq.id}`);
+    }
   };
 
   const seedFromTranslations = async () => {
@@ -289,6 +304,22 @@ export const MarketingFAQ: React.FC = () => {
                   placeholder="Enter the answer..."
                 />
               </div>
+              <div className="flex items-center justify-between pt-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.published}
+                    onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
+                    className="w-4 h-4 rounded accent-brand-orange"
+                  />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">
+                    Published on website
+                  </span>
+                </label>
+              </div>
+              <p className="text-[10px] text-[#1A1A1A]/40 ml-2 -mt-2">
+                Unpublished FAQs are still used by AI-suggested email replies, but won't appear on the public FAQ page.
+              </p>
               <div className="flex justify-end gap-3 pt-4">
                 <button
                   type="button"
@@ -355,19 +386,32 @@ export const MarketingFAQ: React.FC = () => {
                     className="w-full px-4 py-2 bg-black/5 rounded-lg text-xs resize-none"
                     placeholder="Answer"
                   />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
-                    >
-                      <Save size={16} />
-                    </button>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isPublished(faq)}
+                        onChange={(e) => handleUpdate(faq.id, { published: e.target.checked })}
+                        className="w-4 h-4 rounded accent-brand-orange"
+                      />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/50">
+                        Published on website
+                      </span>
+                    </label>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                      >
+                        <Save size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -384,11 +428,27 @@ export const MarketingFAQ: React.FC = () => {
                         <span className="text-[9px] font-mono text-[#1A1A1A]/30">
                           Order: {faq.order}
                         </span>
+                        {isPublished(faq) ? (
+                          <span className="flex items-center gap-1 px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border bg-green-50 text-green-600 border-green-100">
+                            <Eye size={11} /> Published
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border bg-black/5 text-[#1A1A1A]/40 border-black/10">
+                            <EyeOff size={11} /> Unpublished
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-bold text-[#1A1A1A] mb-2">{faq.q}</h3>
                       <p className="text-sm text-[#1A1A1A]/60 leading-relaxed">{faq.a}</p>
                     </div>
                     <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleTogglePublished(faq)}
+                        title={isPublished(faq) ? 'Unpublish from website' : 'Publish to website'}
+                        className="p-2 text-[#1A1A1A]/40 hover:text-brand-orange hover:bg-brand-orange/5 rounded-lg transition-all"
+                      >
+                        {isPublished(faq) ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
                       <button
                         onClick={() => setEditingId(faq.id)}
                         className="p-2 text-[#1A1A1A]/40 hover:text-brand-orange hover:bg-brand-orange/5 rounded-lg transition-all"

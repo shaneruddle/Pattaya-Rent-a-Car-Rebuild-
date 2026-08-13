@@ -1821,6 +1821,7 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
 
     let customerProfile: any = null;
     let bookingHistory: any[] = [];
+    let faqSnapPromise = firestore.collection('faqs').get();
     if (customerEmail) {
       const [custSnap, bookingsSnap] = await Promise.all([
         firestore.collection('customers').where('email', '==', customerEmail).limit(1).get(),
@@ -1834,6 +1835,14 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
         .slice(0, 10)
         .map((b: any) => ({ startDate: b.startDate, endDate: b.endDate, status: b.status, amount: b.amount, carName: b.carName }));
     }
+    // Suggested replies use every FAQ in the collection regardless of its `published`
+    // flag - unpublished FAQs are still fine to draw on for staff email replies, they're
+    // just excluded from the public marketing site.
+    const faqSnap = await faqSnapPromise;
+    const faqs = faqSnap.docs
+      .map((d: any) => d.data())
+      .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+      .map((f: any) => ({ q: f.q, a: f.a }));
 
     const transcript = messages
       .map((m: any) => `From: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\n\n${m.body}`)
@@ -1851,6 +1860,9 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
     }
     if (bookingHistory.length > 0) {
       promptParts.push(`\nCustomer's past bookings on file: ${JSON.stringify(bookingHistory)}`);
+    }
+    if (faqs.length > 0) {
+      promptParts.push(`\nCompany FAQ knowledge base (use these for factual answers where relevant): ${JSON.stringify(faqs)}`);
     }
     const prompt = promptParts.join('\n');
 
