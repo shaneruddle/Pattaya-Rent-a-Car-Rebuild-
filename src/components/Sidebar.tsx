@@ -101,8 +101,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
     };
   }, [auth.currentUser]);
 
-  const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates'].includes(currentView);
-  const isMarketingView = ['marketing_blog', 'marketing_calendar', 'marketing_faq'].includes(currentView);
+  const isSettingsView = ['company_settings', 'pricing', 'website_fleet', 'user_management', 'image_management', 'email_templates', 'marketing_faq', 'logs'].includes(currentView);
+  const isMarketingView = ['marketing_blog', 'marketing_calendar'].includes(currentView);
   const isFinanceView = ['finance', 'finance_overview'].includes(currentView);
 
   // Auto-expand settings if one of its views is active
@@ -353,20 +353,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <Calendar size={14} /> Content Calendar
                             </button>
-                            <button
-                              onClick={() => {
-                                onViewChange('marketing_faq');
-                                if (isMobile) setIsMobileMenuOpen(false);
-                              }}
-                              className={cn(
-                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
-                                currentView === 'marketing_faq' 
-                                  ? "bg-brand-orange text-white shadow-md" 
-                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
-                              )}
-                            >
-                              <HelpCircle size={14} /> FAQ Management
-                            </button>
 
                           </motion.div>
                         )}
@@ -528,20 +514,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     </button>
                     <button
                       onClick={() => {
-                        onViewChange('logs');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'logs' 
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" 
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <Activity size={18} /> System Logs
-                    </button>
-                    <button
-                      onClick={() => {
                         onViewChange('vehicle_report');
                         if (isMobile) setIsMobileMenuOpen(false);
                       }}
@@ -567,20 +539,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <TrendingUp size={18} /> Competitor Pricing
-                    </button>
-                    <button
-                      onClick={() => {
-                        onViewChange('bike_price_quote');
-                        if (isMobile) setIsMobileMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
-                        currentView === 'bike_price_quote'
-                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20"
-                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
-                      )}
-                    >
-                      <Tag size={18} /> Bike Booking Engine
                     </button>
 
                     {/* System Settings Group */}
@@ -679,6 +637,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                             >
                               <Mail size={14} /> Email Templates
                             </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('marketing_faq');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'marketing_faq'
+                                  ? "bg-brand-orange text-white shadow-md"
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <HelpCircle size={14} /> FAQ Management
+                            </button>
+                            <button
+                              onClick={() => {
+                                onViewChange('logs');
+                                if (isMobile) setIsMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full h-10 rounded-xl font-bold uppercase tracking-widest text-[9px] flex items-center gap-3 px-6 transition-all",
+                                currentView === 'logs'
+                                  ? "bg-brand-orange text-white shadow-md"
+                                  : "text-[#1A1A1A]/50 hover:bg-white/40"
+                              )}
+                            >
+                              <Activity size={14} /> System Logs
+                            </button>
                             {isAdmin && (
                               <button
                                 onClick={() => {
@@ -713,6 +699,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <ExternalLink size={18} /> Booking Engine
+                    </button>
+                    <button
+                      onClick={() => {
+                        onViewChange('bike_price_quote');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'bike_price_quote'
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20"
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <Tag size={18} /> Bike Booking Engine
                     </button>
                   </>
                 )}
@@ -863,16 +863,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <Calendar size={16} />
                     </button>
-                    <button 
-                      onClick={() => onViewChange('marketing_faq')}
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        currentView === 'marketing_faq' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
-                      )}
-                      title="FAQ Management"
-                    >
-                      <HelpCircle size={16} />
-                    </button>
 
                   </motion.div>
                 )}
@@ -899,16 +889,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
               title="CRM"
             >
               <Users size={20} />
-            </button>
-            <button 
-              onClick={() => onViewChange('logs')}
-              className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                currentView === 'logs' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
-              )}
-              title="System Logs"
-            >
-              <Activity size={20} />
             </button>
 
             {/* Collapsed System Settings */}
@@ -982,8 +962,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                     >
                       <Mail size={16} />
                     </button>
+                    <button
+                      onClick={() => onViewChange('marketing_faq')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'marketing_faq' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="FAQ Management"
+                    >
+                      <HelpCircle size={16} />
+                    </button>
+                    <button
+                      onClick={() => onViewChange('logs')}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                        currentView === 'logs' ? "bg-brand-orange text-white shadow-md" : "text-[#1A1A1A]/30 hover:bg-white/40"
+                      )}
+                      title="System Logs"
+                    >
+                      <Activity size={16} />
+                    </button>
                     {isAdmin && (
-                      <button 
+                      <button
                         onClick={() => onViewChange('user_management')}
                         className={cn(
                           "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
@@ -1008,6 +1008,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
               title="Booking Engine"
             >
               <ExternalLink size={20} />
+            </button>
+            <button
+              onClick={() => onViewChange('bike_price_quote')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'bike_price_quote' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
+              )}
+              title="Bike Booking Engine"
+            >
+              <Tag size={20} />
             </button>
           </div>
         )}
