@@ -411,6 +411,15 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     // Below minimum rental period: submission blocked (price display already shows the minimum message)
     if (isBelowMinDays(selectedCar)) return;
 
+    const [pickH, pickM] = pickUpTime.split(':').map(Number);
+    const [dropH, dropM] = dropOffTime.split(':').map(Number);
+    const pickMinutes = pickH * 60 + pickM;
+    const dropMinutes = dropH * 60 + dropM;
+    if (pickMinutes < 9 * 60 || pickMinutes > 17 * 60 + 30 || dropMinutes < 9 * 60 || dropMinutes > 17 * 60 + 30) {
+      toast.error('Office hours are 09:00 - 17:30');
+      return;
+    }
+
     // Honeypot bot check â silently succeed if filled, do NOT fire conversion
     if (honeypot) {
       setIsSuccess(true);

@@ -111,6 +111,17 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
     e.preventDefault();
     if (!editingBooking) return;
 
+    const startCheck = parseISO(editingBooking.startDate);
+    const endCheck = parseISO(editingBooking.endDate);
+    if (isValid(startCheck) && isValid(endCheck)) {
+      const startMinutesCheck = startCheck.getHours() * 60 + startCheck.getMinutes();
+      const endMinutesCheck = endCheck.getHours() * 60 + endCheck.getMinutes();
+      if (startMinutesCheck < 9 * 60 || startMinutesCheck > 17 * 60 + 30 || endMinutesCheck < 9 * 60 || endMinutesCheck > 17 * 60 + 30) {
+        toast.error('Office hours are 09:00 - 17:30');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const bookingRef = doc(db, 'bookings', editingBooking.id);
@@ -825,6 +836,7 @@ export const Bookings: React.FC<BookingsProps> = ({ bookings = [], cars = [], on
                                   onClose={() => setShowDatePicker(false)}
                                   onApply={() => setShowDatePicker(false)}
                                   isBikeMode={false}
+                                  useFilteredTimes={true}
                                 />
                               </motion.div>
                             </div>

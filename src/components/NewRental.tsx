@@ -253,6 +253,14 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
       toast.error('Please select a deposit account before completing the rental.');
       return;
     }
+    const [pickUpH, pickUpM] = pickUpTime.split(':').map(Number);
+    const [dropOffH, dropOffM] = dropOffTime.split(':').map(Number);
+    const pickUpMinutes = pickUpH * 60 + pickUpM;
+    const dropOffMinutes = dropOffH * 60 + dropOffM;
+    if (pickUpMinutes < 9 * 60 || pickUpMinutes > 17 * 60 + 30 || dropOffMinutes < 9 * 60 || dropOffMinutes > 17 * 60 + 30) {
+      toast.error('Office hours are 09:00 - 17:30');
+      return;
+    }
     setLoading(true);
     try {
       // Helper function to compress image before upload
@@ -774,6 +782,7 @@ export const NewRental: React.FC<NewRentalProps> = ({ cars = [], bookings = [], 
                               onClose={() => setShowDatePicker(false)}
                               onApply={() => setShowDatePicker(false)}
                               isBikeMode={vehicleType === 'Motorbike'}
+                              useFilteredTimes={true}
                             />
                           </motion.div>
                         </div>
