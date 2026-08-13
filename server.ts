@@ -2028,6 +2028,44 @@ app.delete('/api/mail/threads/:id/read-state', async (req: any, res: any) => {
   }
 });
 
+// Bulk mark threads read in our own app-level tracking only (does not touch the real
+// Gmail UNREAD label). For each thread ID, looks up its current last message from
+// Gmail (same as GET /api/mail/threads) and writes the mail_read_state record - so a
+// later reply on any of these threads makes it unread again automatically, exactly
+// like opening a single thread does.
+app.post('/api/mail/threads/read-state/bulk', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const ids: string[] = Array.isArray(req.body?.ids)
+      ? req.body.ids.filter((id: any) => typeof id === 'string' && id)
+      : [];
+    if (ids.length === 0) return res.status(400).json({ error: 'Missing ids' });
+    if (ids.length > 100) return res.status(400).json({ error: 'Too many ids (max 100)' });
+
+    const results = await Promise.all(ids.map(async (id) => {
+      try {
+        const full = await gmailApiFetch(`/threads/${id}?format=metadata`);
+        const messages = full.messages || [];
+        const lastMsg = messages[messages.length - 1];
+        if (!lastMsg) return { id, ok: false };
+        await firestore.collection('mail_read_state').doc(id).set({
+          readMessageId: lastMsg.id,
+          readAt: FieldValue.serverTimestamp(),
+        });
+        return { id, ok: true };
+      } catch (err: any) {
+        console.error(`[Mail] bulk mark read error for ${id}:`, err.message);
+        return { id, ok: false };
+      }
+    }));
+    res.json({ results });
+  } catch (err: any) {
+    console.error('[Mail] bulk mark read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Lightweight unread count over recently loaded threads only (NOT a true mailbox-wide
 // total, and NOT based on Gmail's real UNREAD label). Scans a bounded number of the
 // most recent inbox pages using the same app-level read/unread logic as

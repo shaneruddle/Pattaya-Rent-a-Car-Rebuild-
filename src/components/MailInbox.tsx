@@ -3,7 +3,7 @@ import { auth } from '../firebase';
 import { Booking, Customer } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 
@@ -116,11 +116,15 @@ export const MailInbox: React.FC = () => {
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+  const [bulkMarkingRead, setBulkMarkingRead] = useState(false);
+
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
 
   const fetchThreads = useCallback(async () => {
     setThreadsLoading(true);
+    setSelectedThreadIds(new Set());
     try {
       const res = await authedFetch('/api/mail/threads');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -155,6 +159,54 @@ export const MailInbox: React.FC = () => {
   useEffect(() => {
     fetchThreads();
   }, [fetchThreads]);
+
+  const toggleThreadSelected = (threadId: string) => {
+    setSelectedThreadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(threadId)) next.delete(threadId);
+      else next.add(threadId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllThreads = () => {
+    setSelectedThreadIds(prev =>
+      prev.size === threads.length ? new Set() : new Set(threads.map(t => t.id))
+    );
+  };
+
+  const clearThreadSelection = () => setSelectedThreadIds(new Set());
+
+  const handleBulkMarkRead = async () => {
+    const ids = Array.from(selectedThreadIds);
+    if (ids.length === 0) return;
+    setBulkMarkingRead(true);
+    try {
+      const res = await authedFetch('/api/mail/threads/read-state/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const okIds = new Set(
+        (data.results || []).filter((r: any) => r.ok).map((r: any) => r.id)
+      );
+      setThreads(prev => prev.map(t => (okIds.has(t.id) ? { ...t, unread: false } : t)));
+      clearThreadSelection();
+      const failedCount = ids.length - okIds.size;
+      if (failedCount > 0) {
+        toast.error(`Marked ${okIds.size} as read, ${failedCount} failed`);
+      } else {
+        toast.success(`Marked ${okIds.size} as read`);
+      }
+    } catch (err: any) {
+      console.error('Failed to bulk mark read:', err);
+      toast.error('Failed to mark selected emails as read');
+    } finally {
+      setBulkMarkingRead(false);
+    }
+  };
 
   const openThread = useCallback(async (threadId: string) => {
     setSelectedThreadId(threadId);
@@ -363,31 +415,75 @@ export const MailInbox: React.FC = () => {
           'w-full md:w-80 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 overflow-y-auto custom-scrollbar',
           showMobileDetail && 'hidden md:block'
         )}>
+          {!threadsLoading && threads.length > 0 && (
+            <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 bg-white/80 backdrop-blur-xl border-b border-black/5">
+              <input
+                type="checkbox"
+                checked={selectedThreadIds.size > 0 && selectedThreadIds.size === threads.length}
+                ref={el => {
+                  if (el) el.indeterminate = selectedThreadIds.size > 0 && selectedThreadIds.size < threads.length;
+                }}
+                onChange={toggleSelectAllThreads}
+                className="shrink-0 accent-brand-orange"
+                title="Select all"
+              />
+              {selectedThreadIds.size > 0 ? (
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="text-xs font-medium text-[#1A1A1A]/60 shrink-0">{selectedThreadIds.size} selected</span>
+                  <button
+                    onClick={handleBulkMarkRead}
+                    disabled={bulkMarkingRead}
+                    className="ml-auto flex items-center gap-1.5 text-xs font-bold text-brand-orange hover:underline disabled:opacity-40 shrink-0"
+                  >
+                    {bulkMarkingRead ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    Mark as read
+                  </button>
+                  <button
+                    onClick={clearThreadSelection}
+                    disabled={bulkMarkingRead}
+                    className="text-xs font-medium text-[#1A1A1A]/40 hover:text-[#1A1A1A]/70 disabled:opacity-40 shrink-0"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-[#1A1A1A]/40">Select all</span>
+              )}
+            </div>
+          )}
           {threadsLoading ? (
             <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
           ) : threads.length === 0 ? (
             <div className="p-8 text-center text-sm text-[#1A1A1A]/40">No threads found</div>
           ) : (
             threads.map(t => (
-              <button
+              <div
                 key={t.id}
-                onClick={() => openThread(t.id)}
                 className={cn(
-                  'w-full text-left p-4 border-b border-black/5 hover:bg-white/60 transition-all',
+                  'w-full flex items-start gap-2 p-4 border-b border-black/5 hover:bg-white/60 transition-all',
                   selectedThreadId === t.id && 'bg-brand-orange/10'
                 )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn('text-sm truncate', t.unread ? 'font-bold text-[#1A1A1A]' : 'font-medium text-[#1A1A1A]/70')}>
-                    {extractName(t.from)}
-                  </span>
-                  <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{formatShortDate(t.date)}</span>
-                </div>
-                <p className={cn('text-sm truncate mt-0.5', t.unread ? 'font-semibold text-[#1A1A1A]' : 'text-[#1A1A1A]/60')}>
-                  {t.subject || '(no subject)'}
-                </p>
-                <p className="text-xs text-[#1A1A1A]/40 truncate mt-0.5">{t.snippet}</p>
-              </button>
+                <input
+                  type="checkbox"
+                  checked={selectedThreadIds.has(t.id)}
+                  onChange={() => toggleThreadSelected(t.id)}
+                  onClick={e => e.stopPropagation()}
+                  className="mt-1 shrink-0 accent-brand-orange"
+                />
+                <button onClick={() => openThread(t.id)} className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn('text-sm truncate', t.unread ? 'font-bold text-[#1A1A1A]' : 'font-medium text-[#1A1A1A]/70')}>
+                      {extractName(t.from)}
+                    </span>
+                    <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{formatShortDate(t.date)}</span>
+                  </div>
+                  <p className={cn('text-sm truncate mt-0.5', t.unread ? 'font-semibold text-[#1A1A1A]' : 'text-[#1A1A1A]/60')}>
+                    {t.subject || '(no subject)'}
+                  </p>
+                  <p className="text-xs text-[#1A1A1A]/40 truncate mt-0.5">{t.snippet}</p>
+                </button>
+              </div>
             ))
           )}
           {nextPageToken && (
