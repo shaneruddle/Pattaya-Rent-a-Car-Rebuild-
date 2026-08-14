@@ -1663,8 +1663,13 @@ app.get('/api/mail/threads', async (req: any, res: any) => {
   try {
     await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
     const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken : undefined;
+    // `q` uses standard Gmail search syntax (e.g. "booking toyota", "from:john@x.com"),
+    // same as the Gmail search bar. Combined with labelIds=INBOX so results stay
+    // scoped to the inbox view rather than searching the whole mailbox.
+    const searchQuery = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
     const listResp = await gmailApiFetch(
-      `/threads?labelIds=INBOX&maxResults=20${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`
+      `/threads?labelIds=INBOX&maxResults=20${qParam}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`
     );
     const threadStubs = listResp.threads || [];
     const threads = await Promise.all(threadStubs.map(async (t: any) => {

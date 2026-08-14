@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { auth } from '../firebase';
 import { Booking, Customer } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, MailOpen, Check, Sparkles } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 
@@ -121,14 +121,23 @@ export const MailInbox: React.FC = () => {
 
   const [suggestingReply, setSuggestingReply] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const isFirstLoad = useRef(true);
+
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
 
-  const fetchThreads = useCallback(async () => {
+  const fetchThreads = useCallback(async (q?: string) => {
     setThreadsLoading(true);
     setSelectedThreadIds(new Set());
     try {
-      const res = await authedFetch('/api/mail/threads');
+      const params = new URLSearchParams();
+      if (q && q.trim()) params.set('q', q.trim());
+      const qs = params.toString();
+      const res = await authedFetch(`/api/mail/threads${qs ? `?${qs}` : ''}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setThreads(sortUnreadFirst(data.threads || []));
@@ -145,7 +154,9 @@ export const MailInbox: React.FC = () => {
     if (!nextPageToken || loadingMore) return;
     setLoadingMore(true);
     try {
-      const res = await authedFetch(`/api/mail/threads?pageToken=${encodeURIComponent(nextPageToken)}`);
+      const params = new URLSearchParams({ pageToken: nextPageToken });
+      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+      const res = await authedFetch(`/api/mail/threads?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setThreads(prev => sortUnreadFirst([...prev, ...(data.threads || [])]));
@@ -156,11 +167,21 @@ export const MailInbox: React.FC = () => {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextPageToken, loadingMore]);
+  }, [nextPageToken, loadingMore, searchQuery]);
 
+  // Debounce search-as-you-type, but load immediately on first mount rather
+  // than waiting out the debounce delay.
   useEffect(() => {
-    fetchThreads();
-  }, [fetchThreads]);
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false;
+      fetchThreads();
+      return;
+    }
+    const handle = setTimeout(() => {
+      fetchThreads(searchQuery);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [searchQuery, fetchThreads]);
 
   const toggleThreadSelected = (threadId: string) => {
     setSelectedThreadIds(prev => {
@@ -426,7 +447,7 @@ export const MailInbox: React.FC = () => {
           </div>
         </div>
         <button
-          onClick={fetchThreads}
+          onClick={() => fetchThreads(searchQuery)}
           disabled={threadsLoading}
           className="w-10 h-10 rounded-xl bg-white/60 border border-black/10 flex items-center justify-center hover:bg-white transition-all disabled:opacity-50"
           title="Refresh"
@@ -436,10 +457,50 @@ export const MailInbox: React.FC = () => {
       </div>
 
       <div className="flex-1 flex gap-4 min-h-0">
+        {leftCollapsed ? (
+          <div className="hidden md:flex w-10 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col items-center pt-4">
+            <button
+              onClick={() => setLeftCollapsed(false)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#1A1A1A]/50 hover:bg-black/5 hover:text-brand-orange transition-all"
+              title="Expand inbox list"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        ) : (
         <div className={cn(
-          'w-full md:w-80 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 overflow-y-auto custom-scrollbar',
-          showMobileDetail && 'hidden md:block'
+          'w-full md:w-80 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
+          showMobileDetail && 'hidden md:flex'
         )}>
+          <div className="p-3 border-b border-black/10 flex items-center gap-2 shrink-0">
+            <div className="relative flex-1 min-w-0">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search inbox..."
+                className="w-full pl-8 pr-7 py-2 text-sm rounded-xl border border-black/10 bg-white/70 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#1A1A1A]/30 hover:text-[#1A1A1A]/60"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setLeftCollapsed(true)}
+              className="hidden md:flex w-8 h-8 rounded-lg items-center justify-center text-[#1A1A1A]/50 hover:bg-black/5 hover:text-brand-orange transition-all shrink-0"
+              title="Collapse inbox list"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
           {!threadsLoading && threads.length > 0 && (
             <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 bg-white/80 backdrop-blur-xl border-b border-black/5">
               <input
@@ -479,7 +540,9 @@ export const MailInbox: React.FC = () => {
           {threadsLoading ? (
             <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
           ) : threads.length === 0 ? (
-            <div className="p-8 text-center text-sm text-[#1A1A1A]/40">No threads found</div>
+            <div className="p-8 text-center text-sm text-[#1A1A1A]/40">
+              {searchQuery ? `No results for "${searchQuery}"` : 'No threads found'}
+            </div>
           ) : (
             threads.map(t => (
               <div
@@ -522,7 +585,9 @@ export const MailInbox: React.FC = () => {
               </button>
             </div>
           )}
+          </div>
         </div>
+        )}
 
         <div className={cn(
           'flex-1 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
@@ -599,8 +664,8 @@ export const MailInbox: React.FC = () => {
                   value={replyBody}
                   onChange={e => setReplyBody(e.target.value)}
                   placeholder="Write a reply..."
-                  rows={3}
-                  className="w-full rounded-xl border border-black/10 bg-white/60 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/40 resize-none"
+                  rows={8}
+                  className="w-full rounded-xl border border-black/10 bg-white/60 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/40 resize-y min-h-[160px] max-h-[60vh]"
                 />
                 <div className="flex justify-between items-center mt-2">
                   <button
@@ -626,8 +691,29 @@ export const MailInbox: React.FC = () => {
           )}
         </div>
 
-        {selectedThreadId && (
+        {selectedThreadId && rightCollapsed && (
+          <div className="hidden lg:flex w-10 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col items-center pt-4">
+            <button
+              onClick={() => setRightCollapsed(false)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#1A1A1A]/50 hover:bg-black/5 hover:text-brand-orange transition-all"
+              title="Expand customer panel"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+        )}
+        {selectedThreadId && !rightCollapsed && (
           <div className="hidden lg:flex w-72 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col overflow-y-auto custom-scrollbar p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30">Details</span>
+              <button
+                onClick={() => setRightCollapsed(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[#1A1A1A]/50 hover:bg-black/5 hover:text-brand-orange transition-all"
+                title="Collapse customer panel"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
             <div className="mb-4 pb-4 border-b border-black/10">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
