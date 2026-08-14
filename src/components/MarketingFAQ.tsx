@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from '../firebase';
-import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Save, X, ChevronDown, ChevronUp, GripVertical, Download, Upload, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { translations } from '../translations';
 import { cn } from '../lib/utils';
 import { safeLocalStorage } from '../lib/storage';
 
@@ -135,39 +134,183 @@ export const MarketingFAQ: React.FC = () => {
     }
   };
 
-  const seedFromTranslations = async () => {
-    const doImport = async () => {
-      try {
-        const batch = writeBatch(db);
-        const items = translations.en.faq.items;
-        
-        items.forEach((item, index) => {
-          const newDocRef = doc(collection(db, 'faqs'));
-          batch.set(newDocRef, {
-            q: item.q,
-            a: item.a,
-            category: item.category || 'General',
-            order: faqs.length + index
-          });
-        });
-        
-        await batch.commit();
-        toast.success(`Imported ${items.length} FAQs from translations`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, 'faqs');
-      }
-    };
+  // --- CSV import / export -------------------------------------------
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const CSV_HEADERS = ['category', 'order', 'question', 'answer', 'published'];
 
-    if (faqs.length > 0) {
-      toast('Import FAQs?', {
-        description: "This will add FAQs from translations.ts to your current list.",
-        action: {
-          label: "Import",
-          onClick: doImport
+  const csvEscape = (value: unknown): string => {
+    const str = String(value ?? '');
+    if (/[",\r\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const faqsToCsv = (list: FAQ[]): string => {
+    const rows = list.map(f => [f.category, f.order, f.q, f.a, isPublished(f) ? 'yes' : 'no']);
+    return [CSV_HEADERS, ...rows].map(row => row.map(csvEscape).join(',')).join('\r\n');
+  };
+
+  // Minimal RFC 4180 CSV parser - handles quoted fields with embedded
+  // commas, newlines, and escaped ("") quotes.
+  const parseCsv = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+    let i = 0;
+
+    while (i < text.length) {
+      const char = text[i];
+      if (inQuotes) {
+        if (char === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i += 2;
+            continue;
+          }
+          inQuotes = false;
+          i++;
+          continue;
         }
-      });
-    } else {
-      doImport();
+        field += char;
+        i++;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = true;
+        i++;
+        continue;
+      }
+      if (char === ',') {
+        row.push(field);
+        field = '';
+        i++;
+        continue;
+      }
+      if (char === '\r') {
+        i++;
+        continue;
+      }
+      if (char === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        i++;
+        continue;
+      }
+      field += char;
+      i++;
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(r => r.some(cell => cell.trim() !== ''));
+  };
+
+  const handleExportCsv = () => {
+    if (faqs.length === 0) {
+      toast.error('No FAQs to export');
+      return;
+    }
+    const csv = faqsToCsv(faqs);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `faqs-export-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${faqs.length} FAQs to CSV`);
+  };
+
+  const handleImportCsvClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file next time
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        toast.error('CSV file is empty');
+        return;
+      }
+
+      const header = rows[0].map(h => h.trim().toLowerCase());
+      const qIdx = header.indexOf('question');
+      const aIdx = header.indexOf('answer');
+      if (qIdx === -1 || aIdx === -1) {
+        toast.error('CSV must have "question" and "answer" columns');
+        return;
+      }
+      const catIdx = header.indexOf('category');
+      const orderIdx = header.indexOf('order');
+      const publishedIdx = header.indexOf('published');
+
+      const dataRows = rows.slice(1).filter(r => (r[qIdx] || '').trim() && (r[aIdx] || '').trim());
+      if (dataRows.length === 0) {
+        toast.error('No valid FAQ rows found in CSV');
+        return;
+      }
+
+      const doImport = async () => {
+        try {
+          const batch = writeBatch(db);
+          const newFaqs: FAQ[] = [];
+          const nextOrder = faqs.length > 0 ? Math.max(...faqs.map(f => f.order)) + 1 : 0;
+
+          dataRows.forEach((r, index) => {
+            const published = publishedIdx === -1
+              ? true
+              : !['no', 'false', '0', ''].includes((r[publishedIdx] || '').trim().toLowerCase());
+            const parsedOrder = orderIdx !== -1 ? parseInt(r[orderIdx]) : NaN;
+            const orderVal = !isNaN(parsedOrder) ? parsedOrder : nextOrder + index;
+
+            const data = {
+              q: r[qIdx].trim(),
+              a: r[aIdx].trim(),
+              category: (catIdx !== -1 ? r[catIdx].trim() : '') || 'General',
+              order: orderVal,
+              published,
+            };
+
+            const newDocRef = doc(collection(db, 'faqs'));
+            batch.set(newDocRef, data);
+            newFaqs.push({ id: newDocRef.id, ...data });
+          });
+
+          await batch.commit();
+          setFaqs(prev => [...prev, ...newFaqs]);
+          toast.success(`Imported ${newFaqs.length} FAQs from CSV`);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, 'faqs');
+        }
+      };
+
+      if (faqs.length > 0) {
+        toast(`Import ${dataRows.length} FAQs from CSV?`, {
+          description: 'These will be added to your current FAQ list.',
+          action: {
+            label: 'Import',
+            onClick: doImport
+          }
+        });
+      } else {
+        await doImport();
+      }
+    } catch (error) {
+      toast.error('Could not read CSV file');
+      console.error(error);
     }
   };
 
@@ -208,11 +351,24 @@ export const MarketingFAQ: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportCsvFile}
+          />
           <button
-            onClick={seedFromTranslations}
+            onClick={handleImportCsvClick}
             className="flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md border border-black/10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white transition-all shadow-sm"
           >
-            <Download size={14} /> Import from Website
+            <Upload size={14} /> Import CSV
+          </button>
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md border border-black/10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white transition-all shadow-sm"
+          >
+            <Download size={14} /> Export CSV
           </button>
           <button
             onClick={() => setIsAdding(true)}
