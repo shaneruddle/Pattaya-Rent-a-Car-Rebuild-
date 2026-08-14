@@ -202,6 +202,32 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
   const [isSuccess, setIsSuccess] = useState(false);
   const [honeypot, setHoneypot] = useState('');
 
+  // Informational delivery fee estimate shown next to the map pin - does not affect
+  // the quoted Total Amount. Distance-based (see /api/delivery/quote on server.ts).
+  const [deliveryFeeQuote, setDeliveryFeeQuote] = useState<{ distanceKm: number; fee: number | null; available: boolean; maxRadiusKm: number } | null>(null);
+  const [deliveryFeeLoading, setDeliveryFeeLoading] = useState(false);
+
+  useEffect(() => {
+    if (!formData.requireDelivery || !formData.deliveryLocation) {
+      setDeliveryFeeQuote(null);
+      return;
+    }
+    const { lat, lng } = formData.deliveryLocation;
+    setDeliveryFeeLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+        const data = await resp.json();
+        if (resp.ok) setDeliveryFeeQuote(data);
+      } catch {
+        // Silently ignore - this is an informational estimate, not required to submit.
+      } finally {
+        setDeliveryFeeLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [formData.requireDelivery, formData.deliveryLocation?.lat, formData.deliveryLocation?.lng]);
+
   // Filters
   const [filters, setFilters] = useState({
     seats: 'all',
@@ -1626,11 +1652,27 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                               />
                               <div className="space-y-2">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Pin your location on the map</p>
-                                <LocationPicker 
-                                  location={formData.deliveryLocation} 
+                                <LocationPicker
+                                  location={formData.deliveryLocation}
                                   onChange={(loc) => setFormData({ ...formData, deliveryLocation: loc })}
                                   height="300px"
                                 />
+                                {(deliveryFeeLoading || deliveryFeeQuote) && (
+                                  <div className={cn(
+                                    "px-6 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest",
+                                    deliveryFeeQuote?.available === false
+                                      ? "bg-black/5 text-black/50"
+                                      : (isBikeMode ? "bg-brand-blue/5 text-brand-blue" : "bg-brand-orange/5 text-brand-orange")
+                                  )}>
+                                    {deliveryFeeLoading && !deliveryFeeQuote
+                                      ? "Calculating delivery fee..."
+                                      : deliveryFeeQuote?.available === false
+                                        ? `This location is outside our standard delivery area (${deliveryFeeQuote.maxRadiusKm}km) - our team will confirm feasibility and cost with you directly.`
+                                        : deliveryFeeQuote?.fee === 0
+                                          ? "Estimated delivery fee: Free"
+                                          : `Estimated delivery fee: THB ${deliveryFeeQuote?.fee?.toLocaleString()} (~${deliveryFeeQuote?.distanceKm}km from our office)`}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </motion.div>

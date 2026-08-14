@@ -454,6 +454,26 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
       // Use pre-fetched template if available
       let bodyTemplate = templates[templateId] || templates[`name_${fallbackName}`] || defaultBody;
 
+      // Delivery fee (distance-based - see /api/delivery/quote on server.ts), only
+      // computable when this enquiry has a pinned delivery location.
+      let deliveryFeeText = 'Not specified';
+      if (enquiry.deliveryLocation) {
+        try {
+          const { lat, lng } = enquiry.deliveryLocation;
+          const feeRes = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+          const feeData = await feeRes.json();
+          if (feeRes.ok) {
+            deliveryFeeText = feeData.available === false
+              ? 'outside our standard delivery area - to be confirmed'
+              : feeData.fee === 0
+                ? 'Free'
+                : `${feeData.fee} THB`;
+          }
+        } catch (err) {
+          console.error('Failed to load delivery fee for template fill:', err);
+        }
+      }
+
       // 2. Process template with enquiry data
       const placeholders = {
         '{{customer_name}}': (enquiry.customerName || 'Customer').split(' ')[0],
@@ -467,6 +487,7 @@ export const LiveEnquiries: React.FC<LiveEnquiriesProps> = ({ bookings = [], car
           ? `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}` 
           : '',
         '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{delivery_fee}}': deliveryFeeText,
         '{{customer_email}}': enquiry.email || '',
         '{{customer_phone}}': enquiry.mobileNumber || '',
         '{{comments}}': enquiry.notes || '',
@@ -523,6 +544,23 @@ Do you wish to proceed with the booking ?`,
     }
     setSendingEnquiryId(enquiry.id || '');
     try {
+      let deliveryFeeText = 'Not specified';
+      if (enquiry.deliveryLocation) {
+        try {
+          const { lat, lng } = enquiry.deliveryLocation;
+          const feeRes = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+          const feeData = await feeRes.json();
+          if (feeRes.ok) {
+            deliveryFeeText = feeData.available === false
+              ? 'outside our standard delivery area - to be confirmed'
+              : feeData.fee === 0
+                ? 'Free'
+                : `${feeData.fee} THB`;
+          }
+        } catch (err) {
+          console.error('Failed to load delivery fee for template fill:', err);
+        }
+      }
       const placeholders: Record<string, string> = {
         '{{customer_name}}': (enquiry.customerName || 'Customer').split(' ')[0],
         '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
@@ -535,6 +573,7 @@ Do you wish to proceed with the booking ?`,
           ? `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
           : '',
         '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{delivery_fee}}': deliveryFeeText,
         '{{customer_email}}': enquiry.email || '',
         '{{customer_phone}}': enquiry.mobileNumber || '',
         '{{comments}}': enquiry.notes || '',
@@ -577,6 +616,23 @@ Do you wish to proceed with the booking ?`,
     }
     setSendingReminderId(enquiry.id || '');
     try {
+      let deliveryFeeText = 'Not specified';
+      if (enquiry.deliveryLocation) {
+        try {
+          const { lat, lng } = enquiry.deliveryLocation;
+          const feeRes = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+          const feeData = await feeRes.json();
+          if (feeRes.ok) {
+            deliveryFeeText = feeData.available === false
+              ? 'outside our standard delivery area - to be confirmed'
+              : feeData.fee === 0
+                ? 'Free'
+                : `${feeData.fee} THB`;
+          }
+        } catch (err) {
+          console.error('Failed to load delivery fee for template fill:', err);
+        }
+      }
       const placeholders: Record<string, string> = {
         '{{customer_name}}': (enquiry.customerName || 'Customer').split(' ')[0],
         '{{vehicle_model}}': enquiry.requestedCarType || 'requested car',
@@ -589,6 +645,7 @@ Do you wish to proceed with the booking ?`,
           ? `${format(parseISO(enquiry.startDate), 'dd MMM yyyy')} to ${format(parseISO(enquiry.endDate), 'dd MMM yyyy')}`
           : '',
         '{{delivery_address}}': enquiry.deliveryAddress || 'Not specified',
+        '{{delivery_fee}}': deliveryFeeText,
         '{{customer_email}}': enquiry.email || '',
         '{{customer_phone}}': enquiry.mobileNumber || '',
         '{{comments}}': enquiry.notes || '',

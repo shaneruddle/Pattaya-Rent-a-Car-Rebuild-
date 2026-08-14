@@ -788,6 +788,62 @@ app.get("/api/pricing/quote", async (req, res) => {
   }
 });
 
+// Delivery fee: distance-based, config-driven (pricing_config/delivery). Straight-line
+// (Haversine) distance from the office - matches what LocationPicker.tsx already gives us
+// (customer drops a pin, we get lat/lng), no geocoding API needed. Shared by the public
+// quote endpoint below, the suggest-reply prompt, and the Inbox/Live Enquiries template
+// fillers, so the rule only lives in one place.
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth radius in km
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Free within freeRadiusKm. Beyond that: baseFee for the first km over, then +incrementPerKm
+// for each additional full km (partial km rounds up) - e.g. with the current config
+// (free<=10km, base 500, +50/km, cap 20km): 10.5km->500, 12km->550, 20km->950 (max).
+// Beyond maxRadiusKm we don't quote a fee at all - staff confirm delivery separately.
+function calculateDeliveryFee(distanceKm: number, cfg: any): { fee: number | null; available: boolean } {
+  if (distanceKm <= cfg.freeRadiusKm) return { fee: 0, available: true };
+  if (distanceKm > cfg.maxRadiusKm) return { fee: null, available: false };
+  const extraKm = Math.ceil(distanceKm - cfg.freeRadiusKm);
+  const fee = cfg.baseFee + cfg.incrementPerKm * (extraKm - 1);
+  return { fee, available: true };
+}
+
+app.get("/api/delivery/quote", async (req, res) => {
+  if (!firestore) {
+    return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+  }
+  const lat = parseFloat(req.query.lat as string);
+  const lng = parseFloat(req.query.lng as string);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "Required query params: lat, lng" });
+  }
+  try {
+    const cfgSnap = await firestore.collection('pricing_config').doc('delivery').get();
+    if (!cfgSnap.exists) {
+      return res.status(500).json({ error: "pricing_config/delivery not found" });
+    }
+    const cfg = cfgSnap.data();
+    const distanceKm = haversineKm(cfg.officeLat, cfg.officeLng, lat, lng);
+    const { fee, available } = calculateDeliveryFee(distanceKm, cfg);
+    res.json({
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      fee,
+      available,
+      freeRadiusKm: cfg.freeRadiusKm,
+      maxRadiusKm: cfg.maxRadiusKm,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message, code: error.code });
+  }
+});
+
   // Email API
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website,
@@ -1826,10 +1882,34 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
         to: gmailHeader(headers, 'To'),
         date: gmailHeader(headers, 'Date'),
         body: (text || stripHtmlTags(html) || '').trim(),
+        bookingId: gmailHeader(headers, 'X-Booking-Id') || undefined,
       };
     });
     const subject = gmailHeader(rawMessages[rawMessages.length - 1]?.payload?.headers || [], 'Subject');
     const customerEmail = resolveThreadCustomerEmail(messages);
+
+    // If this thread is linked to a booking (X-Booking-Id header, set at send time - see
+    // /api/send-email), pull its delivery fee the same way the enquiry form and templates
+    // do, so the draft states the actual fee instead of guessing one.
+    let deliveryFeeInfo: string | null = null;
+    const linkedBookingId = messages.find((m: any) => m.bookingId)?.bookingId;
+    if (linkedBookingId) {
+      const bookingSnap = await firestore.collection('bookings').doc(linkedBookingId).get();
+      const loc = bookingSnap.exists ? bookingSnap.data()?.deliveryLocation : null;
+      if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+        const deliveryCfgSnap = await firestore.collection('pricing_config').doc('delivery').get();
+        if (deliveryCfgSnap.exists) {
+          const deliveryCfg = deliveryCfgSnap.data();
+          const distanceKm = haversineKm(deliveryCfg.officeLat, deliveryCfg.officeLng, loc.lat, loc.lng);
+          const { fee, available } = calculateDeliveryFee(distanceKm, deliveryCfg);
+          deliveryFeeInfo = !available
+            ? `This address is ~${distanceKm.toFixed(1)}km from our office, outside our standard ${deliveryCfg.maxRadiusKm}km delivery area - do not quote a fee, tell the customer delivery availability and cost will need to be confirmed by our team.`
+            : fee === 0
+              ? `This address is ~${distanceKm.toFixed(1)}km from our office, within our free delivery zone (${deliveryCfg.freeRadiusKm}km) - delivery is free.`
+              : `This address is ~${distanceKm.toFixed(1)}km from our office - the delivery fee is ${fee} THB.`;
+        }
+      }
+    }
 
     let customerProfile: any = null;
     let bookingHistory: any[] = [];
@@ -1875,6 +1955,9 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
     }
     if (faqs.length > 0) {
       promptParts.push(`\nCompany FAQ knowledge base (use these for factual answers where relevant): ${JSON.stringify(faqs)}`);
+    }
+    if (deliveryFeeInfo) {
+      promptParts.push(`\nDelivery fee for this booking's address: ${deliveryFeeInfo}`);
     }
     const prompt = promptParts.join('\n');
 

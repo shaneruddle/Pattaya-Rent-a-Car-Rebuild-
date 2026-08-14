@@ -24,6 +24,7 @@ const DYNAMIC_TAGS = [
   { tag: '{{rental_period}}', label: 'Rental Period (Range)' },
   { tag: '{{total_price}}', label: 'Total Price' },
   { tag: '{{delivery_address}}', label: 'Delivery Address' },
+  { tag: '{{delivery_fee}}', label: 'Delivery Fee' },
   { tag: '{{comments}}', label: 'Comments / Notes' },
   { tag: '{{photos}}', label: 'Damage Photos Grid' },
 ];
@@ -303,6 +304,7 @@ export const EmailTemplates: React.FC = () => {
         '{{rental_period}}': '15 May 2024 to 20 May 2024',
         '{{total_price}}': '15,000',
         '{{delivery_address}}': '123 Beach Road, Pattaya',
+        '{{delivery_fee}}': '550 THB',
         '{{comments}}': 'Please bring a child seat.',
         '{{photos}}': [
           'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400',
@@ -336,6 +338,7 @@ export const EmailTemplates: React.FC = () => {
       '{{rental_period}}': '15 May 2024 to 20 May 2024',
       '{{total_price}}': '15,000',
       '{{delivery_address}}': '123 Beach Road, Pattaya',
+      '{{delivery_fee}}': '550 THB',
       '{{photos}}': [
         'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400',
         'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=400',

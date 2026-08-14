@@ -461,6 +461,22 @@ export const MailInbox: React.FC = () => {
           }
           if (booking.deliveryAddress) placeholders['{{delivery_address}}'] = booking.deliveryAddress;
           if (booking.notes) placeholders['{{comments}}'] = booking.notes;
+          if (booking.deliveryLocation) {
+            try {
+              const { lat, lng } = booking.deliveryLocation;
+              const feeRes = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+              const feeData = await feeRes.json();
+              if (feeRes.ok) {
+                placeholders['{{delivery_fee}}'] = feeData.available === false
+                  ? 'outside our standard delivery area - to be confirmed'
+                  : feeData.fee === 0
+                    ? 'Free'
+                    : `${feeData.fee} THB`;
+              }
+            } catch (err) {
+              console.error('Failed to load delivery fee for template fill:', err);
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load linked booking for template fill:', err);
