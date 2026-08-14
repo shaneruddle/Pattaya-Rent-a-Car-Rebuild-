@@ -8,6 +8,7 @@ import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailO
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
+import { NATIONALITY_OPTIONS, suggestNationalityFromPhone } from '../lib/nationalityUtils';
 
 const INFO_MAILBOX = 'info@pattayarentacar.com';
 
@@ -114,11 +115,6 @@ async function authedFetch(path: string, options: RequestInit = {}): Promise<Res
     },
   });
 }
-
-const NATIONALITY_OPTIONS = [
-  'Thai', 'British', 'American', 'Australian', 'German', 'French',
-  'Russian', 'Chinese', 'Japanese', 'Korean', 'Indian', 'Other',
-];
 
 const PROFILE_FIELDS: { key: keyof Customer; label: string; type?: 'text' | 'textarea' | 'checkbox' | 'select'; options?: string[] }[] = [
   { key: 'firstName', label: 'First name' },
@@ -1047,16 +1043,27 @@ export const MailInbox: React.FC = () => {
                           className="mt-1"
                         />
                       ) : f.type === 'select' ? (
-                        <select
-                          value={(customerForm[f.key] as string) || ''}
-                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
-                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5 bg-white"
-                        >
-                          <option value="">Select...</option>
-                          {(f.options || []).map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
+                        <>
+                          <select
+                            value={(customerForm[f.key] as string) || ''}
+                            onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                            className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5 bg-white"
+                          >
+                            <option value="">Select...</option>
+                            {(f.options || []).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          {f.key === 'nationality' && !customerForm.nationality && suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) && (
+                            <button
+                              type="button"
+                              onClick={() => handleCustomerFieldChange('nationality', suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) as string)}
+                              className="mt-1 text-[10px] font-medium text-brand-orange hover:underline"
+                            >
+                              Suggest: {suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber)} (from phone)
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <input
                           type="text"

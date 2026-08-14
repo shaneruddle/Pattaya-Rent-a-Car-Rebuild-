@@ -4,6 +4,7 @@ import { upsertCustomer, updateCustomer, findExistingByEmail } from '../lib/cust
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
+import { NATIONALITY_OPTIONS, suggestNationalityFromPhone } from '../lib/nationalityUtils';
 import { Booking, Car } from '../types';
 import { format, parseISO, isValid, formatDistanceToNow, isToday, addDays } from 'date-fns';
 import { 
@@ -987,18 +988,20 @@ However, we can offer the following alternative...`,
                             className="bg-transparent text-[10px] font-bold uppercase tracking-widest text-black/40 border-none outline-none cursor-pointer hover:text-brand-orange transition-colors"
                           >
                             <option value="">Nationality</option>
-                            <option value="Thai">Thai</option>
-                            <option value="Russian">Russian</option>
-                            <option value="Australian">Australian</option>
-                            <option value="British">British</option>
-                            <option value="German">German</option>
-                            <option value="Korean">Korean</option>
-                            <option value="Chinese">Chinese</option>
-                            <option value="American">American</option>
-                            <option value="French">French</option>
-                            <option value="Other">Other</option>
+                            {NATIONALITY_OPTIONS.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
                           </select>
                         </div>
+                        {!enquiry.nationality && suggestNationalityFromPhone(enquiry.mobileNumber) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleNationalityChange(enquiry, suggestNationalityFromPhone(enquiry.mobileNumber) as string); }}
+                            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-brand-orange hover:underline"
+                            title="Suggested from phone number"
+                          >
+                            Suggest: {suggestNationalityFromPhone(enquiry.mobileNumber)}
+                          </button>
+                        )}
                         {(enquiry.utmSource || enquiry.bookingSource) && (
                           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange/60">
                             <Zap size={12} /> {enquiry.bookingSource || enquiry.utmSource}
@@ -1464,20 +1467,19 @@ However, we can offer the following alternative...`,
                         onChange={e => setFormData(p => ({ ...p, nationality: e.target.value }))}
                       >
                         <option value="">—</option>
-                        <option value="Thai">Thai</option>
-                        <option value="British">British</option>
-                        <option value="American">American</option>
-                        <option value="Australian">Australian</option>
-                        <option value="German">German</option>
-                        <option value="French">French</option>
-                        <option value="Russian">Russian</option>
-                        <option value="Chinese">Chinese</option>
-                        <option value="Japanese">Japanese</option>
-                        <option value="Korean">Korean</option>
-                        <option value="Indian">Indian</option>
-                        <option value="Scandinavian">Scandinavian</option>
-                        <option value="Other">Other</option>
+                        {NATIONALITY_OPTIONS.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
                       </select>
+                      {!formData.nationality && suggestNationalityFromPhone(formData.mobileNumber) && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData(p => ({ ...p, nationality: suggestNationalityFromPhone(formData.mobileNumber) as string }))}
+                          className="text-[10px] font-medium text-brand-orange hover:underline ml-4"
+                        >
+                          Suggest: {suggestNationalityFromPhone(formData.mobileNumber)} (from phone)
+                        </button>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-black/40 ml-4">Booking Source</label>
