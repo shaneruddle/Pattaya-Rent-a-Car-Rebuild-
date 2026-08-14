@@ -1,13 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { auth } from '../firebase';
-import { Booking, Customer } from '../types';
+import { auth, db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import { Booking, Customer, EmailTemplate } from '../types';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
 
 const INFO_MAILBOX = 'info@pattayarentacar.com';
+
+// Templates that aren't standalone customer replies - internal staff
+// notifications and the auto-appended signature block - are left out of the
+// Inbox picker. Everything else in the Email Templates section is a message
+// meant to go to a customer, so it's fair game here.
+const NON_REPLY_TEMPLATE_IDS = new Set(['new_booking_website', 'email_signature']);
+const isCustomerFacingTemplate = (t: EmailTemplate) =>
+  !NON_REPLY_TEMPLATE_IDS.has(t.id) &&
+  !/not sent directly/i.test(t.subject || '') &&
+  !/staff notification/i.test(t.name || '');
 
 interface MailThread {
   id: string;
@@ -126,6 +138,37 @@ export const MailInbox: React.FC = () => {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const templateMenuRef = useRef<HTMLDivElement>(null);
+
+  // Templates rarely change, so fetch them once rather than per-thread.
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'email_templates'));
+        const list = snap.docs
+          .map(d => ({ ...(d.data() as Omit<EmailTemplate, 'id'>), id: d.id }))
+          .filter(isCustomerFacingTemplate)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setTemplates(list);
+      } catch (err) {
+        console.error('Failed to load email templates:', err);
+      }
+    };
+    fetchTemplates();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (templateMenuRef.current && !templateMenuRef.current.contains(event.target as Node)) {
+        setShowTemplateMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
@@ -364,6 +407,30 @@ export const MailInbox: React.FC = () => {
     } finally {
       setSuggestingReply(false);
     }
+  };
+
+  // Unlike Live Enquiries, a thread here isn't tied to one specific Booking
+  // record, so we only auto-fill what we can read reliably from the thread
+  // itself and the customer's profile. Anything else the template references
+  // (vehicle, dates, price, etc.) is left as a literal {{tag}} - a visible
+  // flag for staff to fill in by hand before sending.
+  const applyTemplate = (template: EmailTemplate) => {
+    const inboundMessage = [...messages].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX);
+    const derivedName = customer?.firstName
+      || (inboundMessage ? extractName(inboundMessage.from).split(' ')[0] : '')
+      || 'Customer';
+    const placeholders: Record<string, string> = {
+      '{{customer_name}}': derivedName,
+      '{{customer_email}}': customerEmail || '',
+      '{{customer_phone}}': customer?.mobileNumber || '',
+    };
+    const processed = htmlToPlainText(processTemplate(template.body, placeholders));
+
+    if (replyBody.trim() && !window.confirm(`Replace your current draft with the "${template.name}" template?`)) {
+      return;
+    }
+    setReplyBody(processed);
+    setShowTemplateMenu(false);
   };
 
   const handleStartEditCustomer = () => {
@@ -668,15 +735,41 @@ export const MailInbox: React.FC = () => {
                   className="w-full rounded-xl border border-black/10 bg-white/60 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/40 resize-y min-h-[160px] max-h-[60vh]"
                 />
                 <div className="flex justify-between items-center mt-2">
-                  <button
-                    onClick={handleSuggestReply}
-                    disabled={suggestingReply}
-                    className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
-                    title="Draft a reply with AI - review before sending"
-                  >
-                    {suggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    Suggest reply
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={templateMenuRef}>
+                      <button
+                        onClick={() => setShowTemplateMenu(v => !v)}
+                        disabled={templates.length === 0}
+                        className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                        title="Insert a saved email template"
+                      >
+                        <LayoutTemplate size={14} />
+                        Templates
+                      </button>
+                      {showTemplateMenu && (
+                        <div className="absolute bottom-full left-0 mb-2 w-64 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-20 py-1">
+                          {templates.map(t => (
+                            <button
+                              key={t.id}
+                              onClick={() => applyTemplate(t)}
+                              className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors"
+                            >
+                              {t.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleSuggestReply}
+                      disabled={suggestingReply}
+                      className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                      title="Draft a reply with AI - review before sending"
+                    >
+                      {suggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Suggest reply
+                    </button>
+                  </div>
                   <button
                     onClick={handleSend}
                     disabled={sending || !replyBody.trim()}
