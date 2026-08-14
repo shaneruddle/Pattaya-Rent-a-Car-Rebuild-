@@ -61,7 +61,12 @@ function extractName(fromHeader: string): string {
 
 function formatShortDate(dateStr: string): string {
   try {
-    return format(new Date(dateStr), 'dd MMM');
+    const date = new Date(dateStr);
+    const now = new Date();
+    const isToday = date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+    return isToday ? format(date, 'HH:mm') : format(date, 'dd MMM');
   } catch {
     return '';
   }
