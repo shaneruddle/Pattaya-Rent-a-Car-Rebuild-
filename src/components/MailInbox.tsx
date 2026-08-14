@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { auth, db } from '../firebase';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Booking, Customer, EmailTemplate } from '../types';
 import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -59,6 +59,21 @@ function extractName(fromHeader: string): string {
   return name || extractEmail(fromHeader);
 }
 
+// Emails that fail to deliver come back into the same Gmail thread as an
+// automated reply from the receiving mail system, not from the customer -
+// these have a distinctive sender and/or subject regardless of which mail
+// server rejected them.
+const BOUNCE_SENDER_RE = /mailer-daemon|postmaster|mail delivery (subsystem|system)/i;
+const BOUNCE_SUBJECT_RE = /delivery status notification|undelivered mail|mail delivery (failed|failure)|returned mail|failure notice|delivery incomplete|message not delivered|address not found/i;
+
+function isBounceMessage(m: { from: string; subject?: string }): boolean {
+  return BOUNCE_SENDER_RE.test(m.from || '') || BOUNCE_SUBJECT_RE.test(m.subject || '');
+}
+
+function isBounceThread(t: { from: string; subject?: string; snippet?: string }): boolean {
+  return isBounceMessage(t) || BOUNCE_SUBJECT_RE.test(t.snippet || '');
+}
+
 function formatShortDate(dateStr: string): string {
   try {
     const date = new Date(dateStr);
@@ -78,7 +93,11 @@ function formatShortDate(dateStr: string): string {
 // reply yet) have no such message, so fall back to the "To" address of the
 // most recent outbound message instead of misreading info@ as the customer.
 function resolveCustomerEmail(msgs: MailMessage[]): string {
-  const inbound = [...msgs].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX);
+  // Bounce notifications come from the mail system, not the customer - if one is
+  // the most recent non-info@ message, skip it so a delivery failure doesn't get
+  // mistaken for the customer replying. Falls through to the outbound "to"
+  // address below, which is exactly the (likely mistyped) address that bounced.
+  const inbound = [...msgs].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX && !isBounceMessage(m));
   if (inbound) return extractEmail(inbound.from);
   const outbound = [...msgs].reverse().find(m => m.to && extractEmail(m.to) !== INFO_MAILBOX);
   return outbound ? extractEmail(outbound.to) : '';
@@ -134,6 +153,9 @@ export const MailInbox: React.FC = () => {
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
+  const [correctingEmail, setCorrectingEmail] = useState(false);
+  const [correctedEmailInput, setCorrectedEmailInput] = useState('');
+  const [savingCorrectedEmail, setSavingCorrectedEmail] = useState(false);
 
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -343,6 +365,21 @@ export const MailInbox: React.FC = () => {
   const lastMessage = messages[messages.length - 1] || null;
   const customerEmail = resolveCustomerEmail(messages);
 
+  // The address a bounce actually failed to reach is the "to" of the most
+  // recent message we sent before the bounce came back - not the bounce
+  // sender itself (that's the mail system, e.g. mailer-daemon@...).
+  const bounceIndex = messages.findIndex(isBounceMessage);
+  const bounceMessage = bounceIndex >= 0 ? messages[bounceIndex] : null;
+  const bouncedAddress = (() => {
+    if (bounceIndex < 0) return '';
+    for (let i = bounceIndex - 1; i >= 0; i--) {
+      if (extractEmail(messages[i].from) === INFO_MAILBOX && messages[i].to) {
+        return extractEmail(messages[i].to);
+      }
+    }
+    return '';
+  })();
+
   const toggleMessageExpanded = (id: string) => {
     setExpandedMessageIds(prev => {
       const next = new Set(prev);
@@ -543,6 +580,46 @@ export const MailInbox: React.FC = () => {
     }
   };
 
+  // Writes a corrected address to whichever records exist for this thread -
+  // the linked booking/enquiry (the field that actually caused the bounce)
+  // and the Customer profile if one was found. Does not resend anything;
+  // future automated emails for this booking/customer will use the fix.
+  const handleSaveCorrectedEmail = async () => {
+    const newEmail = correctedEmailInput.trim().toLowerCase();
+    if (!newEmail || !/^\S+@\S+\.\S+$/.test(newEmail)) {
+      toast.error('Enter a valid email address');
+      return;
+    }
+    const linkedBookingId = messages.find(m => m.bookingId)?.bookingId;
+    if (!linkedBookingId && !customer?.id) {
+      toast.error('No linked booking or customer profile found to update');
+      return;
+    }
+    setSavingCorrectedEmail(true);
+    try {
+      const writes: Promise<any>[] = [];
+      if (linkedBookingId) {
+        writes.push(updateDoc(doc(db, 'bookings', linkedBookingId), { email: newEmail }));
+      }
+      if (customer?.id) {
+        writes.push(updateDoc(doc(db, 'customers', customer.id), { email: newEmail, updatedAt: serverTimestamp() }));
+      }
+      await Promise.all(writes);
+      if (customer?.id) {
+        const snap = await getDoc(doc(db, 'customers', customer.id));
+        if (snap.exists()) setCustomer({ id: snap.id, ...snap.data() } as Customer);
+      }
+      toast.success('Email address corrected');
+      setCorrectingEmail(false);
+      setCorrectedEmailInput('');
+    } catch (err: any) {
+      console.error('Failed to save corrected email:', err);
+      toast.error('Failed to save corrected email');
+    } finally {
+      setSavingCorrectedEmail(false);
+    }
+  };
+
   const handleMarkUnread = async () => {
     if (!selectedThreadId) return;
     setMarkingUnread(true);
@@ -691,7 +768,14 @@ export const MailInbox: React.FC = () => {
                     <span className={cn('text-sm truncate', t.unread ? 'font-bold text-[#1A1A1A]' : 'font-medium text-[#1A1A1A]/70')}>
                       {extractName(t.from)}
                     </span>
-                    <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{formatShortDate(t.date)}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isBounceThread(t) && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+                          Bounced
+                        </span>
+                      )}
+                      <span className="text-[10px] text-[#1A1A1A]/40">{formatShortDate(t.date)}</span>
+                    </div>
                   </div>
                   <p className={cn('text-sm truncate mt-0.5', t.unread ? 'font-semibold text-[#1A1A1A]' : 'text-[#1A1A1A]/60')}>
                     {t.subject || '(no subject)'}
@@ -741,6 +825,53 @@ export const MailInbox: React.FC = () => {
                   Mark unread
                 </button>
               </div>
+              {bounceMessage && (
+                <div className="mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-red-700 uppercase tracking-wide text-[10px]">
+                    <AlertTriangle size={13} />
+                    Delivery failed
+                  </div>
+                  {!correctingEmail ? (
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <p className="text-red-700/80">
+                        {bouncedAddress
+                          ? <>This email to <span className="font-semibold">{bouncedAddress}</span> bounced.</>
+                          : 'This email bounced.'}
+                      </p>
+                      <button
+                        onClick={() => { setCorrectingEmail(true); setCorrectedEmailInput(bouncedAddress); }}
+                        className="shrink-0 font-bold text-red-700 hover:underline"
+                      >
+                        Correct address
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="email"
+                        value={correctedEmailInput}
+                        onChange={e => setCorrectedEmailInput(e.target.value)}
+                        placeholder="corrected@email.com"
+                        className="flex-1 rounded-lg border border-red-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-300"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSaveCorrectedEmail}
+                        disabled={savingCorrectedEmail}
+                        className="shrink-0 font-bold text-white bg-red-600 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      >
+                        {savingCorrectedEmail ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setCorrectingEmail(false)}
+                        className="shrink-0 font-medium text-red-700/60 hover:text-red-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                 {messagesLoading ? (
                   <div className="flex justify-center p-8"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
@@ -758,6 +889,11 @@ export const MailInbox: React.FC = () => {
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-xs font-bold text-[#1A1A1A] shrink-0">{extractName(m.from)}</span>
+                            {isBounceMessage(m) && (
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-100 px-1.5 py-0.5 rounded shrink-0">
+                                Bounced
+                              </span>
+                            )}
                             <span className="text-xs text-[#1A1A1A]/50 truncate">{snippet}</span>
                           </div>
                           <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{m.date}</span>
@@ -770,7 +906,14 @@ export const MailInbox: React.FC = () => {
                           className="flex items-center justify-between mb-2 cursor-pointer"
                           onClick={() => toggleMessageExpanded(m.id)}
                         >
-                          <span className="text-sm font-bold text-[#1A1A1A]">{extractName(m.from)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-[#1A1A1A]">{extractName(m.from)}</span>
+                            {isBounceMessage(m) && (
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+                                Bounced
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-[#1A1A1A]/40">{m.date}</span>
                         </div>
                         {m.bodyHtml ? (
