@@ -88,6 +88,15 @@ function formatShortDate(dateStr: string): string {
   }
 }
 
+// Historical price/day for a past booking - bookings only store a total amount, so this
+// is derived as amount / rental days (the rate actually charged), not the car's current rate.
+function historyPricePerDay(b: { startDate?: string; endDate?: string; amount?: number }): number | null {
+  if (!b.amount || !b.startDate || !b.endDate) return null;
+  const days = Math.round((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / 86400000);
+  if (days <= 0) return null;
+  return Math.round(b.amount / days);
+}
+
 // Resolve the customer's email for a thread. Prefers the most recent inbound
 // message (from someone other than the info@ mailbox). Threads that are
 // entirely outbound (e.g. an automated Rental Confirmation with no customer
@@ -1121,19 +1130,26 @@ export const MailInbox: React.FC = () => {
               <p className="text-xs text-[#1A1A1A]/40">No past bookings found for this email.</p>
             ) : (
               <div className="space-y-3">
-                {history.map(b => (
+                {history.map(b => {
+                  const perDay = historyPricePerDay(b);
+                  return (
                   <div key={b.id} className="bg-white/60 rounded-xl border border-black/10 p-3">
                     <p className="text-sm font-bold text-[#1A1A1A]">{b.customerName}</p>
                     <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
                       {b.startDate ? format(new Date(b.startDate), 'dd MMM yyyy') : ''}
                       {b.endDate ? ` - ${format(new Date(b.endDate), 'dd MMM yyyy')}` : ''}
                     </p>
+                    <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
+                      {b.carName || 'Unknown vehicle'}
+                      {perDay ? ` · THB ${perDay.toLocaleString()}/day` : ''}
+                    </p>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase">{b.status}</span>
                       {b.amount ? <span className="text-xs font-bold text-[#1A1A1A]">THB {b.amount.toLocaleString()}</span> : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

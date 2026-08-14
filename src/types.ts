@@ -76,6 +76,7 @@ export interface VehicleLog {
 export interface Booking {
   id: string;
   carId: string;
+  carName?: string; // resolved server-side for Mail Inbox customer history display only - not stored on the doc
   customerName: string;
   email?: string;
   mobileNumber?: string;

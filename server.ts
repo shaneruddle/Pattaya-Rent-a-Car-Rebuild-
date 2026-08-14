@@ -1992,6 +1992,18 @@ app.get('/api/mail/history', async (req: any, res: any) => {
       .map((d: any) => ({ id: d.id, ...d.data() }))
       .sort((a: any, b: any) => toMillis(b.createdAt) - toMillis(a.createdAt))
       .slice(0, 20);
+
+    // Resolve each booking's carId to the vehicle's name so staff see what was hired
+    // without a separate lookup. Bookings only store a total amount, not a per-day
+    // rate - the frontend derives price/day as amount / rental days for historical accuracy.
+    const carIds = Array.from(new Set(bookings.map((b: any) => b.carId).filter(Boolean)));
+    if (carIds.length > 0) {
+      const carDocs = await Promise.all(carIds.map((id: string) => firestore.collection('cars').doc(id).get()));
+      const carNameById: Record<string, string> = {};
+      carDocs.forEach((doc: any) => { if (doc.exists) carNameById[doc.id] = doc.data()?.name || ''; });
+      bookings.forEach((b: any) => { b.carName = carNameById[b.carId] || null; });
+    }
+
     res.json({ bookings });
   } catch (err: any) {
     console.error('[Mail] history error:', err.message);
