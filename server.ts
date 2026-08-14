@@ -982,6 +982,9 @@ app.get("/api/pricing/quote", async (req, res) => {
           subject: renderedSubject,
           html: templateId === "email_signature" ? renderedHtml : renderedHtml + signatureHtml,
           ...(tmplInReplyTo ? { inReplyTo: tmplInReplyTo, references: tmplInReplyTo } : {}),
+          // Lets the Inbox (see /api/mail/threads/:id below) link this email back
+          // to its Booking record for template auto-fill, once the reply lands.
+          ...(resolvedBookingId ? { headers: { 'X-Booking-Id': resolvedBookingId } } : {}),
         });
         console.log(`[Email] Template "${templateId}" sent OK:`, info.messageId, tmplInReplyTo ? `(threaded, In-Reply-To ${tmplInReplyTo})` : '');
         await maybeStoreMessageId(resolvedBookingId, info.messageId);
@@ -1026,6 +1029,9 @@ app.get("/api/pricing/quote", async (req, res) => {
         subject: subject || "New Message from Website",
         html: html,
         ...(legacyInReplyTo ? { inReplyTo: legacyInReplyTo, references: legacyInReplyTo } : {}),
+        // Lets the Inbox (see /api/mail/threads/:id below) link this email back
+        // to its Booking record for template auto-fill, once the reply lands.
+        ...(resolvedBookingId ? { headers: { 'X-Booking-Id': resolvedBookingId } } : {}),
       };
 
       console.log(`[Email] Sending email to ${mailOptions.to} with subject: ${mailOptions.subject}`);
@@ -1728,6 +1734,7 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
         bodyText: text,
         bodyHtml: html,
         unread: (m.labelIds || []).includes('UNREAD'),
+        bookingId: gmailHeader(headers, 'X-Booking-Id') || undefined,
       };
     });
     // Mark read in our own app-level tracking only (does not touch the real Gmail

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { auth, db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { Booking, Customer, EmailTemplate } from '../types';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
 import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
@@ -41,6 +41,11 @@ interface MailMessage {
   bodyText: string;
   bodyHtml: string;
   unread: boolean;
+  // Present only on messages sent through /api/send-email with a bookingId
+  // (see server.ts) - carried in a custom X-Booking-Id header so the Inbox can
+  // look up the live Booking record for template auto-fill. Older threads sent
+  // before this existed won't have it.
+  bookingId?: string;
 }
 
 function extractEmail(fromHeader: string): string {
@@ -409,26 +414,60 @@ export const MailInbox: React.FC = () => {
     }
   };
 
-  // Unlike Live Enquiries, a thread here isn't tied to one specific Booking
-  // record, so we only auto-fill what we can read reliably from the thread
-  // itself and the customer's profile. Anything else the template references
-  // (vehicle, dates, price, etc.) is left as a literal {{tag}} - a visible
-  // flag for staff to fill in by hand before sending.
-  const applyTemplate = (template: EmailTemplate) => {
+  // If a message in this thread carries our custom X-Booking-Id header (set in
+  // server.ts /api/send-email whenever an email is tied to a booking), we can
+  // pull the live Booking record and auto-fill every tag the template needs -
+  // vehicle, dates, price, delivery, comments - the same fields Live Enquiries
+  // fills from. Threads with no linked booking (sent before this existed, or
+  // unrelated to a booking) fall back to just customer name/email/phone from
+  // the thread itself. Anything we still can't fill is left as a literal
+  // {{tag}} - a visible flag for staff to fill in by hand.
+  const applyTemplate = async (template: EmailTemplate) => {
+    if (replyBody.trim() && !window.confirm(`Replace your current draft with the "${template.name}" template?`)) {
+      return;
+    }
+
     const inboundMessage = [...messages].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX);
     const derivedName = customer?.firstName
       || (inboundMessage ? extractName(inboundMessage.from).split(' ')[0] : '')
       || 'Customer';
-    const placeholders: Record<string, string> = {
-      '{{customer_name}}': derivedName,
-      '{{customer_email}}': customerEmail || '',
-      '{{customer_phone}}': customer?.mobileNumber || '',
-    };
-    const processed = htmlToPlainText(processTemplate(template.body, placeholders));
 
-    if (replyBody.trim() && !window.confirm(`Replace your current draft with the "${template.name}" template?`)) {
-      return;
+    const placeholders: Record<string, string> = { '{{customer_name}}': derivedName };
+    if (customerEmail) placeholders['{{customer_email}}'] = customerEmail;
+    if (customer?.mobileNumber) placeholders['{{customer_phone}}'] = customer.mobileNumber;
+
+    const linkedBookingId = messages.find(m => m.bookingId)?.bookingId;
+    if (linkedBookingId) {
+      try {
+        const snap = await getDoc(doc(db, 'bookings', linkedBookingId));
+        if (snap.exists()) {
+          const booking = snap.data() as Booking;
+          if (booking.customerName) placeholders['{{customer_name}}'] = booking.customerName.split(' ')[0];
+          if (booking.email) placeholders['{{customer_email}}'] = booking.email;
+          if (booking.mobileNumber) placeholders['{{customer_phone}}'] = booking.mobileNumber;
+          if (booking.requestedCarType) placeholders['{{vehicle_model}}'] = booking.requestedCarType;
+          if (booking.amount) placeholders['{{total_price}}'] = booking.amount.toLocaleString();
+          if (booking.startDate) {
+            placeholders['{{pickup_date}}'] = format(parseISO(booking.startDate), 'dd MMM yyyy');
+            placeholders['{{pickup_time}}'] = format(parseISO(booking.startDate), 'HH:mm');
+          }
+          if (booking.endDate) {
+            placeholders['{{return_date}}'] = format(parseISO(booking.endDate), 'dd MMM yyyy');
+            placeholders['{{return_time}}'] = format(parseISO(booking.endDate), 'HH:mm');
+          }
+          if (booking.startDate && booking.endDate) {
+            placeholders['{{rental_period}}'] =
+              `${format(parseISO(booking.startDate), 'dd MMM yyyy')} to ${format(parseISO(booking.endDate), 'dd MMM yyyy')}`;
+          }
+          if (booking.deliveryAddress) placeholders['{{delivery_address}}'] = booking.deliveryAddress;
+          if (booking.notes) placeholders['{{comments}}'] = booking.notes;
+        }
+      } catch (err) {
+        console.error('Failed to load linked booking for template fill:', err);
+      }
     }
+
+    const processed = htmlToPlainText(processTemplate(template.body, placeholders));
     setReplyBody(processed);
     setShowTemplateMenu(false);
   };
