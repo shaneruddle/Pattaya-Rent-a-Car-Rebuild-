@@ -1786,6 +1786,7 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
         messageIdHeader: gmailHeader(headers, 'Message-ID') || gmailHeader(headers, 'Message-Id'),
         from: gmailHeader(headers, 'From'),
         to: gmailHeader(headers, 'To'),
+        replyTo: gmailHeader(headers, 'Reply-To') || undefined,
         subject: gmailHeader(headers, 'Subject'),
         date: gmailHeader(headers, 'Date'),
         bodyText: text,
@@ -1851,7 +1852,7 @@ function stripHtmlTags(html: string): string {
 // resolveCustomerEmail): prefer the most recent inbound message (from someone
 // other than the info@ mailbox), falling back to the "To" address of the most
 // recent outbound message for threads that are entirely outbound so far.
-function resolveThreadCustomerEmail(msgs: { from: string; to: string }[]): string {
+function resolveThreadCustomerEmail(msgs: { from: string; to: string; replyTo?: string }[]): string {
   const emailOf = (header: string) => {
     const match = header.match(/<([^>]+)>/);
     return (match ? match[1] : header).trim().toLowerCase();
@@ -1859,7 +1860,12 @@ function resolveThreadCustomerEmail(msgs: { from: string; to: string }[]): strin
   const inbound = [...msgs].reverse().find(m => emailOf(m.from) !== GMAIL_INBOX_MAILBOX);
   if (inbound) return emailOf(inbound.from);
   const outbound = [...msgs].reverse().find(m => m.to && emailOf(m.to) !== GMAIL_INBOX_MAILBOX);
-  return outbound ? emailOf(outbound.to) : '';
+  if (outbound) return emailOf(outbound.to);
+  // Neither From nor To points past our own mailbox - happens for staff-only
+  // notifications (e.g. "New Booking Enquiry") sent to ourselves with the
+  // customer's real address only in Reply-To. Fall back to that.
+  const withReplyTo = [...msgs].reverse().find(m => m.replyTo && emailOf(m.replyTo) !== GMAIL_INBOX_MAILBOX);
+  return withReplyTo ? emailOf(withReplyTo.replyTo!) : '';
 }
 
 // AI-drafted reply suggestion for a thread. Staff review and edit before sending -
@@ -1881,6 +1887,7 @@ app.post('/api/mail/threads/:id/suggest-reply', async (req: any, res: any) => {
       return {
         from: gmailHeader(headers, 'From'),
         to: gmailHeader(headers, 'To'),
+        replyTo: gmailHeader(headers, 'Reply-To') || undefined,
         date: gmailHeader(headers, 'Date'),
         body: (text || stripHtmlTags(html) || '').trim(),
         bookingId: gmailHeader(headers, 'X-Booking-Id') || undefined,

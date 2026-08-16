@@ -37,6 +37,10 @@ interface MailMessage {
   messageIdHeader: string;
   from: string;
   to: string;
+  // Reply-To header, when present. Staff-only notifications (e.g. "New Booking
+  // Enquiry") are sent From info@ To info@, with the customer's real address
+  // only here - see resolveCustomerEmail() below.
+  replyTo?: string;
   subject: string;
   date: string;
   bodyText: string;
@@ -146,7 +150,12 @@ function resolveCustomerEmail(msgs: MailMessage[]): string {
   const inbound = [...msgs].reverse().find(m => extractEmail(m.from) !== INFO_MAILBOX && !isBounceMessage(m));
   if (inbound) return extractEmail(inbound.from);
   const outbound = [...msgs].reverse().find(m => m.to && extractEmail(m.to) !== INFO_MAILBOX);
-  return outbound ? extractEmail(outbound.to) : '';
+  if (outbound) return extractEmail(outbound.to);
+  // Neither From nor To points past our own mailbox - happens for staff-only
+  // notifications (e.g. "New Booking Enquiry") that are sent to ourselves with
+  // the customer's real address only in Reply-To. Fall back to that.
+  const withReplyTo = [...msgs].reverse().find(m => m.replyTo && extractEmail(m.replyTo) !== INFO_MAILBOX);
+  return withReplyTo ? extractEmail(withReplyTo.replyTo!) : '';
 }
 
 async function authedFetch(path: string, options: RequestInit = {}): Promise<Response> {
