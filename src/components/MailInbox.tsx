@@ -60,6 +60,42 @@ function extractName(fromHeader: string): string {
   return name || extractEmail(fromHeader);
 }
 
+// Curated list of common disposable/temporary email providers, checked
+// entirely client-side (no external API call, no data leaves the browser).
+// Not exhaustive - it's a soft "worth a second look" signal for staff on
+// brand-new enquiries, not a hard block.
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com', 'mailinator.net', 'mailinator.org', 'mailinator2.com',
+  'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz',
+  'guerrillamail.de', 'guerrillamail.info', 'guerrillamailblock.com',
+  'guerillamail.com', 'guerillamail.net', 'guerillamail.org', 'guerillamail.biz',
+  'guerillamail.info', 'guerillamailblock.com', 'sharklasers.com', 'grr.la',
+  'pokemail.net', 'spam4.me', '10minutemail.com', '10minutemail.net', '10minemail.com',
+  '20minutemail.com', 'tempmail.com', 'temp-mail.org', 'temp-mail.io', 'tempmail.net',
+  'tempmailo.com', 'throwawaymail.com', 'dispostable.com', 'trashmail.com',
+  'trashmail.net', 'trash-mail.com', 'yopmail.com', 'yopmail.fr', 'yopmail.net',
+  'moakt.com', 'moakt.cc', 'getnada.com', 'nada.email', 'maildrop.cc', 'mailnesia.com',
+  'mailcatch.com', 'mintemail.com', 'mytemp.email', 'tempinbox.com', 'emailondeck.com',
+  'fakeinbox.com', 'spamgourmet.com', 'mohmal.com', 'crazymailing.com',
+  'discard.email', 'discardmail.com', 'mail-temp.com', 'tempail.com',
+  'tempmailaddress.com', 'burnermail.io', 'luxusmail.org', 'anonbox.net',
+  'minuteinbox.com', 'tempr.email', 'emltmp.com', 'byom.de', 'spambog.com',
+  'spambog.de', 'spambog.ru', 'incognitomail.com', 'incognitomail.org',
+  'jetable.org', 'mytrashmail.com', 'no-spam.ws', 'wegwerfmail.de', 'wegwerfmail.net',
+  'wegwerfmail.org', 'einrot.com', 'spoofmail.de', 'trbvm.com', 'e4ward.com',
+  'tempemail.co', 'tempemail.net', 'throam.com', 'mailnull.com', 'spamhole.com',
+  'mytempmail.com', 'tempsky.com', 'deadaddress.com', 'spamex.com', 'opayq.com',
+  'superrito.com', 'mailmetrash.com', 'spamfree24.org', 'spamfree24.de',
+  'spamfree24.eu', 'trash2009.com', 'zoemail.org', 'spamavert.com', 'curryworld.de',
+  'letthemeatspam.com', 'mailexpire.com', 'thankyou2010.com', 'uggsrock.com',
+  'dropmail.me', 'inboxkitten.com', 'harakirimail.com', 'mailsac.com',
+]);
+
+function isDisposableEmail(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase().trim();
+  return !!domain && DISPOSABLE_EMAIL_DOMAINS.has(domain);
+}
+
 // Emails that fail to deliver come back into the same Gmail thread as an
 // automated reply from the receiving mail system, not from the customer -
 // these have a distinctive sender and/or subject regardless of which mail
@@ -371,6 +407,14 @@ export const MailInbox: React.FC = () => {
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
   const lastMessage = messages[messages.length - 1] || null;
   const customerEmail = resolveCustomerEmail(messages);
+
+  // Lightweight "who is this person" signals for brand-new enquiries where we
+  // only have name/email/mobile (no ID yet). Both run entirely client-side -
+  // no third-party lookup, no new data collection, nothing sent anywhere.
+  const isTempEmail = customerEmail ? isDisposableEmail(customerEmail) : false;
+  const searchName = customer?.firstName
+    ? `${customer.firstName} ${customer.lastName || ''}`.trim()
+    : (lastMessage ? extractName(lastMessage.from) : '');
 
   // The address a bounce actually failed to reach is the "to" of the most
   // recent message we sent before the bounce came back - not the bounce
@@ -1098,6 +1142,25 @@ export const MailInbox: React.FC = () => {
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   {history.length === 0 && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold uppercase">New customer</span>
+                  )}
+                  {history.length === 0 && isTempEmail && (
+                    <span
+                      title="This email is from a temporary/disposable email provider - worth a second look"
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 font-bold uppercase flex items-center gap-1"
+                    >
+                      <AlertTriangle size={11} /> Temp email
+                    </span>
+                  )}
+                  {history.length === 0 && searchName && (
+                    <a
+                      href={`https://www.google.com/search?q=${encodeURIComponent(searchName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Search this name online in a new tab"
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-600 font-bold uppercase flex items-center gap-1 hover:bg-gray-500/20"
+                    >
+                      <Search size={11} /> Search name
+                    </a>
                   )}
                   {customer?.diditStatus && customer.diditStatus !== 'Not Started' ? (
                     <button
