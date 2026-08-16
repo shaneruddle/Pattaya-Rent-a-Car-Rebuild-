@@ -61,6 +61,23 @@ export interface Customer {
     source?: string;
     totalSpent?: number;
     lastRentalDate?: any;     // Firestore Timestamp or null
+
+    // Didit ID verification - staff-triggered from the Mail Inbox for new
+    // customers (no booking history). See /api/verify/start, /api/didit/webhook.
+    diditStatus?: string;             // 'Not Started' | 'In Progress' | 'In Review' | 'Approved' | 'Declined' | 'Abandoned'
+    diditSessionId?: string;
+    diditVerificationUrl?: string;
+    diditVerifiedAt?: any;            // Firestore Timestamp
+    diditExtracted?: {
+        firstName?: string;
+        lastName?: string;
+        dob?: string;
+        documentType?: string;
+        documentNumber?: string;
+        issuingState?: string;
+    };
+    diditLivenessScore?: number;
+    diditFaceMatchScore?: number;
 }
 
 export interface VehicleLog {

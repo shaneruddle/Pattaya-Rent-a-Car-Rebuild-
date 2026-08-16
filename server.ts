@@ -11,6 +11,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as Papa from "papaparse";
 import https from "https";
+import crypto from "crypto";
 import fetch from "node-fetch";
 import nodemailer from "nodemailer";
 import cors from "cors";
@@ -2225,6 +2226,173 @@ app.put('/api/customers', async (req: any, res: any) => {
     res.json({ customer: { id: doc.id, ...updated.data() } });
   } catch (err: any) {
     console.error('[Mail] customer update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Didit ID Verification (staff-triggered from Mail Inbox, scoped to new
+// customers - i.e. no prior booking history - per project decision) ---
+const DIDIT_API_BASE = 'https://verification.didit.me/v3';
+
+// Creates a hosted Didit verification session for a customer and stores the
+// session reference on their record. vendor_data is set to the customers/{id}
+// doc ID so the webhook below can write results back to the right record.
+app.post('/api/verify/start', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const customerId = typeof req.body?.customerId === 'string' ? req.body.customerId : '';
+    if (!customerId) return res.status(400).json({ error: 'customerId is required' });
+
+    const apiKey = process.env.DIDIT_API_KEY;
+    const workflowId = process.env.DIDIT_WORKFLOW_ID;
+    if (!apiKey || !workflowId) return res.status(500).json({ error: 'Didit is not configured' });
+
+    const diditRes = await fetch(`${DIDIT_API_BASE}/session/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ workflow_id: workflowId, vendor_data: customerId }),
+    });
+    const diditData = await diditRes.json() as any;
+    if (!diditRes.ok) {
+      console.error('[Didit] session create error:', diditData);
+      return res.status(502).json({ error: 'Failed to create verification session' });
+    }
+
+    await firestore.collection('customers').doc(customerId).set({
+      diditStatus: diditData.status || 'Not Started',
+      diditSessionId: diditData.session_id,
+      diditVerificationUrl: diditData.url,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    res.json({ url: diditData.url, sessionId: diditData.session_id, status: diditData.status });
+  } catch (err: any) {
+    console.error('[Didit] verify/start error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Didit webhook - verification result notifications. Public endpoint (Didit calls
+// this directly, so no staff auth) - authenticated instead via HMAC signature
+// (X-Signature-V2, per docs.didit.me/integration/webhooks) using the shared
+// webhook secret from the destination configured in the Didit console.
+app.post('/api/didit/webhook', async (req: any, res: any) => {
+  try {
+    const secret = process.env.DIDIT_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ error: 'Webhook not configured' });
+
+    const signature = req.headers['x-signature-v2'] as string | undefined;
+    const timestampHeader = req.headers['x-timestamp'] as string | undefined;
+    if (!signature || !timestampHeader) return res.status(401).json({ error: 'Missing signature' });
+
+    const timestamp = parseInt(timestampHeader, 10);
+    if (!Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) {
+      return res.status(401).json({ error: 'Stale timestamp' });
+    }
+
+    // Canonicalize per Didit's X-Signature-V2 spec: sort object keys recursively,
+    // compact separators, preserve unescaped unicode.
+    function canonicalize(value: any): any {
+      if (Array.isArray(value)) return value.map(canonicalize);
+      if (value && typeof value === 'object') {
+        const sorted: any = {};
+        Object.keys(value).sort().forEach(k => { sorted[k] = canonicalize(value[k]); });
+        return sorted;
+      }
+      return value;
+    }
+    const canonical = JSON.stringify(canonicalize(req.body));
+    const expected = crypto.createHmac('sha256', secret).update(canonical, 'utf8').digest('hex');
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const expBuf = Buffer.from(expected, 'utf8');
+    const valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+    if (!valid) {
+      console.error('[Didit] webhook signature mismatch');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const { session_id, status, vendor_data, decision } = req.body || {};
+    const customerId = typeof vendor_data === 'string' ? vendor_data : '';
+    if (!customerId) return res.json({ ok: true });
+
+    const idVerification = decision?.id_verifications?.[0];
+    const livenessCheck = decision?.liveness_checks?.[0];
+    const faceMatch = decision?.face_matches?.[0];
+
+    const update: any = {
+      diditStatus: status,
+      diditSessionId: session_id,
+      diditVerifiedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (idVerification) {
+      update.diditExtracted = {
+        firstName: idVerification.first_name || null,
+        lastName: idVerification.last_name || null,
+        dob: idVerification.date_of_birth || null,
+        documentType: idVerification.document_type || null,
+        documentNumber: idVerification.document_number || null,
+        issuingState: idVerification.issuing_state || null,
+      };
+    }
+    if (livenessCheck?.score != null) update.diditLivenessScore = livenessCheck.score;
+    if (faceMatch?.score != null) update.diditFaceMatchScore = faceMatch.score;
+
+    await firestore.collection('customers').doc(customerId).set(update, { merge: true });
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[Didit] webhook error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fallback poll for staff to manually refresh verification status/decision from
+// Didit directly, in case the webhook above was missed.
+app.get('/api/verify/status', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const customerId = typeof req.query.customerId === 'string' ? req.query.customerId : '';
+    if (!customerId) return res.status(400).json({ error: 'customerId is required' });
+
+    const custSnap = await firestore.collection('customers').doc(customerId).get();
+    const sessionId = custSnap.data()?.diditSessionId;
+    if (!sessionId) return res.status(404).json({ error: 'No verification session on file' });
+
+    const apiKey = process.env.DIDIT_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Didit is not configured' });
+
+    const diditRes = await fetch(`${DIDIT_API_BASE}/session/${sessionId}/decision/`, {
+      headers: { 'x-api-key': apiKey },
+    });
+    const diditData = await diditRes.json() as any;
+    if (!diditRes.ok) {
+      console.error('[Didit] status poll error:', diditData);
+      return res.status(502).json({ error: 'Failed to fetch verification status' });
+    }
+
+    const idVerification = diditData.id_verifications?.[0];
+    const extracted = idVerification ? {
+      firstName: idVerification.first_name || null,
+      lastName: idVerification.last_name || null,
+      dob: idVerification.date_of_birth || null,
+      documentType: idVerification.document_type || null,
+      documentNumber: idVerification.document_number || null,
+      issuingState: idVerification.issuing_state || null,
+    } : null;
+
+    await firestore.collection('customers').doc(customerId).set({
+      diditStatus: diditData.status,
+      diditVerifiedAt: FieldValue.serverTimestamp(),
+      ...(extracted ? { diditExtracted: extracted } : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    res.json({ status: diditData.status, extracted });
+  } catch (err: any) {
+    console.error('[Didit] verify/status error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -4,7 +4,7 @@ import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'fi
 import { Booking, Customer, EmailTemplate } from '../types';
 import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -156,6 +156,8 @@ export const MailInbox: React.FC = () => {
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [customerForm, setCustomerForm] = useState<Partial<Customer>>({});
   const [savingCustomer, setSavingCustomer] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(false);
+  const [refreshingVerify, setRefreshingVerify] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
   const [correctingEmail, setCorrectingEmail] = useState(false);
@@ -561,6 +563,68 @@ export const MailInbox: React.FC = () => {
 
   const handleCustomerFieldChange = (field: keyof Customer, value: string | boolean) => {
     setCustomerForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Starts a Didit hosted verification session for the current thread's customer,
+  // scoped to new customers only (no booking history) per project decision. Creates
+  // a minimal customer stub first if none exists yet, so the session has a doc to
+  // attach results to.
+  const handleVerifyId = async () => {
+    if (!customerEmail) return;
+    setVerifyingId(true);
+    try {
+      let customerId = customer?.id;
+      if (!customerId) {
+        const custRes = await authedFetch('/api/customers', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: customerEmail }),
+        });
+        if (!custRes.ok) throw new Error(`HTTP ${custRes.status}`);
+        const custData = await custRes.json();
+        customerId = custData.customer?.id;
+        setCustomer(custData.customer || null);
+      }
+      if (!customerId) throw new Error('No customer record to attach verification to');
+
+      const res = await authedFetch('/api/verify/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCustomer(prev => prev ? { ...prev, diditStatus: data.status, diditSessionId: data.sessionId, diditVerificationUrl: data.url } : prev);
+      if (data.url) {
+        await navigator.clipboard.writeText(data.url);
+        toast.success('Verification link copied - send it to the customer');
+      } else {
+        toast.success('Verification session started');
+      }
+    } catch (err: any) {
+      console.error('Failed to start ID verification:', err);
+      toast.error('Failed to start ID verification');
+    } finally {
+      setVerifyingId(false);
+    }
+  };
+
+  // Manual fallback in case the Didit webhook was missed - re-polls the session
+  // status/decision directly.
+  const handleRefreshVerifyStatus = async () => {
+    if (!customer?.id) return;
+    setRefreshingVerify(true);
+    try {
+      const res = await authedFetch(`/api/verify/status?customerId=${encodeURIComponent(customer.id)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCustomer(prev => prev ? { ...prev, diditStatus: data.status, diditExtracted: data.extracted || prev.diditExtracted } : prev);
+    } catch (err: any) {
+      console.error('Failed to refresh verification status:', err);
+      toast.error('Failed to refresh status');
+    } finally {
+      setRefreshingVerify(false);
+    }
   };
 
   const handleSaveCustomer = async () => {
@@ -1030,6 +1094,38 @@ export const MailInbox: React.FC = () => {
                   </button>
                 )}
               </div>
+              {!customerLoading && !historyLoading && !editingCustomer && (
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {history.length === 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold uppercase">New customer</span>
+                  )}
+                  {customer?.diditStatus && customer.diditStatus !== 'Not Started' ? (
+                    <button
+                      onClick={handleRefreshVerifyStatus}
+                      disabled={refreshingVerify}
+                      title="Click to refresh status from Didit"
+                      className={cn(
+                        'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 disabled:opacity-50',
+                        customer.diditStatus === 'Approved' ? 'bg-green-500/10 text-green-600' :
+                        customer.diditStatus === 'Declined' ? 'bg-red-500/10 text-red-600' :
+                        'bg-amber-500/10 text-amber-600'
+                      )}
+                    >
+                      {refreshingVerify ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
+                      ID: {customer.diditStatus}
+                    </button>
+                  ) : history.length === 0 ? (
+                    <button
+                      onClick={handleVerifyId}
+                      disabled={verifyingId || !customerEmail}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {verifyingId ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
+                      {verifyingId ? 'Starting...' : 'Verify ID'}
+                    </button>
+                  ) : null}
+                </div>
+              )}
               {customerLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
               ) : editingCustomer ? (
