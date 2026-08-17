@@ -534,6 +534,10 @@ export const MailInbox: React.FC = () => {
     setEditingCustomer(false);
     setCustomerForm({});
     setReplyBody('');
+    // Queued "Car Photos" attachments are for the reply being drafted in this
+    // thread - without this a photo picked in one conversation would silently
+    // ride along into whatever gets sent in the next one.
+    setReplyAttachments([]);
     setMessagesLoading(true);
     try {
       const res = await authedFetch(`/api/mail/threads/${threadId}`);
@@ -1688,8 +1692,8 @@ export const MailInbox: React.FC = () => {
                     ))}
                   </div>
                 )}
-                <div className="flex justify-between items-center mt-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap justify-between items-center gap-2 mt-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <div className="relative" ref={templateMenuRef}>
                       <button
                         onClick={() => setShowTemplateMenu(v => !v)}
