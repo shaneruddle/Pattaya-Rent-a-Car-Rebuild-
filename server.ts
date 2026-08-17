@@ -1992,17 +1992,21 @@ app.post('/api/mail/reply', async (req: any, res: any) => {
     // get one at all before this, so a customer replying to a signed
     // booking-confirmation email would get an unsigned reply back.
     const signatureHtml = await loadEmailSignatureHtml();
+    const signedHtml = html + signatureHtml;
 
     const info = await transporter.sendMail({
       from: `"Pattaya Rent A Car" <${gmailUser}>`,
       to,
       subject: finalSubject,
-      html: html + signatureHtml,
+      html: signedHtml,
       ...(inReplyToMessageId ? { inReplyTo: inReplyToMessageId, references: inReplyToMessageId } : {}),
       ...(mailAttachments && mailAttachments.length > 0 ? { attachments: mailAttachments } : {}),
     });
     console.log(`[Mail] Reply sent OK: ${info.messageId}`);
-    res.json({ success: true, messageId: info.messageId });
+    // Return the final signed HTML so the client's optimistic thread update
+    // (MailInbox.tsx handleSend) can show staff the same message the
+    // customer actually received, instead of the unsigned draft.
+    res.json({ success: true, messageId: info.messageId, html: signedHtml });
   } catch (err: any) {
     console.error('[Mail] reply send error:', err.message);
     res.status(500).json({ error: err.message });
