@@ -1066,7 +1066,7 @@ export const MailInbox: React.FC = () => {
         )}
 
         <div className={cn(
-          'flex-1 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
+          'flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
           !showMobileDetail && 'hidden md:flex'
         )}>
           {!selectedThreadId ? (
@@ -1199,11 +1199,11 @@ export const MailInbox: React.FC = () => {
                         </div>
                         {m.bodyHtml ? (
                           <div
-                            className="text-sm text-[#1A1A1A]/80 [&_a]:text-brand-orange [&_a]:underline"
+                            className="text-sm text-[#1A1A1A]/80 max-w-full overflow-x-auto [&_a]:text-brand-orange [&_a]:underline"
                             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(m.bodyHtml) }}
                           />
                         ) : (
-                          <p className="text-sm text-[#1A1A1A]/80 whitespace-pre-wrap">{m.bodyText}</p>
+                          <p className="text-sm text-[#1A1A1A]/80 whitespace-pre-wrap break-words">{m.bodyText}</p>
                         )}
                       </div>
                       );
