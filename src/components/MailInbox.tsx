@@ -3,7 +3,7 @@ import { auth, db, storage } from '../firebase';
 import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import { Booking, Customer, EmailTemplate, WebsiteCar } from '../types';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO, differenceInHours } from 'date-fns';
 import DOMPurify from 'dompurify';
 import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car, Tag } from 'lucide-react';
 import { toast } from 'sonner';
@@ -101,6 +101,19 @@ interface PriceQuoteResult {
   totalPrice?: number;
   perDay?: number;
 }
+
+// Same office-hours pickup/drop-off time options as the live booking engine
+// (BookingEngine.tsx) - 30-min steps, 09:30-16:30 - so staff can only quote a
+// time slot a customer could actually book.
+const QUOTE_TIME_OPTIONS = Array.from({ length: 24 }).flatMap((_, i) => {
+  const hour = i.toString().padStart(2, '0');
+  return [`${hour}:00`, `${hour}:30`];
+}).filter(time => {
+  const [h, m] = time.split(':').map(Number);
+  const totalMinutes = h * 60 + m;
+  return totalMinutes >= 9 * 60 + 30 && totalMinutes <= 16 * 60 + 30;
+});
+const QUOTE_DEFAULT_TIME = '09:30';
 
 function extractEmail(fromHeader: string): string {
   const match = fromHeader.match(/<([^>]+)>/);
@@ -320,6 +333,8 @@ export const MailInbox: React.FC = () => {
   const [quoteVehicle, setQuoteVehicle] = useState<WebsiteCar | null>(null);
   const [quoteFrom, setQuoteFrom] = useState('');
   const [quoteTo, setQuoteTo] = useState('');
+  const [quotePickupTime, setQuotePickupTime] = useState(QUOTE_DEFAULT_TIME);
+  const [quoteDropoffTime, setQuoteDropoffTime] = useState(QUOTE_DEFAULT_TIME);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteResult, setQuoteResult] = useState<PriceQuoteResult | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -578,6 +593,8 @@ export const MailInbox: React.FC = () => {
     setQuoteVehicle(null);
     setQuoteFrom('');
     setQuoteTo('');
+    setQuotePickupTime(QUOTE_DEFAULT_TIME);
+    setQuoteDropoffTime(QUOTE_DEFAULT_TIME);
     invalidatePendingQuote();
     setMessagesLoading(true);
     try {
@@ -740,8 +757,43 @@ export const MailInbox: React.FC = () => {
   };
 
   const todayISO = format(new Date(), 'yyyy-MM-dd');
-  const quoteDays = quoteFrom && quoteTo ? differenceInDays(new Date(quoteTo), new Date(quoteFrom)) : 0;
-  const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteDays > 0;
+
+  // parseISO (not `new Date(...)`) for the date-only strings: `new
+  // Date('YYYY-MM-DD')` parses as UTC midnight, which would shift the
+  // pickup/drop-off time onto the wrong local day in timezones west of UTC.
+  const getQuoteDateTime = (dateStr: string, time: string): Date | null => {
+    if (!dateStr) return null;
+    const [h, m] = time.split(':').map(Number);
+    const d = parseISO(dateStr);
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+
+  // Same billing rule as the live booking engine (BookingEngine.tsx): whole
+  // 24h days, plus a flat +0.5 day if leftover time exceeds a 2-hour grace
+  // period. This is what actually determines the price, not the calendar
+  // date difference - a quote given without factoring in pickup/drop-off
+  // time can undercharge (or overcharge) versus what the booking engine
+  // would actually charge for the same trip.
+  const GRACE_HOURS = 2;
+  const quoteFromDateTime = getQuoteDateTime(quoteFrom, quotePickupTime);
+  const quoteToDateTime = getQuoteDateTime(quoteTo, quoteDropoffTime);
+  const quoteTotalHours = quoteFromDateTime && quoteToDateTime
+    ? differenceInHours(quoteToDateTime, quoteFromDateTime)
+    : 0;
+  const quoteWholeDaysUnit = Math.floor(quoteTotalHours / 24);
+  const quoteLeftoverHours = quoteTotalHours - quoteWholeDaysUnit * 24;
+  const quoteDays = quoteTotalHours > 0
+    ? Math.max(1, quoteLeftoverHours <= GRACE_HOURS ? quoteWholeDaysUnit : quoteWholeDaysUnit + 0.5)
+    : 0;
+  // /api/pricing/quote computes its own calendar-day difference from
+  // quoteFrom/quoteTo first and rejects with invalid_dates whenever that's
+  // zero, before ever looking at durationDays - so a same-date range (e.g.
+  // 09:30-16:30 on one date) can compute a positive time-aware quoteDays
+  // here yet never be quotable server-side. Require the drop-off date to be
+  // a later calendar date, not just a later time, so Get Price only enables
+  // for ranges the backend can actually price.
+  const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteTo > quoteFrom && quoteDays > 0;
 
   // Bumped whenever the vehicle/date inputs change (see the picker's onChange
   // handlers below) so an in-flight request from before the change can tell
@@ -757,6 +809,12 @@ export const MailInbox: React.FC = () => {
     quoteRequestIdRef.current++;
     setQuoteResult(null);
     setQuoteError('');
+    // getPriceQuote's own finally deliberately skips setQuoteLoading(false)
+    // once its requestId no longer matches (see below) - so if this is
+    // called while a request is in flight (e.g. staff changes a time mid-
+    // lookup), that skip would otherwise leave the button stuck on
+    // "Calculating..." forever with no way to fire a replacement request.
+    setQuoteLoading(false);
   };
 
   // /api/pricing/quote is the same live pricing engine the standalone Price
@@ -831,15 +889,22 @@ export const MailInbox: React.FC = () => {
     // parseISO (not `new Date(...)`) for these date-only strings: `new
     // Date('YYYY-MM-DD')` parses as UTC midnight, so format() in a timezone
     // west of UTC would render the day before what was actually quoted.
-    const fromLabel = format(parseISO(quoteFrom), 'd MMM');
-    const toLabel = format(parseISO(quoteTo), 'd MMM yyyy');
-    const days = quoteResult.days ?? quoteDays;
+    const fromLabel = `${format(parseISO(quoteFrom), 'd MMM')}, ${quotePickupTime}`;
+    const toLabel = `${format(parseISO(quoteTo), 'd MMM yyyy')}, ${quoteDropoffTime}`;
+    // quoteDays (not quoteResult.days) - quoteResult.days is the calendar-date
+    // difference the backend uses for its season/monthly-redirect guards;
+    // quoteDays is the pickup/drop-off-time-aware billable duration (can be a
+    // half day) that this same total price was actually calculated from, and
+    // matches what the live booking engine would show for this exact trip.
+    const days = quoteDays;
     const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
     insertIntoReplyBody(sentence);
     setShowQuoteMenu(false);
     setQuoteVehicle(null);
     setQuoteFrom('');
     setQuoteTo('');
+    setQuotePickupTime(QUOTE_DEFAULT_TIME);
+    setQuoteDropoffTime(QUOTE_DEFAULT_TIME);
     invalidatePendingQuote();
   };
 
@@ -1976,7 +2041,44 @@ export const MailInbox: React.FC = () => {
                                     className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
                                   />
                                 </div>
+                                <div>
+                                  <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    <Clock size={10} /> Pickup time
+                                  </label>
+                                  <select
+                                    value={quotePickupTime}
+                                    onChange={e => {
+                                      setQuotePickupTime(e.target.value);
+                                      invalidatePendingQuote();
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange bg-white"
+                                  >
+                                    {QUOTE_TIME_OPTIONS.map(time => (
+                                      <option key={time} value={time}>{time}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    <Clock size={10} /> Drop-off time
+                                  </label>
+                                  <select
+                                    value={quoteDropoffTime}
+                                    onChange={e => {
+                                      setQuoteDropoffTime(e.target.value);
+                                      invalidatePendingQuote();
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange bg-white"
+                                  >
+                                    {QUOTE_TIME_OPTIONS.map(time => (
+                                      <option key={time} value={time}>{time}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
+                              <p className="text-[10px] text-[#1A1A1A]/40 -mt-1">
+                                Times match the live booking site's pickup/drop-off hours and affect the price (whole days, +half day if returned more than 2h late).
+                              </p>
                               <button
                                 onClick={getPriceQuote}
                                 disabled={!canGetQuote || quoteLoading}
@@ -1989,7 +2091,7 @@ export const MailInbox: React.FC = () => {
                               {quoteResult && quoteResult.quotable && (
                                 <div className="rounded-lg bg-brand-orange/5 border border-brand-orange/20 p-3">
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
-                                    {quoteResult.days} day{quoteResult.days === 1 ? '' : 's'}
+                                    {quoteDays} day{quoteDays === 1 ? '' : 's'}
                                   </p>
                                   <p className="text-lg font-bold text-[#1A1A1A]">
                                     THB {quoteResult.totalPrice?.toLocaleString()}
