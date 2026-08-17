@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db, storage } from '../firebase';
 import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes } from 'firebase/storage';
 import { Booking, Customer, EmailTemplate } from '../types';
 import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -81,6 +82,14 @@ interface MailMessage {
   // look up the live Booking record for template auto-fill. Older threads sent
   // before this existed won't have it.
   bookingId?: string;
+  attachments?: MailAttachment[];
+}
+
+interface MailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 function extractEmail(fromHeader: string): string {
@@ -200,6 +209,20 @@ async function authedFetch(path: string, options: RequestInit = {}): Promise<Res
   });
 }
 
+// Gmail's attachment endpoint returns base64url (- and _ instead of + and /),
+// which isn't valid inside a data: URI - needs converting to standard base64 first.
+function base64UrlToBase64(data: string): string {
+  return data.replace(/-/g, '+').replace(/_/g, '/');
+}
+
+// Storage bucket root is a flat namespace shared with Image Management and
+// Fleet Manager - prefix with "inbox-" plus a timestamp so an attachment
+// filename like "photo.jpg" can't silently overwrite an existing image.
+function inboxStorageName(filename: string): string {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `inbox-${Date.now()}-${safe}`;
+}
+
 const PROFILE_FIELDS: { key: keyof Customer; label: string; type?: 'text' | 'textarea' | 'checkbox' | 'select'; options?: string[] }[] = [
   { key: 'firstName', label: 'First name' },
   { key: 'lastName', label: 'Last name' },
@@ -236,6 +259,11 @@ export const MailInbox: React.FC = () => {
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
+  // Fetched attachment thumbnails, keyed by "messageId:attachmentId" -> data URL.
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({});
+  // "messageId:attachmentId" of the attachment currently being uploaded to the
+  // Image Library, so only that one thumbnail shows a saving spinner.
+  const [savingAttachmentKey, setSavingAttachmentKey] = useState<string | null>(null);
   const [correctingEmail, setCorrectingEmail] = useState(false);
   const [correctedEmailInput, setCorrectedEmailInput] = useState('');
   const [savingCorrectedEmail, setSavingCorrectedEmail] = useState(false);
@@ -287,6 +315,35 @@ export const MailInbox: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Auto-loads a thumbnail for every image attachment in the open thread.
+  // Guarded by attachmentPreviewsLoadingRef (in-flight) and attachmentPreviews
+  // itself (already loaded) so re-renders don't re-fetch the same photo.
+  const attachmentPreviewsLoadingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    messages.forEach(m => {
+      (m.attachments || []).forEach(att => {
+        if (!att.mimeType.startsWith('image/')) return;
+        const key = `${m.id}:${att.attachmentId}`;
+        if (attachmentPreviews[key] || attachmentPreviewsLoadingRef.current.has(key)) return;
+        attachmentPreviewsLoadingRef.current.add(key);
+        authedFetch(`/api/mail/threads/${selectedThreadId}/messages/${m.id}/attachments/${att.attachmentId}`)
+          .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+          .then(data => {
+            setAttachmentPreviews(prev => ({
+              ...prev,
+              [key]: `data:${att.mimeType};base64,${base64UrlToBase64(data.data)}`,
+            }));
+          })
+          .catch(err => console.error('Failed to load attachment preview:', err))
+          .finally(() => attachmentPreviewsLoadingRef.current.delete(key));
+      });
+    });
+    // attachmentPreviews intentionally omitted - it's only read here as an
+    // already-loaded check, and including it would re-run this on every fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, selectedThreadId]);
 
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
@@ -875,6 +932,34 @@ export const MailInbox: React.FC = () => {
     }
   };
 
+  // Uploads an attachment straight to the root of the Storage bucket that
+  // Image Management already browses - no separate collection needed, it
+  // just shows up in that existing grid a moment later.
+  const handleSaveAttachmentToLibrary = async (messageId: string, att: MailAttachment) => {
+    if (!selectedThreadId) return;
+    const key = `${messageId}:${att.attachmentId}`;
+    setSavingAttachmentKey(key);
+    try {
+      let dataUrl = attachmentPreviews[key];
+      if (!dataUrl) {
+        const res = await authedFetch(`/api/mail/threads/${selectedThreadId}/messages/${messageId}/attachments/${att.attachmentId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        dataUrl = `data:${att.mimeType};base64,${base64UrlToBase64(data.data)}`;
+        setAttachmentPreviews(prev => ({ ...prev, [key]: dataUrl! }));
+      }
+      const blob = await (await fetch(dataUrl)).blob();
+      const storageRef = ref(storage, inboxStorageName(att.filename));
+      await uploadBytes(storageRef, blob);
+      toast.success(`Saved "${att.filename}" to Image Library`);
+    } catch (err: any) {
+      console.error('Failed to save attachment to Image Library:', err);
+      toast.error('Failed to save photo to Image Library');
+    } finally {
+      setSavingAttachmentKey(null);
+    }
+  };
+
   // Shared Customer Profile + Customer History content, rendered both in the
   // desktop "Details" column (hidden lg:flex w-72) and in the mobile-only
   // full-screen Profile view (shown via the header Profile icon below lg).
@@ -1410,6 +1495,55 @@ export const MailInbox: React.FC = () => {
                           />
                         ) : (
                           <p className="text-sm text-[#1A1A1A]/80 whitespace-pre-wrap break-words">{m.bodyText}</p>
+                        )}
+                        {m.attachments && m.attachments.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-black/5 flex flex-wrap gap-2">
+                            {m.attachments.map(att => {
+                              const isImage = att.mimeType.startsWith('image/');
+                              if (!isImage) {
+                                return (
+                                  <span
+                                    key={att.attachmentId}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/5 text-[11px] text-[#1A1A1A]/60"
+                                  >
+                                    <Paperclip size={12} />
+                                    {att.filename}
+                                  </span>
+                                );
+                              }
+                              const key = `${m.id}:${att.attachmentId}`;
+                              const preview = attachmentPreviews[key];
+                              const saving = savingAttachmentKey === key;
+                              return (
+                                <div
+                                  key={att.attachmentId}
+                                  className="relative group w-24 h-24 rounded-xl overflow-hidden bg-black/5 border border-black/10"
+                                >
+                                  {preview ? (
+                                    <img src={preview} alt={att.filename} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <Loader2 size={16} className="animate-spin text-[#1A1A1A]/30" />
+                                    </div>
+                                  )}
+                                  {preview && (
+                                    <button
+                                      onClick={() => handleSaveAttachmentToLibrary(m.id, att)}
+                                      disabled={saving}
+                                      title="Save to Image Library"
+                                      className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-100 disabled:bg-black/50"
+                                    >
+                                      {saving ? (
+                                        <Loader2 size={18} className="text-white animate-spin" />
+                                      ) : (
+                                        <ImagePlus size={18} className="text-white" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                       );
