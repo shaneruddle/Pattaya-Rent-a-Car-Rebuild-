@@ -698,6 +698,13 @@ export const MailInbox: React.FC = () => {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
+      // Server appends the company signature before sending (see
+      // /api/mail/reply) - it returns that final signed HTML so this
+      // optimistic insert shows staff the same message the customer
+      // actually received, not the unsigned draft. Falls back to the local
+      // unsigned html if the response is ever missing it, so the optimistic
+      // update still works rather than silently doing nothing.
+      const sendData = await res.json().catch(() => ({}));
       toast.success('Reply sent');
       setMessages(prev => [
         ...prev,
@@ -709,7 +716,7 @@ export const MailInbox: React.FC = () => {
           subject: selectedThread.subject,
           date: new Date().toString(),
           bodyText: replyBody,
-          bodyHtml: html,
+          bodyHtml: sendData.html || html,
           unread: false,
         },
       ]);
