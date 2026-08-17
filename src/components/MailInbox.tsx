@@ -578,8 +578,7 @@ export const MailInbox: React.FC = () => {
     setQuoteVehicle(null);
     setQuoteFrom('');
     setQuoteTo('');
-    setQuoteResult(null);
-    setQuoteError('');
+    invalidatePendingQuote();
     setMessagesLoading(true);
     try {
       const res = await authedFetch(`/api/mail/threads/${threadId}`);
@@ -744,11 +743,28 @@ export const MailInbox: React.FC = () => {
   const quoteDays = quoteFrom && quoteTo ? differenceInDays(new Date(quoteTo), new Date(quoteFrom)) : 0;
   const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteDays > 0;
 
+  // Bumped whenever the vehicle/date inputs change (see the picker's onChange
+  // handlers below) so an in-flight request from before the change can tell
+  // it's now stale and skip applying its result - otherwise a slow response
+  // could land after the inputs moved on and show a price for the wrong
+  // vehicle/dates, which "Insert into reply" would then send to the customer.
+  const quoteRequestIdRef = useRef(0);
+
+  // Clears any shown/pending quote result and invalidates whatever request is
+  // currently in flight (see quoteRequestIdRef above). Called from every spot
+  // that changes the vehicle/date inputs or leaves the quote picker.
+  const invalidatePendingQuote = () => {
+    quoteRequestIdRef.current++;
+    setQuoteResult(null);
+    setQuoteError('');
+  };
+
   // /api/pricing/quote is the same live pricing engine the standalone Price
   // Quote page already calls - it's a public endpoint (no requireStaffAuth),
   // so this mirrors that page's plain fetch() rather than authedFetch.
   const getPriceQuote = async () => {
     if (!canGetQuote || !quoteVehicle?.type) return;
+    const requestId = ++quoteRequestIdRef.current;
     setQuoteLoading(true);
     setQuoteResult(null);
     setQuoteError('');
@@ -757,12 +773,14 @@ export const MailInbox: React.FC = () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (quoteRequestIdRef.current !== requestId) return; // inputs changed since this request started
       setQuoteResult(data);
     } catch (err: any) {
+      if (quoteRequestIdRef.current !== requestId) return;
       console.error('Failed to get price quote:', err);
       setQuoteError(err.message || 'Failed to get a quote');
     } finally {
-      setQuoteLoading(false);
+      if (quoteRequestIdRef.current === requestId) setQuoteLoading(false);
     }
   };
 
@@ -810,8 +828,11 @@ export const MailInbox: React.FC = () => {
 
   const insertQuoteIntoReply = () => {
     if (!quoteResult?.quotable || !quoteVehicle) return;
-    const fromLabel = format(new Date(quoteFrom), 'd MMM');
-    const toLabel = format(new Date(quoteTo), 'd MMM yyyy');
+    // parseISO (not `new Date(...)`) for these date-only strings: `new
+    // Date('YYYY-MM-DD')` parses as UTC midnight, so format() in a timezone
+    // west of UTC would render the day before what was actually quoted.
+    const fromLabel = format(parseISO(quoteFrom), 'd MMM');
+    const toLabel = format(parseISO(quoteTo), 'd MMM yyyy');
     const days = quoteResult.days ?? quoteDays;
     const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
     insertIntoReplyBody(sentence);
@@ -819,7 +840,7 @@ export const MailInbox: React.FC = () => {
     setQuoteVehicle(null);
     setQuoteFrom('');
     setQuoteTo('');
-    setQuoteResult(null);
+    invalidatePendingQuote();
   };
 
   const handleSuggestReply = async () => {
@@ -1902,8 +1923,7 @@ export const MailInbox: React.FC = () => {
                                   key={v.id}
                                   onClick={() => {
                                     setQuoteVehicle(v);
-                                    setQuoteResult(null);
-                                    setQuoteError('');
+                                    invalidatePendingQuote();
                                   }}
                                   className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors flex items-center justify-between gap-2"
                                 >
@@ -1917,8 +1937,7 @@ export const MailInbox: React.FC = () => {
                               <button
                                 onClick={() => {
                                   setQuoteVehicle(null);
-                                  setQuoteResult(null);
-                                  setQuoteError('');
+                                  invalidatePendingQuote();
                                 }}
                                 className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange text-left"
                               >
@@ -1936,8 +1955,7 @@ export const MailInbox: React.FC = () => {
                                     onChange={e => {
                                       const next = e.target.value;
                                       setQuoteFrom(next);
-                                      setQuoteResult(null);
-                                      setQuoteError('');
+                                      invalidatePendingQuote();
                                       if (quoteTo && next >= quoteTo) setQuoteTo('');
                                     }}
                                     className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
@@ -1953,8 +1971,7 @@ export const MailInbox: React.FC = () => {
                                     min={quoteFrom || todayISO}
                                     onChange={e => {
                                       setQuoteTo(e.target.value);
-                                      setQuoteResult(null);
-                                      setQuoteError('');
+                                      invalidatePendingQuote();
                                     }}
                                     className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
                                   />
