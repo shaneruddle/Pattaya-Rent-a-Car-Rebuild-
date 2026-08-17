@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { auth, db } from '../firebase';
 import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Booking, Customer, EmailTemplate } from '../types';
 import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -30,6 +30,36 @@ interface MailThread {
   date: string;
   messageCount: number;
   unread: boolean;
+  // Booking linked to any message in this thread, if one exists (see server.ts
+  // /api/mail/threads - carried via the X-Booking-Id header). Used by the Follow
+  // Up filter below to know which threads can be auto-filled and reminded.
+  bookingId?: string;
+  // True when our own mailbox sent the most recent message - i.e. the customer
+  // hasn't replied since. Combined with bookingId and `date`, this is what
+  // needsFollowUp() below uses to flag a thread.
+  lastMessageFromUs: boolean;
+}
+
+// A booking-linked thread where our last message has gone unanswered this long
+// gets flagged in the Follow Up filter. Recomputed live from thread data rather
+// than a stored flag, so a thread drops out the moment the customer replies, and
+// reappears automatically if a follow-up we send also goes unanswered.
+const FOLLOW_UP_DAYS_THRESHOLD = 3;
+
+function daysSince(dateStr: string): number | null {
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return Math.max(0, Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)));
+  } catch {
+    return null;
+  }
+}
+
+function needsFollowUp(t: MailThread): boolean {
+  if (!t.bookingId || !t.lastMessageFromUs) return false;
+  const days = daysSince(t.date);
+  return days !== null && days >= FOLLOW_UP_DAYS_THRESHOLD;
 }
 
 interface MailMessage {
@@ -215,6 +245,9 @@ export const MailInbox: React.FC = () => {
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
   const [bulkMarkingRead, setBulkMarkingRead] = useState(false);
 
+  const [showFollowUpOnly, setShowFollowUpOnly] = useState(false);
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
+
   const [suggestingReply, setSuggestingReply] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -310,6 +343,13 @@ export const MailInbox: React.FC = () => {
     return () => clearTimeout(handle);
   }, [searchQuery, fetchThreads]);
 
+  // Threads actually shown in the list - either everything fetched, or just the
+  // subset flagged by needsFollowUp() when the Follow Up filter is on. Bulk
+  // select/mark-read below operates on this, not the full `threads` list, so it
+  // stays scoped to whatever's visible.
+  const followUpThreads = useMemo(() => threads.filter(needsFollowUp), [threads]);
+  const visibleThreads = showFollowUpOnly ? followUpThreads : threads;
+
   const toggleThreadSelected = (threadId: string) => {
     setSelectedThreadIds(prev => {
       const next = new Set(prev);
@@ -321,7 +361,7 @@ export const MailInbox: React.FC = () => {
 
   const toggleSelectAllThreads = () => {
     setSelectedThreadIds(prev =>
-      prev.size === threads.length ? new Set() : new Set(threads.map(t => t.id))
+      prev.size === visibleThreads.length ? new Set() : new Set(visibleThreads.map(t => t.id))
     );
   };
 
@@ -590,6 +630,79 @@ export const MailInbox: React.FC = () => {
     setShowTemplateMenu(false);
   };
 
+  // Sends the follow_up_reminder template to the customer on a flagged thread -
+  // same template and placeholder set Live Enquiries' own reminder button uses,
+  // via the same /api/send-email + bookingId path, so it threads into this
+  // conversation and the thread naturally drops out of the Follow Up filter
+  // once sent (until it goes unanswered again).
+  const sendFollowUp = async () => {
+    if (!selectedThread?.bookingId || !customerEmail) return;
+    setSendingFollowUp(true);
+    try {
+      const snap = await getDoc(doc(db, 'bookings', selectedThread.bookingId));
+      if (!snap.exists()) throw new Error('Linked booking not found');
+      const booking = snap.data() as Booking;
+
+      let deliveryFeeText = 'Not specified';
+      if (booking.deliveryLocation) {
+        try {
+          const { lat, lng } = booking.deliveryLocation;
+          const feeRes = await fetch(`/api/delivery/quote?lat=${lat}&lng=${lng}`);
+          const feeData = await feeRes.json();
+          if (feeRes.ok) {
+            deliveryFeeText = feeData.available === false
+              ? 'outside our standard delivery area - to be confirmed'
+              : feeData.fee === 0
+                ? 'Free'
+                : `${feeData.fee} THB`;
+          }
+        } catch (err) {
+          console.error('Failed to load delivery fee for follow-up email:', err);
+        }
+      }
+
+      const placeholders: Record<string, string> = {
+        '{{customer_name}}': (booking.customerName || 'Customer').split(' ')[0],
+        '{{vehicle_model}}': booking.requestedCarType || 'requested car',
+        '{{total_price}}': (booking.amount || 0).toLocaleString(),
+        '{{pickup_date}}': booking.startDate ? format(parseISO(booking.startDate), 'dd MMM yyyy') : '',
+        '{{pickup_time}}': booking.startDate ? format(parseISO(booking.startDate), 'HH:mm') : '',
+        '{{return_date}}': booking.endDate ? format(parseISO(booking.endDate), 'dd MMM yyyy') : '',
+        '{{return_time}}': booking.endDate ? format(parseISO(booking.endDate), 'HH:mm') : '',
+        '{{rental_period}}': booking.startDate && booking.endDate
+          ? `${format(parseISO(booking.startDate), 'dd MMM yyyy')} to ${format(parseISO(booking.endDate), 'dd MMM yyyy')}`
+          : '',
+        '{{delivery_address}}': booking.deliveryAddress || 'Not specified',
+        '{{delivery_fee}}': deliveryFeeText,
+        '{{customer_email}}': customerEmail,
+        '{{customer_phone}}': booking.mobileNumber || '',
+        '{{comments}}': booking.notes || '',
+      };
+
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: customerEmail,
+          templateId: 'follow_up_reminder',
+          skipFinalToOverride: true,
+          replyTo: INFO_MAILBOX,
+          placeholders,
+          bookingId: selectedThread.bookingId,
+        }),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      toast.success(`Follow up sent to ${customerEmail}`);
+      if (selectedThreadId) await openThread(selectedThreadId);
+      fetchThreads(searchQuery);
+    } catch (err: any) {
+      console.error('Failed to send follow up:', err);
+      toast.error(err.message || 'Failed to send follow up');
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
   const handleStartEditCustomer = () => {
     setCustomerForm({
       firstName: customer?.firstName || '',
@@ -826,14 +939,37 @@ export const MailInbox: React.FC = () => {
               <ChevronLeft size={16} />
             </button>
           </div>
+          {!threadsLoading && (
+            <div className="px-3 pt-2 pb-1 flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowFollowUpOnly(false)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all',
+                  !showFollowUpOnly ? 'bg-brand-orange text-white' : 'bg-black/5 text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60'
+                )}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setShowFollowUpOnly(true)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all',
+                  showFollowUpOnly ? 'bg-brand-orange text-white' : 'bg-black/5 text-[#1A1A1A]/40 hover:text-[#1A1A1A]/60'
+                )}
+                title={`Booking-linked threads with no reply ${FOLLOW_UP_DAYS_THRESHOLD}+ days after our last message`}
+              >
+                Follow Up{followUpThreads.length > 0 ? ` (${followUpThreads.length})` : ''}
+              </button>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {!threadsLoading && threads.length > 0 && (
+          {!threadsLoading && visibleThreads.length > 0 && (
             <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 bg-white/80 backdrop-blur-xl border-b border-black/5">
               <input
                 type="checkbox"
-                checked={selectedThreadIds.size > 0 && selectedThreadIds.size === threads.length}
+                checked={selectedThreadIds.size > 0 && selectedThreadIds.size === visibleThreads.length}
                 ref={el => {
-                  if (el) el.indeterminate = selectedThreadIds.size > 0 && selectedThreadIds.size < threads.length;
+                  if (el) el.indeterminate = selectedThreadIds.size > 0 && selectedThreadIds.size < visibleThreads.length;
                 }}
                 onChange={toggleSelectAllThreads}
                 className="shrink-0 accent-brand-orange"
@@ -865,12 +1001,14 @@ export const MailInbox: React.FC = () => {
           )}
           {threadsLoading ? (
             <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
-          ) : threads.length === 0 ? (
+          ) : visibleThreads.length === 0 ? (
             <div className="p-8 text-center text-sm text-[#1A1A1A]/40">
-              {searchQuery ? `No results for "${searchQuery}"` : 'No threads found'}
+              {showFollowUpOnly
+                ? 'No threads need a follow up right now'
+                : searchQuery ? `No results for "${searchQuery}"` : 'No threads found'}
             </div>
           ) : (
-            threads.map(t => (
+            visibleThreads.map(t => (
               <div
                 key={t.id}
                 className={cn(
@@ -894,6 +1032,11 @@ export const MailInbox: React.FC = () => {
                       {isBounceThread(t) && (
                         <span className="text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
                           Bounced
+                        </span>
+                      )}
+                      {needsFollowUp(t) && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">
+                          Follow Up
                         </span>
                       )}
                       <span className="text-[10px] text-[#1A1A1A]/40">{formatShortDate(t.date)}</span>
@@ -992,6 +1135,22 @@ export const MailInbox: React.FC = () => {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+              {selectedThread && needsFollowUp(selectedThread) && (
+                <div className="mx-4 mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-700 uppercase tracking-wide text-[10px]">
+                    <Clock size={13} />
+                    No reply for {daysSince(selectedThread.date)}+ days
+                  </div>
+                  <button
+                    onClick={sendFollowUp}
+                    disabled={sendingFollowUp || !customerEmail}
+                    className="shrink-0 flex items-center gap-1.5 font-bold text-white bg-blue-600 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                  >
+                    {sendingFollowUp ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    Send Follow Up
+                  </button>
                 </div>
               )}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
