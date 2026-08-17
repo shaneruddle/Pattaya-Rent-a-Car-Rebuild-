@@ -1626,6 +1626,14 @@ app.get("/api/delivery/quote", async (req, res) => {
 const GMAIL_OAUTH_CLIENT_ID = "700448424476-dq43t9du8mvcri226n3cb3g0br6n75tj.apps.googleusercontent.com";
 const GMAIL_INBOX_MAILBOX = "info@pattayarentacar.com";
 
+// Extracts the bare address from a "Name <addr>" style header, or returns the
+// header as-is (lowercased) if it's already a bare address. Shared by the
+// threads-list route (last-message-from-us check) and resolveThreadCustomerEmail.
+function emailOf(header: string): string {
+  const match = header.match(/<([^>]+)>/);
+  return (match ? match[1] : header).trim().toLowerCase();
+}
+
 async function getSecretValue(secretName: string): Promise<string> {
   const { google } = await import('googleapis');
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
@@ -1737,11 +1745,22 @@ app.get('/api/mail/threads', async (req: any, res: any) => {
     const threadStubs = listResp.threads || [];
     const threads = await Promise.all(threadStubs.map(async (t: any) => {
       const full = await gmailApiFetch(
-        `/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`
+        `/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=X-Booking-Id`
       );
       const messages = full.messages || [];
       const lastMsg = messages[messages.length - 1];
       const headers = lastMsg?.payload?.headers || [];
+      // X-Booking-Id can land on any message in the thread (set by /api/send-email
+      // whenever a templated send carries a bookingId - see below), not just the
+      // last one, so scan the whole thread rather than just lastMsg. Used by the
+      // Mail Inbox "Follow Up" filter to know which threads are booking-linked.
+      const bookingId = messages
+        .map((m: any) => gmailHeader(m.payload?.headers || [], 'X-Booking-Id'))
+        .find((id: string) => !!id) || undefined;
+      // True when our own mailbox sent the most recent message in the thread -
+      // i.e. the customer hasn't replied since. Combined with bookingId and the
+      // thread's date, this is what the Follow Up filter uses to flag a thread.
+      const lastMessageFromUs = emailOf(gmailHeader(headers, 'From')) === GMAIL_INBOX_MAILBOX;
       return {
         id: t.id,
         snippet: lastMsg?.snippet || t.snippet || '',
@@ -1750,6 +1769,8 @@ app.get('/api/mail/threads', async (req: any, res: any) => {
         date: gmailHeader(headers, 'Date'),
         messageCount: messages.length,
         lastMessageId: lastMsg?.id || null,
+        bookingId,
+        lastMessageFromUs,
       };
     }));
     // Read/unread is tracked entirely inside our own app (Firestore), not via Gmail's
@@ -1853,10 +1874,6 @@ function stripHtmlTags(html: string): string {
 // other than the info@ mailbox), falling back to the "To" address of the most
 // recent outbound message for threads that are entirely outbound so far.
 function resolveThreadCustomerEmail(msgs: { from: string; to: string; replyTo?: string }[]): string {
-  const emailOf = (header: string) => {
-    const match = header.match(/<([^>]+)>/);
-    return (match ? match[1] : header).trim().toLowerCase();
-  };
   const inbound = [...msgs].reverse().find(m => emailOf(m.from) !== GMAIL_INBOX_MAILBOX);
   if (inbound) return emailOf(inbound.from);
   const outbound = [...msgs].reverse().find(m => m.to && emailOf(m.to) !== GMAIL_INBOX_MAILBOX);
