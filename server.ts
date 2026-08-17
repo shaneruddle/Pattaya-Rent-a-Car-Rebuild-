@@ -846,6 +846,31 @@ app.get("/api/delivery/quote", async (req, res) => {
 });
 
   // Email API
+
+  // Fallback company email signature (Gift's), used only if the editable
+  // Firestore template below can't be loaded. Keep this in sync with
+  // email_templates/email_signature (Email Templates admin page) by hand -
+  // it's a safety net, not the source of truth, so it's deliberately a
+  // shorter version (no help-links) rather than something staff edit here.
+  const EMAIL_SIGNATURE_FALLBACK = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;"><tr><td style="padding-right:20px;vertical-align:top;white-space:nowrap;"><p style="font-size:22px;font-weight:900;line-height:1.1;color:#000;margin:0 0 3px;">Gift<br>Suphaphon</p><p style="font-size:12px;color:#555;margin:0 0 12px;">Manager</p><p style="font-size:12px;line-height:1.9;color:#333;margin:0;"><span style="color:#e8631a;margin-right:6px;">&#9679;</span>+66-83-077-6928<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>www.pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>info@pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>359/119 Moo 12 Nongprue, Pattaya City</p></td><td style="border-left:3px solid #e8631a;padding:0 20px;">&nbsp;</td><td style="vertical-align:middle;"><img src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" alt="Pattaya RentaCar" width="110" style="display:block;"></td></tr></table>`;
+
+  // Loads the current company email signature HTML - the single source of
+  // truth is email_templates/email_signature (editable via the Email
+  // Templates admin page), falling back to EMAIL_SIGNATURE_FALLBACK above if
+  // that read fails for any reason. Shared by every outgoing-email path
+  // (templated sends below, and direct Mail Inbox replies) so there's one
+  // signature, not one per send path that can quietly drift apart.
+  async function loadEmailSignatureHtml(): Promise<string> {
+    try {
+      const sigDoc = await firestore.collection('email_templates').doc('email_signature').get();
+      const sigBody = sigDoc.exists ? (sigDoc.data() as any)?.body : undefined;
+      if (sigBody) return sigBody;
+    } catch (sigErr: any) {
+      console.warn('[Email] Failed to load email_signature template, using fallback signature:', sigErr?.message || sigErr);
+    }
+    return EMAIL_SIGNATURE_FALLBACK;
+  }
+
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, html, replyTo, fromName, skipFinalToOverride, templateId, placeholders , website,
                   enquiryName, enquiryEmail, enquiryPhone, enquiryType, enquiryNote,
@@ -1019,18 +1044,10 @@ app.get("/api/delivery/quote", async (req, res) => {
       console.log(`[Email] Template "${templateId}" — sending to ${tmplFinalTo}...`);
       try {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
-  const EMAIL_SIGNATURE = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;"><tr><td style="padding-right:20px;vertical-align:top;white-space:nowrap;"><p style="font-size:22px;font-weight:900;line-height:1.1;color:#000;margin:0 0 3px;">Gift<br>Suphaphon</p><p style="font-size:12px;color:#555;margin:0 0 12px;">Manager</p><p style="font-size:12px;line-height:1.9;color:#333;margin:0;"><span style="color:#e8631a;margin-right:6px;">&#9679;</span>+66-83-077-6928<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>www.pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>info@pattayarentacar.com<br><span style="color:#e8631a;margin-right:6px;">&#9679;</span>359/119 Moo 12 Nongprue, Pattaya City</p></td><td style="border-left:3px solid #e8631a;padding:0 20px;">&nbsp;</td><td style="vertical-align:middle;"><img src="https://firebasestorage.googleapis.com/v0/b/pattaya-rent-a-car-rebuild.firebasestorage.app/o/PRAC-Logo-1.png?alt=media" alt="Pattaya RentaCar" width="110" style="display:block;"></td></tr></table>`;
         const tmplInReplyTo = await lookupInReplyTo(resolvedBookingId);
-        let signatureHtml = EMAIL_SIGNATURE;
-        if (templateId !== 'email_signature') {
-          try {
-            const sigDoc = await firestore.collection('email_templates').doc('email_signature').get();
-            const sigBody = sigDoc.exists ? (sigDoc.data() as any)?.body : undefined;
-            if (sigBody) signatureHtml = sigBody;
-          } catch (sigErr: any) {
-            console.warn('[Email] Failed to load email_signature template, using fallback signature:', sigErr?.message || sigErr);
-          }
-        }
+        // Skip the read entirely when sending the signature template itself -
+        // the result wouldn't be used anyway (see the html ternary below).
+        const signatureHtml = templateId === 'email_signature' ? '' : await loadEmailSignatureHtml();
       const info = await transporter.sendMail({
           from: `"${tmplFromName}" <${gmailUser}>`,
           to: tmplFinalTo,
@@ -1970,12 +1987,17 @@ app.post('/api/mail/reply', async (req: any, res: any) => {
 
     const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
     const finalSubject = subject && /^re:/i.test(subject) ? subject : `Re: ${subject || ''}`;
+    // Same company signature as the templated booking/confirmation emails
+    // (see loadEmailSignatureHtml above) - direct Mail Inbox replies didn't
+    // get one at all before this, so a customer replying to a signed
+    // booking-confirmation email would get an unsigned reply back.
+    const signatureHtml = await loadEmailSignatureHtml();
 
     const info = await transporter.sendMail({
       from: `"Pattaya Rent A Car" <${gmailUser}>`,
       to,
       subject: finalSubject,
-      html,
+      html: html + signatureHtml,
       ...(inReplyToMessageId ? { inReplyTo: inReplyToMessageId, references: inReplyToMessageId } : {}),
       ...(mailAttachments && mailAttachments.length > 0 ? { attachments: mailAttachments } : {}),
     });
