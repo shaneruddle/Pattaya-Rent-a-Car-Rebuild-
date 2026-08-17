@@ -786,7 +786,14 @@ export const MailInbox: React.FC = () => {
   const quoteDays = quoteTotalHours > 0
     ? Math.max(1, quoteLeftoverHours <= GRACE_HOURS ? quoteWholeDaysUnit : quoteWholeDaysUnit + 0.5)
     : 0;
-  const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteDays > 0;
+  // /api/pricing/quote computes its own calendar-day difference from
+  // quoteFrom/quoteTo first and rejects with invalid_dates whenever that's
+  // zero, before ever looking at durationDays - so a same-date range (e.g.
+  // 09:30-16:30 on one date) can compute a positive time-aware quoteDays
+  // here yet never be quotable server-side. Require the drop-off date to be
+  // a later calendar date, not just a later time, so Get Price only enables
+  // for ranges the backend can actually price.
+  const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteTo > quoteFrom && quoteDays > 0;
 
   // Bumped whenever the vehicle/date inputs change (see the picker's onChange
   // handlers below) so an in-flight request from before the change can tell
@@ -802,6 +809,12 @@ export const MailInbox: React.FC = () => {
     quoteRequestIdRef.current++;
     setQuoteResult(null);
     setQuoteError('');
+    // getPriceQuote's own finally deliberately skips setQuoteLoading(false)
+    // once its requestId no longer matches (see below) - so if this is
+    // called while a request is in flight (e.g. staff changes a time mid-
+    // lookup), that skip would otherwise leave the button stuck on
+    // "Calculating..." forever with no way to fire a replacement request.
+    setQuoteLoading(false);
   };
 
   // /api/pricing/quote is the same live pricing engine the standalone Price
