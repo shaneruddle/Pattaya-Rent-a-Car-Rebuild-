@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { auth, db, storage } from '../firebase';
-import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
-import { Booking, Customer, EmailTemplate } from '../types';
+import { Booking, Customer, EmailTemplate, WebsiteCar } from '../types';
 import { format, parseISO } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -292,6 +292,17 @@ export const MailInbox: React.FC = () => {
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
+  // Vehicles with at least one real (non-stock) photo on file, for the "Car
+  // Photos" reply picker below. Sourced from website_cars.realImages - the
+  // same per-vehicle photo set Fleet Manager already maintains - not the flat
+  // Image Management library, which isn't tagged to a specific vehicle.
+  const [vehicles, setVehicles] = useState<WebsiteCar[]>([]);
+  const [showVehicleMenu, setShowVehicleMenu] = useState(false);
+  const vehicleMenuRef = useRef<HTMLDivElement>(null);
+  // Photos queued to send with the current reply, keyed by Storage URL so the
+  // same photo can't be queued twice even if picked from two vehicle clicks.
+  const [replyAttachments, setReplyAttachments] = useState<{ url: string; filename: string }[]>([]);
+
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -309,10 +320,32 @@ export const MailInbox: React.FC = () => {
     fetchTemplates();
   }, []);
 
+  // Vehicles rarely change either, so fetch once. Only active vehicles with
+  // real photos already on file are worth showing in the picker - anything
+  // else would be a dead click.
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        const q = query(collection(db, 'website_cars'), orderBy('displayOrder', 'asc'));
+        const snap = await getDocs(q);
+        const list = snap.docs
+          .map(d => ({ ...(d.data() as Omit<WebsiteCar, 'id'>), id: d.id }))
+          .filter(c => c.isActive && Array.isArray(c.realImages) && c.realImages.length > 0);
+        setVehicles(list);
+      } catch (err) {
+        console.error('Failed to load vehicles:', err);
+      }
+    };
+    fetchVehicles();
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (templateMenuRef.current && !templateMenuRef.current.contains(event.target as Node)) {
         setShowTemplateMenu(false);
+      }
+      if (vehicleMenuRef.current && !vehicleMenuRef.current.contains(event.target as Node)) {
+        setShowVehicleMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -596,6 +629,7 @@ export const MailInbox: React.FC = () => {
           subject: selectedThread.subject,
           html,
           inReplyToMessageId: lastMessage.messageIdHeader || undefined,
+          ...(replyAttachments.length > 0 ? { attachments: replyAttachments } : {}),
         }),
       });
       if (!res.ok) {
@@ -618,12 +652,46 @@ export const MailInbox: React.FC = () => {
         },
       ]);
       setReplyBody('');
+      setReplyAttachments([]);
     } catch (err: any) {
       console.error('Failed to send reply:', err);
       toast.error(err.message || 'Failed to send reply');
     } finally {
       setSending(false);
     }
+  };
+
+  // Real photos staff can attach to a reply are capped per vehicle-click here
+  // (frontend convenience) and re-capped/re-validated server-side in
+  // /api/mail/reply (the actual guarantee) - see MAX_REPLY_ATTACHMENTS there.
+  const MAX_PHOTOS_PER_VEHICLE = 4;
+
+  function filenameFromImageUrl(url: string, vehicleName: string, index: number): string {
+    const extMatch = url.match(/\.(jpe?g|png|webp|gif)(\?|$)/i);
+    const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+    const slug = vehicleName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'vehicle';
+    return `${slug}-${index + 1}.${ext}`;
+  }
+
+  const insertVehiclePhotos = (vehicle: WebsiteCar) => {
+    const photos = (vehicle.realImages || []).slice(0, MAX_PHOTOS_PER_VEHICLE);
+    setShowVehicleMenu(false);
+    if (photos.length === 0) return;
+    setReplyAttachments(prev => {
+      const existingUrls = new Set(prev.map(a => a.url));
+      const additions = photos
+        .filter(url => !existingUrls.has(url))
+        .map((url, i) => ({ url, filename: filenameFromImageUrl(url, vehicle.name, i) }));
+      if (additions.length === 0) {
+        toast.info(`${vehicle.name}'s photos are already attached`);
+        return prev;
+      }
+      return [...prev, ...additions];
+    });
+  };
+
+  const removeReplyAttachment = (url: string) => {
+    setReplyAttachments(prev => prev.filter(a => a.url !== url));
   };
 
   const handleSuggestReply = async () => {
@@ -1601,6 +1669,25 @@ export const MailInbox: React.FC = () => {
                   rows={8}
                   className="w-full rounded-xl border border-black/10 bg-white/60 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/40 resize-y min-h-[160px] max-h-[60vh]"
                 />
+                {replyAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {replyAttachments.map(a => (
+                      <div
+                        key={a.url}
+                        className="relative group w-14 h-14 rounded-lg overflow-hidden border border-black/10 bg-black/5"
+                      >
+                        <img src={a.url} alt={a.filename} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => removeReplyAttachment(a.url)}
+                          title={`Remove ${a.filename}`}
+                          className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/60 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <X size={14} className="text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex justify-between items-center mt-2">
                   <div className="flex items-center gap-2">
                     <div className="relative" ref={templateMenuRef}>
@@ -1636,6 +1723,37 @@ export const MailInbox: React.FC = () => {
                       {suggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                       Suggest reply
                     </button>
+                    <div className="relative" ref={vehicleMenuRef}>
+                      <button
+                        onClick={() => setShowVehicleMenu(v => !v)}
+                        disabled={vehicles.length === 0}
+                        className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                        title="Attach a vehicle's real photos"
+                      >
+                        <Car size={14} />
+                        Car Photos
+                      </button>
+                      {showVehicleMenu && (
+                        <div className="absolute bottom-full left-0 mb-2 w-72 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-20 py-1">
+                          {vehicles.map(v => {
+                            const photoCount = Math.min(v.realImages.length, MAX_PHOTOS_PER_VEHICLE);
+                            return (
+                              <button
+                                key={v.id}
+                                onClick={() => insertVehiclePhotos(v)}
+                                className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{v.name}</span>
+                                <span className="shrink-0 text-[10px] text-[#1A1A1A]/40">
+                                  {photoCount} photo{photoCount === 1 ? '' : 's'}
+                                  {v.realImages.length > MAX_PHOTOS_PER_VEHICLE ? ` of ${v.realImages.length}` : ''}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={handleSend}
