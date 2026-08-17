@@ -1719,6 +1719,30 @@ function extractGmailBody(payload: any): { text: string; html: string } {
   return { text, html };
 }
 
+// Real (non-inline) attachments only - parts with a filename and an
+// attachmentId. Inline images referenced via cid: in bodyHtml aren't
+// surfaced here; fetching those would need cid resolution, which is out
+// of scope for the "save a photo to the image library" use case below.
+function extractGmailAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
+  const attachments: { attachmentId: string; filename: string; mimeType: string; size: number }[] = [];
+  function walk(part: any) {
+    if (!part) return;
+    if (part.filename && part.body?.attachmentId) {
+      attachments.push({
+        attachmentId: part.body.attachmentId,
+        filename: part.filename,
+        mimeType: part.mimeType || 'application/octet-stream',
+        size: part.body.size || 0,
+      });
+    }
+    if (part.parts) {
+      part.parts.forEach(walk);
+    }
+  }
+  walk(payload);
+  return attachments;
+}
+
 function requireStaffAuth(req: any, res: any): boolean {
   const authHeader = req.headers['authorization'] as string | undefined;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -1802,6 +1826,7 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
     const messages = (full.messages || []).map((m: any) => {
       const headers = m.payload?.headers || [];
       const { text, html } = extractGmailBody(m.payload);
+      const attachments = extractGmailAttachments(m.payload);
       return {
         id: m.id,
         messageIdHeader: gmailHeader(headers, 'Message-ID') || gmailHeader(headers, 'Message-Id'),
@@ -1814,6 +1839,7 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
         bodyHtml: html,
         unread: (m.labelIds || []).includes('UNREAD'),
         bookingId: gmailHeader(headers, 'X-Booking-Id') || undefined,
+        attachments,
       };
     });
     // Mark read in our own app-level tracking only (does not touch the real Gmail
@@ -1830,6 +1856,23 @@ app.get('/api/mail/threads/:id', async (req: any, res: any) => {
     res.json({ id: full.id, messages });
   } catch (err: any) {
     console.error('[Mail] thread detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch a single attachment's raw bytes (base64url, as Gmail returns it) so
+// the client can render a thumbnail or hand it to the "Save to Image
+// Library" flow. Only the server holds Gmail OAuth credentials, so this has
+// to be proxied rather than fetched directly from the client.
+app.get('/api/mail/threads/:threadId/messages/:messageId/attachments/:attachmentId', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const { messageId, attachmentId } = req.params;
+    const attachment = await gmailApiFetch(`/messages/${messageId}/attachments/${attachmentId}`);
+    res.json({ data: attachment.data, size: attachment.size });
+  } catch (err: any) {
+    console.error('[Mail] attachment fetch error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
