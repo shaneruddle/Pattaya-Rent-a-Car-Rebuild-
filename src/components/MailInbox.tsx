@@ -3,9 +3,9 @@ import { auth, db, storage } from '../firebase';
 import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import { Booking, Customer, EmailTemplate, WebsiteCar } from '../types';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInDays } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -90,6 +90,16 @@ interface MailAttachment {
   filename: string;
   mimeType: string;
   size: number;
+}
+
+// Shape of /api/pricing/quote's response (same endpoint the standalone Price
+// Quote page already calls) - only the fields the "Get Quote" picker uses.
+interface PriceQuoteResult {
+  quotable: boolean;
+  reason?: string;
+  days?: number;
+  totalPrice?: number;
+  perDay?: number;
 }
 
 function extractEmail(fromHeader: string): string {
@@ -292,16 +302,28 @@ export const MailInbox: React.FC = () => {
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
-  // Vehicles with at least one real (non-stock) photo on file, for the "Car
-  // Photos" reply picker below. Sourced from website_cars.realImages - the
-  // same per-vehicle photo set Fleet Manager already maintains - not the flat
-  // Image Management library, which isn't tagged to a specific vehicle.
+  // All active vehicles - shared source for two reply-toolbar pickers below:
+  // "Car Photos" (needs realImages) and "Get Quote" (needs a pricing `type`).
+  // Fetched once since website_cars rarely changes; each picker derives its
+  // own filtered view rather than re-querying Firestore separately.
   const [vehicles, setVehicles] = useState<WebsiteCar[]>([]);
   const [showVehicleMenu, setShowVehicleMenu] = useState(false);
   const vehicleMenuRef = useRef<HTMLDivElement>(null);
   // Photos queued to send with the current reply, keyed by Storage URL so the
   // same photo can't be queued twice even if picked from two vehicle clicks.
   const [replyAttachments, setReplyAttachments] = useState<{ url: string; filename: string }[]>([]);
+
+  // "Get Quote" reply-toolbar picker: pick a vehicle, then a date range, call
+  // the live pricing engine, optionally drop the result into the draft.
+  const [showQuoteMenu, setShowQuoteMenu] = useState(false);
+  const quoteMenuRef = useRef<HTMLDivElement>(null);
+  const [quoteVehicle, setQuoteVehicle] = useState<WebsiteCar | null>(null);
+  const [quoteFrom, setQuoteFrom] = useState('');
+  const [quoteTo, setQuoteTo] = useState('');
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteResult, setQuoteResult] = useState<PriceQuoteResult | null>(null);
+  const [quoteError, setQuoteError] = useState('');
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
@@ -320,9 +342,8 @@ export const MailInbox: React.FC = () => {
     fetchTemplates();
   }, []);
 
-  // Vehicles rarely change either, so fetch once. Only active vehicles with
-  // real photos already on file are worth showing in the picker - anything
-  // else would be a dead click.
+  // Vehicles rarely change either, so fetch once. Only active vehicles are
+  // worth showing in either picker - inactive ones aren't actually rentable.
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
@@ -330,7 +351,7 @@ export const MailInbox: React.FC = () => {
         const snap = await getDocs(q);
         const list = snap.docs
           .map(d => ({ ...(d.data() as Omit<WebsiteCar, 'id'>), id: d.id }))
-          .filter(c => c.isActive && Array.isArray(c.realImages) && c.realImages.length > 0);
+          .filter(c => c.isActive);
         setVehicles(list);
       } catch (err) {
         console.error('Failed to load vehicles:', err);
@@ -339,6 +360,16 @@ export const MailInbox: React.FC = () => {
     fetchVehicles();
   }, []);
 
+  // "Car Photos" only makes sense for vehicles with at least one real
+  // (non-stock) photo on file - anything else would be a dead click.
+  const vehiclesWithPhotos = useMemo(
+    () => vehicles.filter(v => Array.isArray(v.realImages) && v.realImages.length > 0),
+    [vehicles]
+  );
+  // "Get Quote" needs a canonical pricing class (`type`) to call the pricing
+  // engine with - vehicles without one on file can't be quoted through it.
+  const quotableVehicles = useMemo(() => vehicles.filter(v => !!v.type), [vehicles]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (templateMenuRef.current && !templateMenuRef.current.contains(event.target as Node)) {
@@ -346,6 +377,9 @@ export const MailInbox: React.FC = () => {
       }
       if (vehicleMenuRef.current && !vehicleMenuRef.current.contains(event.target as Node)) {
         setShowVehicleMenu(false);
+      }
+      if (quoteMenuRef.current && !quoteMenuRef.current.contains(event.target as Node)) {
+        setShowQuoteMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -538,6 +572,14 @@ export const MailInbox: React.FC = () => {
     // thread - without this a photo picked in one conversation would silently
     // ride along into whatever gets sent in the next one.
     setReplyAttachments([]);
+    // Same reasoning for an in-progress "Get Quote" lookup - not customer
+    // data, but stale enough to be confusing left open across threads.
+    setShowQuoteMenu(false);
+    setQuoteVehicle(null);
+    setQuoteFrom('');
+    setQuoteTo('');
+    setQuoteResult(null);
+    setQuoteError('');
     setMessagesLoading(true);
     try {
       const res = await authedFetch(`/api/mail/threads/${threadId}`);
@@ -696,6 +738,88 @@ export const MailInbox: React.FC = () => {
 
   const removeReplyAttachment = (url: string) => {
     setReplyAttachments(prev => prev.filter(a => a.url !== url));
+  };
+
+  const todayISO = format(new Date(), 'yyyy-MM-dd');
+  const quoteDays = quoteFrom && quoteTo ? differenceInDays(new Date(quoteTo), new Date(quoteFrom)) : 0;
+  const canGetQuote = !!quoteVehicle && !!quoteFrom && !!quoteTo && quoteDays > 0;
+
+  // /api/pricing/quote is the same live pricing engine the standalone Price
+  // Quote page already calls - it's a public endpoint (no requireStaffAuth),
+  // so this mirrors that page's plain fetch() rather than authedFetch.
+  const getPriceQuote = async () => {
+    if (!canGetQuote || !quoteVehicle?.type) return;
+    setQuoteLoading(true);
+    setQuoteResult(null);
+    setQuoteError('');
+    try {
+      const url = `/api/pricing/quote?class=${encodeURIComponent(quoteVehicle.type)}&from=${quoteFrom}&to=${quoteTo}&durationDays=${quoteDays}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setQuoteResult(data);
+    } catch (err: any) {
+      console.error('Failed to get price quote:', err);
+      setQuoteError(err.message || 'Failed to get a quote');
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  function describeQuoteReason(reason?: string): string {
+    switch (reason) {
+      case 'class_not_configured':
+        return 'This vehicle class has no pricing configured yet.';
+      case 'invalid_dates':
+        return 'Choose a valid date range.';
+      case 'below_min_days':
+        return 'That date range is shorter than the minimum rental length.';
+      case 'monthly_redirect':
+        return 'That length needs a monthly rate - work it out manually.';
+      case 'no_active_fleet':
+        return 'No active vehicles in that class right now.';
+      default:
+        return 'Could not calculate a price for these dates.';
+    }
+  }
+
+  // Inserts text at the reply textarea's current cursor position (falling
+  // back to appending at the end if the ref isn't mounted yet), rather than
+  // always appending - staff may already be mid-draft with the cursor
+  // somewhere in the middle.
+  const insertIntoReplyBody = (text: string) => {
+    const el = replyTextareaRef.current;
+    if (!el) {
+      setReplyBody(prev => (prev ? `${prev}\n\n${text}` : text));
+      return;
+    }
+    const start = el.selectionStart ?? replyBody.length;
+    const end = el.selectionEnd ?? replyBody.length;
+    const before = replyBody.slice(0, start);
+    const after = replyBody.slice(end);
+    const leadingBreak = before && !before.endsWith('\n') ? '\n\n' : '';
+    const trailingBreak = after && !after.startsWith('\n') ? '\n\n' : '';
+    const insertion = `${leadingBreak}${text}${trailingBreak}`;
+    setReplyBody(before + insertion + after);
+    const cursorPos = start + insertion.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(cursorPos, cursorPos);
+    });
+  };
+
+  const insertQuoteIntoReply = () => {
+    if (!quoteResult?.quotable || !quoteVehicle) return;
+    const fromLabel = format(new Date(quoteFrom), 'd MMM');
+    const toLabel = format(new Date(quoteTo), 'd MMM yyyy');
+    const days = quoteResult.days ?? quoteDays;
+    const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
+    insertIntoReplyBody(sentence);
+    setShowQuoteMenu(false);
+    setQuoteVehicle(null);
+    setQuoteFrom('');
+    setQuoteTo('');
+    setQuoteResult(null);
   };
 
   const handleSuggestReply = async () => {
@@ -1667,6 +1791,7 @@ export const MailInbox: React.FC = () => {
               </div>
               <div className="p-4 border-t border-black/10">
                 <textarea
+                  ref={replyTextareaRef}
                   value={replyBody}
                   onChange={e => setReplyBody(e.target.value)}
                   placeholder="Write a reply..."
@@ -1730,7 +1855,7 @@ export const MailInbox: React.FC = () => {
                     <div className="relative" ref={vehicleMenuRef}>
                       <button
                         onClick={() => setShowVehicleMenu(v => !v)}
-                        disabled={vehicles.length === 0}
+                        disabled={vehiclesWithPhotos.length === 0}
                         className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
                         title="Attach a vehicle's real photos"
                       >
@@ -1739,7 +1864,7 @@ export const MailInbox: React.FC = () => {
                       </button>
                       {showVehicleMenu && (
                         <div className="absolute bottom-full left-0 mb-2 w-72 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-20 py-1">
-                          {vehicles.map(v => {
+                          {vehiclesWithPhotos.map(v => {
                             const photoCount = Math.min(v.realImages.length, MAX_PHOTOS_PER_VEHICLE);
                             return (
                               <button
@@ -1755,6 +1880,122 @@ export const MailInbox: React.FC = () => {
                               </button>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative" ref={quoteMenuRef}>
+                      <button
+                        onClick={() => setShowQuoteMenu(v => !v)}
+                        disabled={quotableVehicles.length === 0}
+                        className="h-10 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                        title="Look up a live price quote"
+                      >
+                        <Tag size={14} />
+                        Get Quote
+                      </button>
+                      {showQuoteMenu && (
+                        <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-black/10 bg-white shadow-xl z-20 p-3">
+                          {!quoteVehicle ? (
+                            <div className="max-h-64 overflow-y-auto -m-3 py-1">
+                              {quotableVehicles.map(v => (
+                                <button
+                                  key={v.id}
+                                  onClick={() => {
+                                    setQuoteVehicle(v);
+                                    setQuoteResult(null);
+                                    setQuoteError('');
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors flex items-center justify-between gap-2"
+                                >
+                                  <span className="truncate">{v.name}</span>
+                                  <span className="shrink-0 text-[10px] text-[#1A1A1A]/40">{v.type}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              <button
+                                onClick={() => {
+                                  setQuoteVehicle(null);
+                                  setQuoteResult(null);
+                                  setQuoteError('');
+                                }}
+                                className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange text-left"
+                              >
+                                &larr; {quoteVehicle.name} ({quoteVehicle.type})
+                              </button>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    From
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={quoteFrom}
+                                    min={todayISO}
+                                    onChange={e => {
+                                      const next = e.target.value;
+                                      setQuoteFrom(next);
+                                      setQuoteResult(null);
+                                      setQuoteError('');
+                                      if (quoteTo && next >= quoteTo) setQuoteTo('');
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    To
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={quoteTo}
+                                    min={quoteFrom || todayISO}
+                                    onChange={e => {
+                                      setQuoteTo(e.target.value);
+                                      setQuoteResult(null);
+                                      setQuoteError('');
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={getPriceQuote}
+                                disabled={!canGetQuote || quoteLoading}
+                                className="w-full py-2.5 rounded-lg bg-brand-orange text-white font-bold text-[11px] uppercase tracking-widest disabled:opacity-40 flex items-center justify-center gap-2"
+                              >
+                                {quoteLoading ? <Loader2 size={13} className="animate-spin" /> : <Tag size={13} />}
+                                {quoteLoading ? 'Calculating...' : 'Get Price'}
+                              </button>
+                              {quoteError && <p className="text-[11px] text-red-600">{quoteError}</p>}
+                              {quoteResult && quoteResult.quotable && (
+                                <div className="rounded-lg bg-brand-orange/5 border border-brand-orange/20 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+                                    {quoteResult.days} day{quoteResult.days === 1 ? '' : 's'}
+                                  </p>
+                                  <p className="text-lg font-bold text-[#1A1A1A]">
+                                    THB {quoteResult.totalPrice?.toLocaleString()}
+                                  </p>
+                                  <p className="text-[11px] text-[#1A1A1A]/50">
+                                    THB {quoteResult.perDay?.toLocaleString()}/day
+                                  </p>
+                                  <button
+                                    onClick={insertQuoteIntoReply}
+                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all"
+                                  >
+                                    Insert into reply
+                                  </button>
+                                </div>
+                              )}
+                              {quoteResult && !quoteResult.quotable && (
+                                <div className="rounded-lg bg-red-50 border border-red-100 p-3">
+                                  <p className="text-[11px] font-bold text-red-600 uppercase tracking-widest">Not quotable</p>
+                                  <p className="text-[11px] text-[#1A1A1A]/60 mt-1">{describeQuoteReason(quoteResult.reason)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
