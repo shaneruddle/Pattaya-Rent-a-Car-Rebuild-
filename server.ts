@@ -1887,12 +1887,82 @@ app.get('/api/mail/threads/:threadId/messages/:messageId/attachments/:attachment
 
 // Reply within a thread - reuses the existing Nodemailer send mechanism above,
 // so all outbound mail (automated and staff replies) goes through one proven path.
+// Storage download URLs look like https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?alt=media&token=...
+// Attachments below are fetched server-side (by nodemailer's `href` option)
+// from whatever URL the client sends, so validation pins that fetch to THIS
+// app's own Storage bucket specifically - checking the host alone would still
+// let a forged request point at any other Firebase project's public bucket
+// (SSRF / arbitrary-content-exfil guard) - staff-authenticated caller or not.
+const ALLOWED_ATTACHMENT_HOST = 'firebasestorage.googleapis.com';
+const ALLOWED_ATTACHMENT_BUCKET: string = firebaseConfig.storageBucket;
+const MAX_REPLY_ATTACHMENTS = 12;
+// Gmail's practical send limit is ~25MB including headers/body/MIME overhead;
+// stay well under that. Enforced via HEAD Content-Length before sendMail is
+// ever called, so an oversized (or forged-huge) attachment fails fast with a
+// clear error instead of nodemailer downloading tens of MB and the whole send
+// still bouncing at the SMTP layer.
+const MAX_REPLY_ATTACHMENTS_TOTAL_BYTES = 18 * 1024 * 1024;
+
 app.post('/api/mail/reply', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
     await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
-    const { to, subject, html, inReplyToMessageId } = req.body || {};
+    const { to, subject, html, inReplyToMessageId, attachments } = req.body || {};
     if (!to || !html) return res.status(400).json({ error: 'Missing to/html' });
+
+    // Real vehicle photos attached from the Mail Inbox "Car Photos" picker.
+    // The frontend already caps this per vehicle, but that's a client-side
+    // convenience, not a guarantee - re-validate and re-cap here too.
+    let mailAttachments: { filename: string; href: string }[] | undefined;
+    if (attachments !== undefined) {
+      if (!Array.isArray(attachments)) {
+        return res.status(400).json({ error: 'attachments must be an array' });
+      }
+      if (attachments.length > MAX_REPLY_ATTACHMENTS) {
+        return res.status(400).json({ error: `Too many attachments (max ${MAX_REPLY_ATTACHMENTS})` });
+      }
+      for (const a of attachments) {
+        if (!a || typeof a.filename !== 'string' || typeof a.url !== 'string') {
+          return res.status(400).json({ error: 'Each attachment needs a filename and url' });
+        }
+        let parsed: URL;
+        try {
+          parsed = new URL(a.url);
+        } catch {
+          return res.status(400).json({ error: `Invalid attachment url: ${a.url}` });
+        }
+        const bucketMatch = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\//);
+        if (
+          parsed.protocol !== 'https:' ||
+          parsed.hostname !== ALLOWED_ATTACHMENT_HOST ||
+          !bucketMatch ||
+          bucketMatch[1] !== ALLOWED_ATTACHMENT_BUCKET
+        ) {
+          return res.status(400).json({ error: "Attachment url must be a link to this app's Storage bucket" });
+        }
+      }
+
+      let totalBytes = 0;
+      for (const a of attachments) {
+        try {
+          const headRes = await fetch(a.url, { method: 'HEAD' });
+          const len = parseInt(headRes.headers.get('content-length') || '', 10);
+          if (!headRes.ok || !Number.isFinite(len) || len <= 0) {
+            return res.status(400).json({ error: `Could not verify size of attachment: ${a.filename}` });
+          }
+          totalBytes += len;
+        } catch (err) {
+          return res.status(400).json({ error: `Could not verify size of attachment: ${a.filename}` });
+        }
+      }
+      if (totalBytes > MAX_REPLY_ATTACHMENTS_TOTAL_BYTES) {
+        return res.status(400).json({
+          error: `Attachments too large (${(totalBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_REPLY_ATTACHMENTS_TOTAL_BYTES / 1024 / 1024}MB)`,
+        });
+      }
+
+      mailAttachments = attachments.map((a: any) => ({ filename: a.filename, href: a.url }));
+    }
 
     const gmailPass = process.env.GMAIL_APP_PASSWORD;
     const gmailUser = process.env.GMAIL_USER || GMAIL_INBOX_MAILBOX;
@@ -1907,6 +1977,7 @@ app.post('/api/mail/reply', async (req: any, res: any) => {
       subject: finalSubject,
       html,
       ...(inReplyToMessageId ? { inReplyTo: inReplyToMessageId, references: inReplyToMessageId } : {}),
+      ...(mailAttachments && mailAttachments.length > 0 ? { attachments: mailAttachments } : {}),
     });
     console.log(`[Mail] Reply sent OK: ${info.messageId}`);
     res.json({ success: true, messageId: info.messageId });
