@@ -1265,7 +1265,8 @@ export const MailInbox: React.FC = () => {
 
         <div className={cn(
           'flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
-          (!showMobileDetail || showMobileProfile) && 'hidden md:flex'
+          !showMobileDetail && 'hidden md:flex',
+          showMobileProfile && 'hidden lg:flex'
         )}>
           {!selectedThreadId ? (
             <div className="flex-1 flex items-center justify-center text-sm text-[#1A1A1A]/40">
@@ -1279,7 +1280,7 @@ export const MailInbox: React.FC = () => {
                 </button>
                 <h2 className="font-bold text-[#1A1A1A] truncate flex-1">{selectedThread?.subject || '(no subject)'}</h2>
                 <button
-                  className="md:hidden p-1 text-[#1A1A1A]/60 hover:text-brand-orange shrink-0"
+                  className="lg:hidden p-1 text-[#1A1A1A]/60 hover:text-brand-orange shrink-0"
                   onClick={() => setShowMobileProfile(true)}
                   title="View customer profile"
                 >
@@ -1501,7 +1502,7 @@ export const MailInbox: React.FC = () => {
         )}
 
         {selectedThreadId && showMobileDetail && showMobileProfile && (
-          <div className="flex md:hidden flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col overflow-y-auto custom-scrollbar p-4">
+          <div className="flex lg:hidden flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col overflow-y-auto custom-scrollbar p-4">
             <div className="flex items-center gap-3 mb-3 pb-3 border-b border-black/10 -mx-4 -mt-4 px-4 pt-4">
               <button className="p-1" onClick={() => setShowMobileProfile(false)}>
                 <ChevronLeft size={20} />
