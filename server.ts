@@ -1889,11 +1889,19 @@ app.get('/api/mail/threads/:threadId/messages/:messageId/attachments/:attachment
 // so all outbound mail (automated and staff replies) goes through one proven path.
 // Storage download URLs look like https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?alt=media&token=...
 // Attachments below are fetched server-side (by nodemailer's `href` option)
-// from whatever URL the client sends, so this allowlist keeps that fetch
-// pinned to our own Storage bucket instead of an arbitrary caller-supplied
-// host (SSRF guard) - staff-authenticated caller or not.
+// from whatever URL the client sends, so validation pins that fetch to THIS
+// app's own Storage bucket specifically - checking the host alone would still
+// let a forged request point at any other Firebase project's public bucket
+// (SSRF / arbitrary-content-exfil guard) - staff-authenticated caller or not.
 const ALLOWED_ATTACHMENT_HOST = 'firebasestorage.googleapis.com';
+const ALLOWED_ATTACHMENT_BUCKET: string = firebaseConfig.storageBucket;
 const MAX_REPLY_ATTACHMENTS = 12;
+// Gmail's practical send limit is ~25MB including headers/body/MIME overhead;
+// stay well under that. Enforced via HEAD Content-Length before sendMail is
+// ever called, so an oversized (or forged-huge) attachment fails fast with a
+// clear error instead of nodemailer downloading tens of MB and the whole send
+// still bouncing at the SMTP layer.
+const MAX_REPLY_ATTACHMENTS_TOTAL_BYTES = 18 * 1024 * 1024;
 
 app.post('/api/mail/reply', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
@@ -1923,10 +1931,36 @@ app.post('/api/mail/reply', async (req: any, res: any) => {
         } catch {
           return res.status(400).json({ error: `Invalid attachment url: ${a.url}` });
         }
-        if (parsed.protocol !== 'https:' || parsed.hostname !== ALLOWED_ATTACHMENT_HOST) {
-          return res.status(400).json({ error: 'Attachment url must be a firebasestorage.googleapis.com link' });
+        const bucketMatch = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\//);
+        if (
+          parsed.protocol !== 'https:' ||
+          parsed.hostname !== ALLOWED_ATTACHMENT_HOST ||
+          !bucketMatch ||
+          bucketMatch[1] !== ALLOWED_ATTACHMENT_BUCKET
+        ) {
+          return res.status(400).json({ error: "Attachment url must be a link to this app's Storage bucket" });
         }
       }
+
+      let totalBytes = 0;
+      for (const a of attachments) {
+        try {
+          const headRes = await fetch(a.url, { method: 'HEAD' });
+          const len = parseInt(headRes.headers.get('content-length') || '', 10);
+          if (!headRes.ok || !Number.isFinite(len) || len <= 0) {
+            return res.status(400).json({ error: `Could not verify size of attachment: ${a.filename}` });
+          }
+          totalBytes += len;
+        } catch (err) {
+          return res.status(400).json({ error: `Could not verify size of attachment: ${a.filename}` });
+        }
+      }
+      if (totalBytes > MAX_REPLY_ATTACHMENTS_TOTAL_BYTES) {
+        return res.status(400).json({
+          error: `Attachments too large (${(totalBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_REPLY_ATTACHMENTS_TOTAL_BYTES / 1024 / 1024}MB)`,
+        });
+      }
+
       mailAttachments = attachments.map((a: any) => ({ filename: a.filename, href: a.url }));
     }
 
