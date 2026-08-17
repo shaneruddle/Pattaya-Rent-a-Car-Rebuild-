@@ -1720,20 +1720,28 @@ function extractGmailBody(payload: any): { text: string; html: string } {
 }
 
 // Real (non-inline) attachments only - parts with a filename and an
-// attachmentId. Inline images referenced via cid: in bodyHtml aren't
-// surfaced here; fetching those would need cid resolution, which is out
-// of scope for the "save a photo to the image library" use case below.
+// attachmentId, excluding inline parts (Content-Disposition: inline, or a
+// Content-ID present - the cid: signal used to reference the part from
+// bodyHtml). Without this, a signature logo shows up as a "photo" on every
+// single thread. Inline images referenced via cid: aren't surfaced here at
+// all; fetching those would need cid resolution, out of scope for the
+// "save a photo to the image library" use case below.
 function extractGmailAttachments(payload: any): { attachmentId: string; filename: string; mimeType: string; size: number }[] {
   const attachments: { attachmentId: string; filename: string; mimeType: string; size: number }[] = [];
   function walk(part: any) {
     if (!part) return;
     if (part.filename && part.body?.attachmentId) {
-      attachments.push({
-        attachmentId: part.body.attachmentId,
-        filename: part.filename,
-        mimeType: part.mimeType || 'application/octet-stream',
-        size: part.body.size || 0,
-      });
+      const disposition = gmailHeader(part.headers || [], 'Content-Disposition');
+      const contentId = gmailHeader(part.headers || [], 'Content-ID');
+      const isInline = /^inline/i.test(disposition) || !!contentId;
+      if (!isInline) {
+        attachments.push({
+          attachmentId: part.body.attachmentId,
+          filename: part.filename,
+          mimeType: part.mimeType || 'application/octet-stream',
+          size: part.body.size || 0,
+        });
+      }
     }
     if (part.parts) {
       part.parts.forEach(walk);
