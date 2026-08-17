@@ -234,6 +234,7 @@ export const MailInbox: React.FC = () => {
   const [verifyingId, setVerifyingId] = useState(false);
   const [refreshingVerify, setRefreshingVerify] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
   const [correctingEmail, setCorrectingEmail] = useState(false);
   const [correctedEmailInput, setCorrectedEmailInput] = useState('');
@@ -401,6 +402,7 @@ export const MailInbox: React.FC = () => {
   const openThread = useCallback(async (threadId: string) => {
     setSelectedThreadId(threadId);
     setShowMobileDetail(true);
+    setShowMobileProfile(false);
     setMessages([]);
     setExpandedMessageIds(new Set());
     setHistory([]);
@@ -873,6 +875,202 @@ export const MailInbox: React.FC = () => {
     }
   };
 
+  // Shared Customer Profile + Customer History content, rendered both in the
+  // desktop "Details" column (hidden lg:flex w-72) and in the mobile-only
+  // full-screen Profile view (shown via the header Profile icon below lg).
+  const customerDetailsPanel = (
+    <>
+      <div className="mb-4 pb-4 border-b border-black/10">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <User size={16} className="text-brand-orange" />
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer Profile</h3>
+          </div>
+          {!customerLoading && !editingCustomer && (
+            <button
+              onClick={handleStartEditCustomer}
+              className="text-[11px] font-medium text-brand-orange hover:underline"
+            >
+              {customer ? 'Edit' : 'Add details'}
+            </button>
+          )}
+        </div>
+        {!customerLoading && !historyLoading && !editingCustomer && (
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {history.length === 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold uppercase">New customer</span>
+            )}
+            {history.length === 0 && isTempEmail && (
+              <span
+                title="This email is from a temporary/disposable email provider - worth a second look"
+                className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 font-bold uppercase flex items-center gap-1"
+              >
+                <AlertTriangle size={11} /> Temp email
+              </span>
+            )}
+            {history.length === 0 && searchName && (
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(searchName)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Search this name online in a new tab"
+                className="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-600 font-bold uppercase flex items-center gap-1 hover:bg-gray-500/20"
+              >
+                <Search size={11} /> Search name
+              </a>
+            )}
+            {customer?.diditStatus && customer.diditStatus !== 'Not Started' ? (
+              <button
+                onClick={handleRefreshVerifyStatus}
+                disabled={refreshingVerify}
+                title="Click to refresh status from Didit"
+                className={cn(
+                  'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 disabled:opacity-50',
+                  customer.diditStatus === 'Approved' ? 'bg-green-500/10 text-green-600' :
+                  customer.diditStatus === 'Declined' ? 'bg-red-500/10 text-red-600' :
+                  'bg-amber-500/10 text-amber-600'
+                )}
+              >
+                {refreshingVerify ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
+                ID: {customer.diditStatus}
+              </button>
+            ) : history.length === 0 ? (
+              <button
+                onClick={handleVerifyId}
+                disabled={verifyingId || !customerEmail}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase flex items-center gap-1 disabled:opacity-50"
+              >
+                {verifyingId ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
+                {verifyingId ? 'Starting...' : 'Verify ID'}
+              </button>
+            ) : null}
+          </div>
+        )}
+        {customerLoading ? (
+          <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
+        ) : editingCustomer ? (
+          <div className="space-y-2">
+            {PROFILE_FIELDS.map(f => (
+              <div key={f.key}>
+                <label className="text-[10px] uppercase tracking-wide text-[#1A1A1A]/40">{f.label}</label>
+                {f.type === 'textarea' ? (
+                  <textarea
+                    value={(customerForm[f.key] as string) || ''}
+                    onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                    className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
+                    rows={2}
+                  />
+                ) : f.type === 'checkbox' ? (
+                  <input
+                    type="checkbox"
+                    checked={!!customerForm[f.key]}
+                    onChange={e => handleCustomerFieldChange(f.key, e.target.checked)}
+                    className="mt-1"
+                  />
+                ) : f.type === 'select' ? (
+                  <>
+                    <select
+                      value={(customerForm[f.key] as string) || ''}
+                      onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                      className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5 bg-white"
+                    >
+                      <option value="">Select...</option>
+                      {(f.options || []).map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    {f.key === 'nationality' && !customerForm.nationality && suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) && (
+                      <button
+                        type="button"
+                        onClick={() => handleCustomerFieldChange('nationality', suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) as string)}
+                        className="mt-1 text-[10px] font-medium text-brand-orange hover:underline"
+                      >
+                        Suggest: {suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber)} (from phone)
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    value={(customerForm[f.key] as string) || ''}
+                    onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
+                    className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={handleSaveCustomer}
+                disabled={savingCustomer}
+                className="text-xs font-bold text-white bg-brand-orange rounded-lg px-3 py-1.5 disabled:opacity-50"
+              >
+                {savingCustomer ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={handleCancelEditCustomer}
+                disabled={savingCustomer}
+                className="text-xs font-medium text-[#1A1A1A]/60 px-3 py-1.5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : customer ? (
+          <div className="space-y-1.5">
+            {PROFILE_FIELDS.filter(f => f.type !== 'checkbox').map(f => (
+              customer[f.key] ? (
+                <p key={f.key} className="text-xs text-[#1A1A1A]">
+                  <span className="text-[#1A1A1A]/40">{f.label}: </span>
+                  {String(customer[f.key])}
+                </p>
+              ) : null
+            ))}
+            {customer.marketingConsent ? (
+              <p className="text-xs text-[#1A1A1A]">
+                <span className="text-[#1A1A1A]/40">Marketing consent: </span>Yes
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-xs text-[#1A1A1A]/40">No profile on file for this email.</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 mb-4">
+        <User size={16} className="text-brand-orange" />
+        <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer History</h3>
+      </div>
+      {historyLoading ? (
+        <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
+      ) : history.length === 0 ? (
+        <p className="text-xs text-[#1A1A1A]/40">No past bookings found for this email.</p>
+      ) : (
+        <div className="space-y-3">
+          {history.map(b => {
+            const perDay = historyPricePerDay(b);
+            return (
+            <div key={b.id} className="bg-white/60 rounded-xl border border-black/10 p-3">
+              <p className="text-sm font-bold text-[#1A1A1A]">{b.customerName}</p>
+              <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
+                {b.startDate ? format(new Date(b.startDate), 'dd MMM yyyy') : ''}
+                {b.endDate ? ` - ${format(new Date(b.endDate), 'dd MMM yyyy')}` : ''}
+              </p>
+              <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
+                {b.carName || 'Unknown vehicle'}
+                {perDay ? ` · THB ${perDay.toLocaleString()}/day` : ''}
+              </p>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase">{b.status}</span>
+                {b.amount ? <span className="text-xs font-bold text-[#1A1A1A]">THB {b.amount.toLocaleString()}</span> : null}
+              </div>
+            </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="h-full flex flex-col">
       <div className="mb-6 flex items-center justify-between">
@@ -1067,7 +1265,7 @@ export const MailInbox: React.FC = () => {
 
         <div className={cn(
           'flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
-          !showMobileDetail && 'hidden md:flex'
+          (!showMobileDetail || showMobileProfile) && 'hidden md:flex'
         )}>
           {!selectedThreadId ? (
             <div className="flex-1 flex items-center justify-center text-sm text-[#1A1A1A]/40">
@@ -1076,10 +1274,17 @@ export const MailInbox: React.FC = () => {
           ) : (
             <>
               <div className="p-4 border-b border-black/10 flex items-center gap-3">
-                <button className="md:hidden p-1" onClick={() => setShowMobileDetail(false)}>
+                <button className="md:hidden p-1" onClick={() => { setShowMobileDetail(false); setShowMobileProfile(false); }}>
                   <ChevronLeft size={20} />
                 </button>
-                <h2 className="font-bold text-[#1A1A1A] truncate">{selectedThread?.subject || '(no subject)'}</h2>
+                <h2 className="font-bold text-[#1A1A1A] truncate flex-1">{selectedThread?.subject || '(no subject)'}</h2>
+                <button
+                  className="md:hidden p-1 text-[#1A1A1A]/60 hover:text-brand-orange shrink-0"
+                  onClick={() => setShowMobileProfile(true)}
+                  title="View customer profile"
+                >
+                  <User size={18} />
+                </button>
                 <button
                   onClick={handleMarkUnread}
                   disabled={markingUnread}
@@ -1291,194 +1496,19 @@ export const MailInbox: React.FC = () => {
                 <ChevronRight size={14} />
               </button>
             </div>
-            <div className="mb-4 pb-4 border-b border-black/10">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <User size={16} className="text-brand-orange" />
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer Profile</h3>
-                </div>
-                {!customerLoading && !editingCustomer && (
-                  <button
-                    onClick={handleStartEditCustomer}
-                    className="text-[11px] font-medium text-brand-orange hover:underline"
-                  >
-                    {customer ? 'Edit' : 'Add details'}
-                  </button>
-                )}
-              </div>
-              {!customerLoading && !historyLoading && !editingCustomer && (
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  {history.length === 0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold uppercase">New customer</span>
-                  )}
-                  {history.length === 0 && isTempEmail && (
-                    <span
-                      title="This email is from a temporary/disposable email provider - worth a second look"
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 font-bold uppercase flex items-center gap-1"
-                    >
-                      <AlertTriangle size={11} /> Temp email
-                    </span>
-                  )}
-                  {history.length === 0 && searchName && (
-                    <a
-                      href={`https://www.google.com/search?q=${encodeURIComponent(searchName)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Search this name online in a new tab"
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-600 font-bold uppercase flex items-center gap-1 hover:bg-gray-500/20"
-                    >
-                      <Search size={11} /> Search name
-                    </a>
-                  )}
-                  {customer?.diditStatus && customer.diditStatus !== 'Not Started' ? (
-                    <button
-                      onClick={handleRefreshVerifyStatus}
-                      disabled={refreshingVerify}
-                      title="Click to refresh status from Didit"
-                      className={cn(
-                        'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1 disabled:opacity-50',
-                        customer.diditStatus === 'Approved' ? 'bg-green-500/10 text-green-600' :
-                        customer.diditStatus === 'Declined' ? 'bg-red-500/10 text-red-600' :
-                        'bg-amber-500/10 text-amber-600'
-                      )}
-                    >
-                      {refreshingVerify ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
-                      ID: {customer.diditStatus}
-                    </button>
-                  ) : history.length === 0 ? (
-                    <button
-                      onClick={handleVerifyId}
-                      disabled={verifyingId || !customerEmail}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {verifyingId ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={11} />}
-                      {verifyingId ? 'Starting...' : 'Verify ID'}
-                    </button>
-                  ) : null}
-                </div>
-              )}
-              {customerLoading ? (
-                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
-              ) : editingCustomer ? (
-                <div className="space-y-2">
-                  {PROFILE_FIELDS.map(f => (
-                    <div key={f.key}>
-                      <label className="text-[10px] uppercase tracking-wide text-[#1A1A1A]/40">{f.label}</label>
-                      {f.type === 'textarea' ? (
-                        <textarea
-                          value={(customerForm[f.key] as string) || ''}
-                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
-                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
-                          rows={2}
-                        />
-                      ) : f.type === 'checkbox' ? (
-                        <input
-                          type="checkbox"
-                          checked={!!customerForm[f.key]}
-                          onChange={e => handleCustomerFieldChange(f.key, e.target.checked)}
-                          className="mt-1"
-                        />
-                      ) : f.type === 'select' ? (
-                        <>
-                          <select
-                            value={(customerForm[f.key] as string) || ''}
-                            onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
-                            className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5 bg-white"
-                          >
-                            <option value="">Select...</option>
-                            {(f.options || []).map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                          {f.key === 'nationality' && !customerForm.nationality && suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) && (
-                            <button
-                              type="button"
-                              onClick={() => handleCustomerFieldChange('nationality', suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber) as string)}
-                              className="mt-1 text-[10px] font-medium text-brand-orange hover:underline"
-                            >
-                              Suggest: {suggestNationalityFromPhone(customerForm.mobileNumber || customer?.mobileNumber)} (from phone)
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <input
-                          type="text"
-                          value={(customerForm[f.key] as string) || ''}
-                          onChange={e => handleCustomerFieldChange(f.key, e.target.value)}
-                          className="w-full text-xs rounded-lg border border-black/10 p-2 mt-0.5"
-                        />
-                      )}
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={handleSaveCustomer}
-                      disabled={savingCustomer}
-                      className="text-xs font-bold text-white bg-brand-orange rounded-lg px-3 py-1.5 disabled:opacity-50"
-                    >
-                      {savingCustomer ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={handleCancelEditCustomer}
-                      disabled={savingCustomer}
-                      className="text-xs font-medium text-[#1A1A1A]/60 px-3 py-1.5"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : customer ? (
-                <div className="space-y-1.5">
-                  {PROFILE_FIELDS.filter(f => f.type !== 'checkbox').map(f => (
-                    customer[f.key] ? (
-                      <p key={f.key} className="text-xs text-[#1A1A1A]">
-                        <span className="text-[#1A1A1A]/40">{f.label}: </span>
-                        {String(customer[f.key])}
-                      </p>
-                    ) : null
-                  ))}
-                  {customer.marketingConsent ? (
-                    <p className="text-xs text-[#1A1A1A]">
-                      <span className="text-[#1A1A1A]/40">Marketing consent: </span>Yes
-                    </p>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-xs text-[#1A1A1A]/40">No profile on file for this email.</p>
-              )}
+            {customerDetailsPanel}
+          </div>
+        )}
+
+        {selectedThreadId && showMobileDetail && showMobileProfile && (
+          <div className="flex md:hidden flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col overflow-y-auto custom-scrollbar p-4">
+            <div className="flex items-center gap-3 mb-3 pb-3 border-b border-black/10 -mx-4 -mt-4 px-4 pt-4">
+              <button className="p-1" onClick={() => setShowMobileProfile(false)}>
+                <ChevronLeft size={20} />
+              </button>
+              <h2 className="font-bold text-[#1A1A1A]">Customer Profile</h2>
             </div>
-            <div className="flex items-center gap-2 mb-4">
-              <User size={16} className="text-brand-orange" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A]/60">Customer History</h3>
-            </div>
-            {historyLoading ? (
-              <div className="flex justify-center p-4"><Loader2 className="animate-spin text-brand-orange" size={18} /></div>
-            ) : history.length === 0 ? (
-              <p className="text-xs text-[#1A1A1A]/40">No past bookings found for this email.</p>
-            ) : (
-              <div className="space-y-3">
-                {history.map(b => {
-                  const perDay = historyPricePerDay(b);
-                  return (
-                  <div key={b.id} className="bg-white/60 rounded-xl border border-black/10 p-3">
-                    <p className="text-sm font-bold text-[#1A1A1A]">{b.customerName}</p>
-                    <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
-                      {b.startDate ? format(new Date(b.startDate), 'dd MMM yyyy') : ''}
-                      {b.endDate ? ` - ${format(new Date(b.endDate), 'dd MMM yyyy')}` : ''}
-                    </p>
-                    <p className="text-[11px] text-[#1A1A1A]/50 mt-0.5">
-                      {b.carName || 'Unknown vehicle'}
-                      {perDay ? ` · THB ${perDay.toLocaleString()}/day` : ''}
-                    </p>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-orange/10 text-brand-orange font-bold uppercase">{b.status}</span>
-                      {b.amount ? <span className="text-xs font-bold text-[#1A1A1A]">THB {b.amount.toLocaleString()}</span> : null}
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
+            {customerDetailsPanel}
           </div>
         )}
       </div>
