@@ -39,7 +39,7 @@ import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactGA from 'react-ga4';
 import { captureUTMParams } from './utils/utmCapture';
-import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck, Plus, TrendingUp, Tag } from 'lucide-react';
+import { LogIn, Loader2, Car as CarIcon, Bike, ShieldCheck, Plus, TrendingUp, Tag, Inbox } from 'lucide-react';
 import { cn } from './lib/utils';
 import { isWithinInterval, parseISO, startOfDay, endOfDay, isValid, subMonths } from 'date-fns';
 import { safeLocalStorage } from './lib/storage';
@@ -113,6 +113,7 @@ function AppContent() {
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // Connection check removed from early mount to avoid Permission Denied on first turn
@@ -128,6 +129,35 @@ function AppContent() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Unread mail count for the mobile bottom-nav Inbox badge. Mirrors Sidebar's
+  // own /api/mail/unread-count fetch - kept separate rather than lifted/shared
+  // since this is the only other place that needs it, and only on mobile.
+  useEffect(() => {
+    if (!isMobile || !user) return;
+    let cancelled = false;
+    const fetchMailUnread = async () => {
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+        const res = await fetch('/api/mail/unread-count', {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setMailUnreadCount(data.unreadCount || 0);
+        }
+      } catch (err) {
+        console.error('App: Error fetching mail unread count:', err);
+      }
+    };
+    fetchMailUnread();
+    const interval = setInterval(fetchMailUnread, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isMobile, user]);
 
   console.log('AppContent: Current State:', { loading, user: !!user, currentView });
 
@@ -874,6 +904,21 @@ function AppContent() {
                 <Tag size={20} />
               </motion.div>
               <span className="text-[9px] font-bold uppercase tracking-widest">Quote</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('mail')}
+              className={cn("relative flex flex-col items-center gap-1 transition-all",
+                currentView === 'mail' ? "text-brand-orange" : "text-[#1A1A1A]/40")}
+            >
+              <motion.div animate={currentView === 'mail' ? { scale: 1.2 } : { scale: 1 }} className="relative">
+                <Inbox size={20} />
+                {mailUnreadCount > 0 && (
+                  <div className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 bg-brand-orange text-white text-[8px] font-bold rounded-full flex items-center justify-center border-2 border-white pointer-events-none">
+                    {mailUnreadCount > 99 ? '99+' : mailUnreadCount}
+                  </div>
+                )}
+              </motion.div>
+              <span className="text-[9px] font-bold uppercase tracking-widest">Inbox</span>
             </button>
           </div>
         )}
