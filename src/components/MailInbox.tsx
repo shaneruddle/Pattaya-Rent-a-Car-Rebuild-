@@ -261,6 +261,9 @@ export const MailInbox: React.FC = () => {
   const [markingUnread, setMarkingUnread] = useState(false);
   // Fetched attachment thumbnails, keyed by "messageId:attachmentId" -> data URL.
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({});
+  // "messageId:attachmentId" keys whose preview fetch failed, so we can show a
+  // retry affordance instead of spinning forever.
+  const [attachmentPreviewErrors, setAttachmentPreviewErrors] = useState<Set<string>>(new Set());
   // "messageId:attachmentId" of the attachment currently being uploaded to the
   // Image Library, so only that one thumbnail shows a saving spinner.
   const [savingAttachmentKey, setSavingAttachmentKey] = useState<string | null>(null);
@@ -316,17 +319,31 @@ export const MailInbox: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Auto-loads a thumbnail for every image attachment in the open thread.
-  // Guarded by attachmentPreviewsLoadingRef (in-flight) and attachmentPreviews
-  // itself (already loaded) so re-renders don't re-fetch the same photo.
+  // Auto-loads a thumbnail for every image attachment on messages that are
+  // actually expanded (visible) in the thread - collapsed messages render no
+  // attachment UI at all, so fetching their full-size photos up front would
+  // just burn bandwidth on images the user may never see. Mirrors the same
+  // isDefaultExpanded/isExpanded logic used to render the message list below.
+  // Guarded by attachmentPreviewsLoadingRef (in-flight), attachmentPreviews
+  // (already loaded), and attachmentPreviewErrors (failed - needs an explicit
+  // retry) so re-renders don't re-fetch the same photo or hammer a failing one.
   const attachmentPreviewsLoadingRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!selectedThreadId) return;
-    messages.forEach(m => {
+    messages.forEach((m, i) => {
+      const isDefaultExpanded = i === messages.length - 1 || m.unread;
+      const isExpanded = expandedMessageIds.has(m.id) ? !isDefaultExpanded : isDefaultExpanded;
+      if (!isExpanded) return;
       (m.attachments || []).forEach(att => {
         if (!att.mimeType.startsWith('image/')) return;
         const key = `${m.id}:${att.attachmentId}`;
-        if (attachmentPreviews[key] || attachmentPreviewsLoadingRef.current.has(key)) return;
+        if (
+          attachmentPreviews[key] ||
+          attachmentPreviewsLoadingRef.current.has(key) ||
+          attachmentPreviewErrors.has(key)
+        ) {
+          return;
+        }
         attachmentPreviewsLoadingRef.current.add(key);
         authedFetch(`/api/mail/threads/${selectedThreadId}/messages/${m.id}/attachments/${att.attachmentId}`)
           .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
@@ -336,14 +353,26 @@ export const MailInbox: React.FC = () => {
               [key]: `data:${att.mimeType};base64,${base64UrlToBase64(data.data)}`,
             }));
           })
-          .catch(err => console.error('Failed to load attachment preview:', err))
+          .catch(err => {
+            console.error('Failed to load attachment preview:', err);
+            setAttachmentPreviewErrors(prev => new Set(prev).add(key));
+          })
           .finally(() => attachmentPreviewsLoadingRef.current.delete(key));
       });
     });
     // attachmentPreviews intentionally omitted - it's only read here as an
     // already-loaded check, and including it would re-run this on every fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, selectedThreadId]);
+  }, [messages, selectedThreadId, expandedMessageIds, attachmentPreviewErrors]);
+
+  const retryAttachmentPreview = (key: string) => {
+    setAttachmentPreviewErrors(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
 
   const sortUnreadFirst = (list: MailThread[]) =>
     [...list].sort((a, b) => (b.unread ? 1 : 0) - (a.unread ? 1 : 0));
@@ -462,6 +491,11 @@ export const MailInbox: React.FC = () => {
     setShowMobileProfile(false);
     setMessages([]);
     setExpandedMessageIds(new Set());
+    // Photo previews are per-thread; without this they'd pile up in memory
+    // as staff browse from one photo-containing thread to the next.
+    setAttachmentPreviews({});
+    setAttachmentPreviewErrors(new Set());
+    attachmentPreviewsLoadingRef.current.clear();
     setHistory([]);
     setCustomer(null);
     setEditingCustomer(false);
@@ -1521,6 +1555,15 @@ export const MailInbox: React.FC = () => {
                                 >
                                   {preview ? (
                                     <img src={preview} alt={att.filename} className="w-full h-full object-cover" />
+                                  ) : attachmentPreviewErrors.has(key) ? (
+                                    <button
+                                      onClick={() => retryAttachmentPreview(key)}
+                                      title="Retry loading preview"
+                                      className="w-full h-full flex flex-col items-center justify-center gap-1 text-[#1A1A1A]/40 hover:text-[#1A1A1A]/70"
+                                    >
+                                      <RefreshCw size={14} />
+                                      <span className="text-[9px] font-bold uppercase">Retry</span>
+                                    </button>
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center">
                                       <Loader2 size={16} className="animate-spin text-[#1A1A1A]/30" />
