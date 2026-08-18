@@ -2654,13 +2654,27 @@ async function handleLineEvent(event: any): Promise<void> {
     createdAt,
   });
 
-  await threadRef.set({
-    lastMessageText: text,
-    lastMessageAt: createdAt,
-    lastMessageFrom: 'customer',
-    unread: true,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  // Runs as a transaction, and only overwrites the summary if this event is
+  // at least as new as whatever's already there. Without that check, two
+  // overlapping webhook calls for the same customer (or LINE redelivering an
+  // older event after a newer one already landed) could finish in either
+  // order - whichever write lands last would win, letting an older message
+  // clobber the summary with a stale preview/timestamp even though the
+  // individual message documents above are all stored correctly.
+  await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(threadRef);
+    const existingAt = snap.data()?.lastMessageAt;
+    if (createdAt instanceof Timestamp && existingAt instanceof Timestamp && existingAt.toMillis() >= createdAt.toMillis()) {
+      return;
+    }
+    tx.set(threadRef, {
+      lastMessageText: text,
+      lastMessageAt: createdAt,
+      lastMessageFrom: 'customer',
+      unread: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
 }
 
 // LINE webhook - incoming messages/events. Public endpoint (LINE calls this
@@ -2686,10 +2700,12 @@ app.post('/api/line/webhook', async (req: any, res: any) => {
     }
 
     const events: any[] = req.body?.events || [];
+    let anyFailed = false;
     for (const event of events) {
       try {
         await handleLineEvent(event);
       } catch (err: any) {
+        anyFailed = true;
         console.error('[LINE] Failed to handle event', event?.type, err?.message || err);
       }
     }
@@ -2700,6 +2716,16 @@ app.post('/api/line/webhook', async (req: any, res: any) => {
     // which would risk silently dropping in-flight Firestore writes. LINE's
     // timeout is generous enough that a handful of writes per call (almost
     // always one event per webhook call) comfortably finishes first.
+    if (anyFailed) {
+      // A non-2xx tells LINE to redeliver the whole batch rather than treating
+      // it as delivered - without this, a transient Firestore failure would
+      // log an error here and then vanish forever, since this webhook is the
+      // sole source of LINE conversation history. Safe to redeliver: every
+      // write is keyed by LINE's own message id (or a fallback derived from
+      // userId+timestamp), so re-processing an event that already succeeded
+      // in this same batch is a harmless overwrite, not a duplicate.
+      return res.status(500).send('Partial failure - see logs');
+    }
     res.status(200).send('OK');
   } catch (err: any) {
     console.error('[LINE] webhook error:', err?.message || err);
@@ -2707,13 +2733,26 @@ app.post('/api/line/webhook', async (req: any, res: any) => {
   }
 });
 
+// Mirrors the frontend's own staff check (isStaff in src/App.tsx).
+// requireStaffAuth above only confirms the caller is signed in with *some*
+// Google account - it doesn't check they're Pattaya Rent A Car staff, so on
+// its own it's not enough to gate customer LINE conversation data behind.
+// (The same gap exists on other endpoints that use requireStaffAuth; fixing
+// it there is tracked separately. It's fixed here because these two
+// endpoints are new in this PR.)
+function isStaffEmail(email: string | null | undefined): boolean {
+  const e = (email || '').toLowerCase().trim();
+  return e.endsWith('@pattayarentacar.com') || e === 'info@pattayarentacar.com';
+}
+
 // List LINE conversation threads, most recently active first - shaped to
 // mirror what GET /api/mail/threads returns, so a future Mail Inbox UI can
 // treat both similarly.
 app.get('/api/line/threads', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
-    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
     const snap = await firestore.collection('line_threads').orderBy('lastMessageAt', 'desc').limit(100).get();
     const threads = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     res.json({ threads });
@@ -2727,14 +2766,19 @@ app.get('/api/line/threads', async (req: any, res: any) => {
 app.get('/api/line/threads/:userId', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
-    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
     const { userId } = req.params;
     const threadSnap = await firestore.collection('line_threads').doc(userId).get();
     if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
+    // Most recent 200, oldest-first for display: ordering desc-then-limit
+    // keeps the newest messages when a thread has grown past 200 (asc+limit
+    // would silently return only the oldest ones and hide anything recent),
+    // then the array is reversed back to chronological order for the UI.
     const messagesSnap = await firestore
       .collection('line_threads').doc(userId).collection('messages')
-      .orderBy('createdAt', 'asc').limit(200).get();
-    const messages = messagesSnap.docs.map(d => d.data());
+      .orderBy('createdAt', 'desc').limit(200).get();
+    const messages = messagesSnap.docs.map(d => d.data()).reverse();
     res.json({ thread: { id: threadSnap.id, ...threadSnap.data() }, messages });
   } catch (err: any) {
     console.error('[LINE] thread detail error:', err?.message || err);
