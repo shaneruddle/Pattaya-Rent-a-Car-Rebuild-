@@ -2708,17 +2708,30 @@ async function handleLineEvent(event: any): Promise<void> {
   // re-writing the same doc id is a harmless no-op rather than a duplicate.
   const messageId = event.message?.id || `${userId}-${event.timestamp}`;
   const createdAt = eventAt || FieldValue.serverTimestamp();
+  const msgRef = threadRef.collection('messages').doc(messageId);
 
-  await threadRef.collection('messages').doc(messageId).set({
-    id: messageId,
-    from: 'customer',
-    kind,
-    text,
-    // Reply tokens are single-use and expire a short time after the message
-    // arrives - not usable yet (no reply endpoint in this phase) but kept
-    // for when that's built, since it's free to store.
-    replyToken: event.replyToken || null,
-    createdAt,
+  // A plain (non-transactional) .set() here would let a redelivered copy of
+  // this same message event resurrect an already-unsent message: this
+  // webhook returns a non-2xx (see anyFailed below) whenever any event in a
+  // batch fails, which makes LINE redeliver the whole batch - including
+  // events that already succeeded the first time. If the customer's unsend
+  // for this message was processed in the gap before that redelivery
+  // arrives, this write would otherwise blindly restore the original text
+  // and undo the tombstone the unsend branch above just set.
+  await firestore.runTransaction(async (tx) => {
+    const existing = await tx.get(msgRef);
+    if (existing.exists && existing.data()?.unsent) return;
+    tx.set(msgRef, {
+      id: messageId,
+      from: 'customer',
+      kind,
+      text,
+      // Reply tokens are single-use and expire a short time after the message
+      // arrives - not usable yet (no reply endpoint in this phase) but kept
+      // for when that's built, since it's free to store.
+      replyToken: event.replyToken || null,
+      createdAt,
+    });
   });
 
   // Runs as a transaction, and only overwrites the summary if this event is
