@@ -96,6 +96,28 @@ function AppHeader() {
   );
 }
 
+// Every view currentView can currently render (kept in sync with the render
+// switch and mobile nav below).
+const VALID_VIEWS = new Set([
+  'company_settings', 'timeline_cars', 'timeline_bikes', 'finance', 'finance_overview',
+  'booking', 'pricing', 'fleet', 'crm', 'website_fleet', 'bookings', 'rentals', 'logs',
+  'enquiries', 'user_management', 'new_rental', 'marketing_blog', 'marketing_calendar',
+  'marketing_faq', 'image_management', 'email_templates', 'vehicle_report', 'calendar',
+  'competitor_pricing', 'bike_price_quote', 'mail',
+]);
+
+// Reads the last-used view from localStorage, falling back to 'timeline_cars'
+// for anything this build no longer renders - e.g. the removed 'price_quote'
+// page. Without this, a value from an older build (still sitting in a
+// returning user's localStorage) would fall through to the final render
+// branch (the public BookingEngine) and get silently re-persisted every time
+// currentView changes, leaving the dashboard stuck there until the user
+// happens to click another nav item. Flagged by Codex review on PR #14.
+function getInitialView(): string {
+  const stored = safeLocalStorage.getItem('prac_current_view');
+  return stored && VALID_VIEWS.has(stored) ? stored : 'timeline_cars';
+}
+
 function AppContent() {
   console.log('AppContent: Initializing');
   const { config } = useCompanyConfig();
@@ -108,7 +130,7 @@ function AppContent() {
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail'>(
-    (window.innerWidth < 768) ? 'timeline_cars' : (safeLocalStorage.getItem('prac_current_view') as any || 'timeline_cars')
+    (window.innerWidth < 768) ? 'timeline_cars' : (getInitialView() as any)
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
