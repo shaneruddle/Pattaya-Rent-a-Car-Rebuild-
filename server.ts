@@ -2916,6 +2916,14 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     // than an error (the reply itself worked and shouldn't read as failed).
     const threadRef = firestore.collection('line_threads').doc(userId);
     const messageId = `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
+    // once written) so it can be compared via isEventNewer below - mirrors how
+    // handleLineEvent uses the LINE-provided event timestamp for the same
+    // purpose. Needed because an incoming customer webhook can finish between
+    // this reply's message write and its thread-summary write; without the
+    // ordering guard, this unconditional summary write would clobber a newer
+    // customer message with this older staff reply (wrong preview/unread state).
+    const sentAt = Timestamp.now();
     try {
       await threadRef.collection('messages').doc(messageId).set({
         id: messageId,
@@ -2923,15 +2931,19 @@ app.post('/api/line/reply', async (req: any, res: any) => {
         kind: 'text',
         text,
         sentBy: decoded.email,
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: sentAt,
       });
-      await threadRef.set({
-        lastMessageText: text,
-        lastMessageAt: FieldValue.serverTimestamp(),
-        lastMessageFrom: 'staff',
-        unread: false,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      await firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(threadRef);
+        if (!isEventNewer(snap.data()?.lastMessageAt, sentAt)) return;
+        tx.set(threadRef, {
+          lastMessageText: text,
+          lastMessageAt: sentAt,
+          lastMessageFrom: 'staff',
+          unread: false,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
     } catch (persistErr: any) {
       console.error('[LINE] reply sent but failed to persist:', persistErr?.message || persistErr);
       return res.json({ success: true, warning: "Message was sent to the customer but could not be saved to this thread's history." });
