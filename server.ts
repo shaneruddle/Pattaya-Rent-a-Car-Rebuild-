@@ -2871,6 +2871,18 @@ app.get('/api/line/threads/:userId', async (req: any, res: any) => {
 // account's plan/quota supports this (verified/paid, higher volume).
 app.post('/api/line/reply', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
+  // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
+  // once written) so it can be compared via isEventNewer below - mirrors how
+  // handleLineEvent uses the LINE-provided event timestamp for the same
+  // purpose. Captured as the very first thing in the handler, before any
+  // await (token verification, Firestore reads, the push itself) - Codex
+  // review kept narrowing this same race down to whatever the earliest await
+  // was at the time (first the push call, then the thread lookup before it);
+  // capturing it here, before anything async happens, closes the whole class
+  // of "a customer message could arrive during an earlier await and get its
+  // unread state clobbered by this reply's later summary write" rather than
+  // just shrinking the window again.
+  const sentAt = Timestamp.now();
   try {
     const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
     if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
@@ -2898,15 +2910,6 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     if (threadSnap.data()?.following === false) {
       return res.status(409).json({ error: 'This customer has blocked the account or is not a friend of it - the message could not be delivered.' });
     }
-
-    // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
-    // once written) so it can be compared via isEventNewer below - mirrors how
-    // handleLineEvent uses the LINE-provided event timestamp for the same
-    // purpose. Captured before the push request (rather than after) so the
-    // window in which a customer's message could arrive with an earlier event
-    // timestamp - and then get its unread state clobbered by this reply's
-    // later summary write - is as small as possible.
-    const sentAt = Timestamp.now();
 
     const token = await getLineAccessToken();
     const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
