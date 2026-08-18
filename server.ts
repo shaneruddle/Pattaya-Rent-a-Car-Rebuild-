@@ -2887,6 +2887,27 @@ app.post('/api/line/reply', async (req: any, res: any) => {
       return res.status(400).json({ error: 'Message is too long (5000 character limit)' });
     }
 
+    const threadRef = firestore.collection('line_threads').doc(userId);
+
+    // LINE accepts (200s) a push to a user who has blocked the OA or never
+    // followed it - it just silently doesn't deliver it. The 403 branch below
+    // only catches some rejection cases, not this one, so a known-unfollowed
+    // recipient (tracked via the unfollow webhook handler) is turned away
+    // before wasting a call and before staff are told it went through.
+    const threadSnap = await threadRef.get();
+    if (threadSnap.data()?.following === false) {
+      return res.status(409).json({ error: 'This customer has blocked the account or is not a friend of it - the message could not be delivered.' });
+    }
+
+    // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
+    // once written) so it can be compared via isEventNewer below - mirrors how
+    // handleLineEvent uses the LINE-provided event timestamp for the same
+    // purpose. Captured before the push request (rather than after) so the
+    // window in which a customer's message could arrive with an earlier event
+    // timestamp - and then get its unread state clobbered by this reply's
+    // later summary write - is as small as possible.
+    const sentAt = Timestamp.now();
+
     const token = await getLineAccessToken();
     const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
@@ -2914,16 +2935,7 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     // of what happens below. A failure past this point only affects our own
     // record of the conversation, so it's reported back as a warning rather
     // than an error (the reply itself worked and shouldn't read as failed).
-    const threadRef = firestore.collection('line_threads').doc(userId);
     const messageId = `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
-    // once written) so it can be compared via isEventNewer below - mirrors how
-    // handleLineEvent uses the LINE-provided event timestamp for the same
-    // purpose. Needed because an incoming customer webhook can finish between
-    // this reply's message write and its thread-summary write; without the
-    // ordering guard, this unconditional summary write would clobber a newer
-    // customer message with this older staff reply (wrong preview/unread state).
-    const sentAt = Timestamp.now();
     try {
       await threadRef.collection('messages').doc(messageId).set({
         id: messageId,
