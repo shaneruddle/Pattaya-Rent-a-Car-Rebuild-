@@ -7,7 +7,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
 import admin from "firebase-admin";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as Papa from "papaparse";
 import https from "https";
@@ -265,7 +265,15 @@ async function startServer() {
   });
 
   app.use(cors());
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({
+    limit: '50mb',
+    // Stashes the exact raw bytes of every request body on req.rawBody -
+    // needed by the LINE webhook (see /api/line/webhook below), which
+    // verifies its signature over the untouched bytes LINE originally sent
+    // and signed. Re-serializing req.body with JSON.stringify isn't
+    // guaranteed to byte-match that, so the parsed object alone isn't enough.
+    verify: (req: any, _res, buf) => { req.rawBody = buf; },
+  }));
 
   // Add logging middleware for API requests
   app.use((req, res, next) => {
@@ -2517,6 +2525,220 @@ app.post('/api/didit/webhook', async (req: any, res: any) => {
   } catch (err: any) {
     console.error('[Didit] webhook error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// LINE Messaging API - webhook (incoming messages) + read endpoints
+// ============================================================
+// Unlike the Mail Inbox, which reads threads live from Gmail (see GET
+// /api/mail/threads) and stores nothing itself, LINE's Messaging API has no
+// "list all conversations" endpoint - the only way to receive messages is
+// this webhook, which LINE calls whenever a customer messages the OA. So
+// line_threads/{userId} (with a line_threads/{userId}/messages/{messageId}
+// subcollection) is the sole source of truth for LINE conversation history,
+// starting from whenever the webhook URL is first configured - there's no
+// way to backfill anything from before that.
+//
+// Nothing here is reachable directly from the browser's Firestore client SDK
+// (unlike e.g. email_templates) - both the webhook and the read endpoints
+// below go through the Admin SDK on this server, so no Firestore security
+// rules changes are needed for this feature.
+
+let cachedLineChannelSecret: string | null = null;
+async function getLineChannelSecret(): Promise<string> {
+  if (!cachedLineChannelSecret) cachedLineChannelSecret = await getSecretValue('line-channel-secret');
+  return cachedLineChannelSecret;
+}
+
+let cachedLineAccessToken: string | null = null;
+async function getLineAccessToken(): Promise<string> {
+  if (!cachedLineAccessToken) cachedLineAccessToken = await getSecretValue('line-channel-access-token');
+  return cachedLineAccessToken;
+}
+
+// Fetches a LINE user's profile (display name + photo). Only called once per
+// customer, when their thread doc is first created, rather than on every
+// message, to avoid burning API calls unnecessarily.
+async function fetchLineProfile(userId: string): Promise<{ displayName: string; pictureUrl: string | null }> {
+  try {
+    const token = await getLineAccessToken();
+    const resp = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error(`LINE profile fetch failed: ${resp.status}`);
+    const data: any = await resp.json();
+    return { displayName: data.displayName || userId, pictureUrl: data.pictureUrl || null };
+  } catch (err: any) {
+    console.warn('[LINE] Failed to fetch profile for', userId, err?.message || err);
+    return { displayName: userId, pictureUrl: null };
+  }
+}
+
+// Human-readable placeholder for message types we record metadata for but
+// don't yet download/display full content for (photos, stickers, etc.) -
+// downloading and hosting that media is deferred to a later pass; for now
+// staff would need to check the LINE app itself to see the actual photo.
+function describeLineMessage(message: any): { text: string; kind: string } {
+  switch (message?.type) {
+    case 'text': return { text: message.text || '', kind: 'text' };
+    case 'image': return { text: '[Photo]', kind: 'image' };
+    case 'video': return { text: '[Video]', kind: 'video' };
+    case 'audio': return { text: '[Audio]', kind: 'audio' };
+    case 'sticker': return { text: '[Sticker]', kind: 'sticker' };
+    case 'file': return { text: `[File] ${message?.fileName || ''}`.trim(), kind: 'file' };
+    case 'location': return { text: `[Location] ${message?.title || message?.address || ''}`.trim(), kind: 'location' };
+    default: return { text: `[${message?.type || 'unknown'}]`, kind: message?.type || 'unknown' };
+  }
+}
+
+async function handleLineEvent(event: any): Promise<void> {
+  const userId = event?.source?.userId;
+  // Group/room chats are disabled on this OA ("Allow bot to join group
+  // chats" is off in LINE Official Account Manager), so source.type should
+  // always be 'user' - skip anything else rather than mis-file it under a
+  // group id as if it were a customer.
+  if (!userId || event?.source?.type !== 'user') return;
+
+  const threadRef = firestore.collection('line_threads').doc(userId);
+
+  if (event.type === 'follow') {
+    const profile = await fetchLineProfile(userId);
+    await threadRef.set({
+      userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl,
+      following: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return;
+  }
+
+  if (event.type === 'unfollow') {
+    // Customer blocked the OA - can't push messages to them anymore. Keep
+    // their history, just flag it so a future UI can show that.
+    await threadRef.set({ following: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return;
+  }
+
+  if (event.type !== 'message') return; // ignore postback/beacon/etc for now - nothing uses those yet
+
+  const threadSnap = await threadRef.get();
+  if (!threadSnap.exists) {
+    const profile = await fetchLineProfile(userId);
+    await threadRef.set({
+      userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl,
+      following: true,
+      createdAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  const { text, kind } = describeLineMessage(event.message);
+  // LINE's own message id, when present, doubles as a natural dedup key if
+  // this webhook call is ever retried (e.g. because our 200 arrived late) -
+  // re-writing the same doc id is a harmless no-op rather than a duplicate.
+  const messageId = event.message?.id || `${userId}-${event.timestamp}`;
+  const createdAt = event.timestamp ? Timestamp.fromMillis(event.timestamp) : FieldValue.serverTimestamp();
+
+  await threadRef.collection('messages').doc(messageId).set({
+    id: messageId,
+    from: 'customer',
+    kind,
+    text,
+    // Reply tokens are single-use and expire a short time after the message
+    // arrives - not usable yet (no reply endpoint in this phase) but kept
+    // for when that's built, since it's free to store.
+    replyToken: event.replyToken || null,
+    createdAt,
+  });
+
+  await threadRef.set({
+    lastMessageText: text,
+    lastMessageAt: createdAt,
+    lastMessageFrom: 'customer',
+    unread: true,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+// LINE webhook - incoming messages/events. Public endpoint (LINE calls this
+// directly, so no staff auth) - authenticated instead via the
+// x-line-signature header, an HMAC-SHA256 of the raw request body keyed with
+// the channel secret (see req.rawBody, captured by the express.json() verify
+// hook above).
+app.post('/api/line/webhook', async (req: any, res: any) => {
+  try {
+    const channelSecret = await getLineChannelSecret();
+    const signature = req.headers['x-line-signature'] as string | undefined;
+    if (!signature || !req.rawBody) {
+      console.error('[LINE] webhook missing signature or raw body');
+      return res.status(401).send('Missing signature');
+    }
+    const expected = crypto.createHmac('sha256', channelSecret).update(req.rawBody).digest('base64');
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const expBuf = Buffer.from(expected, 'utf8');
+    const valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+    if (!valid) {
+      console.error('[LINE] webhook signature mismatch');
+      return res.status(401).send('Invalid signature');
+    }
+
+    const events: any[] = req.body?.events || [];
+    for (const event of events) {
+      try {
+        await handleLineEvent(event);
+      } catch (err: any) {
+        console.error('[LINE] Failed to handle event', event?.type, err?.message || err);
+      }
+    }
+
+    // Process events before responding, rather than acking immediately and
+    // handling them after (fire-and-forget) - this Cloud Run service throttles
+    // CPU after the response is sent unless "CPU is always allocated" is on,
+    // which would risk silently dropping in-flight Firestore writes. LINE's
+    // timeout is generous enough that a handful of writes per call (almost
+    // always one event per webhook call) comfortably finishes first.
+    res.status(200).send('OK');
+  } catch (err: any) {
+    console.error('[LINE] webhook error:', err?.message || err);
+    if (!res.headersSent) res.status(500).send('Error');
+  }
+});
+
+// List LINE conversation threads, most recently active first - shaped to
+// mirror what GET /api/mail/threads returns, so a future Mail Inbox UI can
+// treat both similarly.
+app.get('/api/line/threads', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const snap = await firestore.collection('line_threads').orderBy('lastMessageAt', 'desc').limit(100).get();
+    const threads = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ threads });
+  } catch (err: any) {
+    console.error('[LINE] threads list error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to load LINE threads' });
+  }
+});
+
+// Get one LINE thread's full message history.
+app.get('/api/line/threads/:userId', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    const { userId } = req.params;
+    const threadSnap = await firestore.collection('line_threads').doc(userId).get();
+    if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
+    const messagesSnap = await firestore
+      .collection('line_threads').doc(userId).collection('messages')
+      .orderBy('createdAt', 'asc').limit(200).get();
+    const messages = messagesSnap.docs.map(d => d.data());
+    res.json({ thread: { id: threadSnap.id, ...threadSnap.data() }, messages });
+  } catch (err: any) {
+    console.error('[LINE] thread detail error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to load LINE thread' });
   }
 });
 
