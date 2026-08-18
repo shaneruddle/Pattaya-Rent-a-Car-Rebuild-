@@ -2863,6 +2863,87 @@ app.get('/api/line/threads/:userId', async (req: any, res: any) => {
   }
 });
 
+// Sends a staff reply to a LINE customer and records it alongside their
+// messages so the thread stays a complete history. Uses the Push Message
+// API rather than the Reply API - a reply token is only valid for a short
+// window after the customer's message arrives, which doesn't fit an inbox
+// where staff might answer minutes, hours, or days later. Confirmed the
+// account's plan/quota supports this (verified/paid, higher volume).
+app.post('/api/line/reply', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
+
+    const { userId, text } = req.body || {};
+    if (typeof userId !== 'string' || !userId.trim()) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    if (typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    // LINE rejects a text message outright past this length.
+    if (text.length > 5000) {
+      return res.status(400).json({ error: 'Message is too long (5000 character limit)' });
+    }
+
+    const token = await getLineAccessToken();
+    const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to: userId, messages: [{ type: 'text', text }] }),
+    });
+
+    if (!pushResp.ok) {
+      const detail = await pushResp.text().catch(() => '');
+      console.error('[LINE] push message failed:', pushResp.status, detail);
+      // The most common real-world rejection here is the customer having
+      // blocked the OA or never having added it (403) - surface that
+      // plainly, since it's the one thing staff can actually act on
+      // (there's nothing to send to until the customer re-follows).
+      const friendlyError = pushResp.status === 403
+        ? 'This customer has blocked the account or is not a friend of it - the message could not be delivered.'
+        : `LINE rejected the message (${pushResp.status})`;
+      return res.status(502).json({ error: friendlyError });
+    }
+
+    // The push already succeeded - the customer has this message regardless
+    // of what happens below. A failure past this point only affects our own
+    // record of the conversation, so it's reported back as a warning rather
+    // than an error (the reply itself worked and shouldn't read as failed).
+    const threadRef = firestore.collection('line_threads').doc(userId);
+    const messageId = `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await threadRef.collection('messages').doc(messageId).set({
+        id: messageId,
+        from: 'staff',
+        kind: 'text',
+        text,
+        sentBy: decoded.email,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      await threadRef.set({
+        lastMessageText: text,
+        lastMessageAt: FieldValue.serverTimestamp(),
+        lastMessageFrom: 'staff',
+        unread: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (persistErr: any) {
+      console.error('[LINE] reply sent but failed to persist:', persistErr?.message || persistErr);
+      return res.json({ success: true, warning: "Message was sent to the customer but could not be saved to this thread's history." });
+    }
+
+    res.json({ success: true, messageId });
+  } catch (err: any) {
+    console.error('[LINE] reply error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to send LINE reply' });
+  }
+});
+
 // Fallback poll for staff to manually refresh verification status/decision from
 // Didit directly, in case the webhook above was missed.
 app.get('/api/verify/status', async (req: any, res: any) => {
