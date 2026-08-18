@@ -7,7 +7,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
 import admin from "firebase-admin";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as Papa from "papaparse";
 import https from "https";
@@ -265,7 +265,15 @@ async function startServer() {
   });
 
   app.use(cors());
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({
+    limit: '50mb',
+    // Stashes the exact raw bytes of every request body on req.rawBody -
+    // needed by the LINE webhook (see /api/line/webhook below), which
+    // verifies its signature over the untouched bytes LINE originally sent
+    // and signed. Re-serializing req.body with JSON.stringify isn't
+    // guaranteed to byte-match that, so the parsed object alone isn't enough.
+    verify: (req: any, _res, buf) => { req.rawBody = buf; },
+  }));
 
   // Add logging middleware for API requests
   app.use((req, res, next) => {
@@ -2517,6 +2525,341 @@ app.post('/api/didit/webhook', async (req: any, res: any) => {
   } catch (err: any) {
     console.error('[Didit] webhook error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// LINE Messaging API - webhook (incoming messages) + read endpoints
+// ============================================================
+// Unlike the Mail Inbox, which reads threads live from Gmail (see GET
+// /api/mail/threads) and stores nothing itself, LINE's Messaging API has no
+// "list all conversations" endpoint - the only way to receive messages is
+// this webhook, which LINE calls whenever a customer messages the OA. So
+// line_threads/{userId} (with a line_threads/{userId}/messages/{messageId}
+// subcollection) is the sole source of truth for LINE conversation history,
+// starting from whenever the webhook URL is first configured - there's no
+// way to backfill anything from before that.
+//
+// Nothing here is reachable directly from the browser's Firestore client SDK
+// (unlike e.g. email_templates) - both the webhook and the read endpoints
+// below go through the Admin SDK on this server, so no Firestore security
+// rules changes are needed for this feature.
+
+let cachedLineChannelSecret: string | null = null;
+async function getLineChannelSecret(): Promise<string> {
+  if (!cachedLineChannelSecret) cachedLineChannelSecret = await getSecretValue('line-channel-secret');
+  return cachedLineChannelSecret;
+}
+
+let cachedLineAccessToken: string | null = null;
+async function getLineAccessToken(): Promise<string> {
+  if (!cachedLineAccessToken) cachedLineAccessToken = await getSecretValue('line-channel-access-token');
+  return cachedLineAccessToken;
+}
+
+// Fetches a LINE user's profile (display name + photo). Only called when the
+// thread doc doesn't already have a successfully-fetched profile (see
+// profileFetched below), rather than on every message, to avoid burning API
+// calls unnecessarily.
+async function fetchLineProfile(userId: string): Promise<{ displayName: string; pictureUrl: string | null; fetched: boolean }> {
+  try {
+    const token = await getLineAccessToken();
+    const resp = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error(`LINE profile fetch failed: ${resp.status}`);
+    const data: any = await resp.json();
+    return { displayName: data.displayName || userId, pictureUrl: data.pictureUrl || null, fetched: true };
+  } catch (err: any) {
+    // fetched: false is the important part - it tells the caller not to mark
+    // this customer's profile as done, so the next event for them retries
+    // this lookup instead of leaving them permanently labeled by their raw
+    // LINE user ID just because Secret Manager or LINE's API hiccuped once.
+    console.warn('[LINE] Failed to fetch profile for', userId, err?.message || err);
+    return { displayName: userId, pictureUrl: null, fetched: false };
+  }
+}
+
+// Human-readable placeholder for message types we record metadata for but
+// don't yet download/display full content for (photos, stickers, etc.) -
+// downloading and hosting that media is deferred to a later pass; for now
+// staff would need to check the LINE app itself to see the actual photo.
+function describeLineMessage(message: any): { text: string; kind: string } {
+  switch (message?.type) {
+    case 'text': return { text: message.text || '', kind: 'text' };
+    case 'image': return { text: '[Photo]', kind: 'image' };
+    case 'video': return { text: '[Video]', kind: 'video' };
+    case 'audio': return { text: '[Audio]', kind: 'audio' };
+    case 'sticker': return { text: '[Sticker]', kind: 'sticker' };
+    case 'file': return { text: `[File] ${message?.fileName || ''}`.trim(), kind: 'file' };
+    case 'location': return { text: `[Location] ${message?.title || message?.address || ''}`.trim(), kind: 'location' };
+    default: return { text: `[${message?.type || 'unknown'}]`, kind: message?.type || 'unknown' };
+  }
+}
+
+// True unless we can positively prove `incoming` is not newer than
+// `existing` - i.e. both are real Firestore Timestamps and incoming is <=
+// existing. A missing/non-Timestamp value on either side means we can't
+// prove staleness, so this defaults to "apply the write" rather than
+// silently dropping data. Shared by every place below that needs to ignore
+// an out-of-order/redelivered webhook event without ignoring a legitimate
+// write that just happens to arrive without a comparable timestamp.
+function isEventNewer(existing: unknown, incoming: unknown): boolean {
+  if (!(incoming instanceof Timestamp) || !(existing instanceof Timestamp)) return true;
+  return incoming.toMillis() > existing.toMillis();
+}
+
+async function handleLineEvent(event: any): Promise<void> {
+  const userId = event?.source?.userId;
+  // Group/room chats are disabled on this OA ("Allow bot to join group
+  // chats" is off in LINE Official Account Manager), so source.type should
+  // always be 'user' - skip anything else rather than mis-file it under a
+  // group id as if it were a customer.
+  if (!userId || event?.source?.type !== 'user') return;
+
+  const threadRef = firestore.collection('line_threads').doc(userId);
+  const eventAt = event.timestamp ? Timestamp.fromMillis(event.timestamp) : null;
+
+  // Brings the thread's identity (display name/photo) and following status
+  // up to date for a follow or message event. Used by both, so a customer's
+  // profile gets fetched (and retried on prior failure - see profileFetched)
+  // regardless of whether their first contact was a follow or straight into
+  // a message. The profile fetch happens outside the transaction below
+  // (transactions can retry on contention, and retrying a network call to
+  // LINE's API as a side effect of that would be wasteful); the transaction
+  // then re-checks event ordering before writing, since the network call
+  // introduces a gap where a newer event could have landed in the meantime.
+  async function upsertIdentity() {
+    const existing = (await threadRef.get()).data();
+    if (!isEventNewer(existing?.identityEventAt, eventAt)) return;
+    const profile = existing?.profileFetched ? null : await fetchLineProfile(userId);
+    await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(threadRef);
+      if (!isEventNewer(snap.data()?.identityEventAt, eventAt)) return;
+      tx.set(threadRef, {
+        userId,
+        ...(profile ? { displayName: profile.displayName, pictureUrl: profile.pictureUrl, profileFetched: profile.fetched } : {}),
+        following: true,
+        identityEventAt: eventAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        // Only stamped the first time this thread doc is written, via merge
+        // semantics - an existing createdAt is never touched by a later
+        // upsertIdentity call.
+        ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      }, { merge: true });
+    });
+  }
+
+  if (event.type === 'follow') {
+    await upsertIdentity();
+    return;
+  }
+
+  if (event.type === 'unfollow') {
+    // Customer blocked the OA - can't push messages to them anymore. Keep
+    // their history, just flag it so a future UI can show that. Same
+    // ordering guard as upsertIdentity, so an old follow redelivered after
+    // this unfollow can't flip following back to true (or vice versa).
+    await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(threadRef);
+      if (!isEventNewer(snap.data()?.identityEventAt, eventAt)) return;
+      tx.set(threadRef, {
+        following: false,
+        identityEventAt: eventAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+    return;
+  }
+
+  if (event.type === 'unsend') {
+    // Customer deleted a message they'd already sent. LINE still delivers
+    // the original content as its own event first, so the message document
+    // should already exist - mark it retracted rather than deleting it
+    // outright, so the doc id stays stable/idempotent and staff can see that
+    // something was sent and withdrawn rather than the thread just skipping
+    // a message. Only the previewed lastMessageText is refreshed, and only
+    // when the unsent message was in fact the current preview - recomputing
+    // the true latest surviving message would need a query Firestore can't
+    // serve efficiently without excluding docs that predate the `unsent`
+    // field (which is all of them so far), so an unsend of an older message
+    // simply leaves the (still-correct) newer preview alone.
+    const messageId = event.unsend?.messageId;
+    if (!messageId) return;
+    const msgRef = threadRef.collection('messages').doc(messageId);
+    await firestore.runTransaction(async (tx) => {
+      const [msgSnap, threadSnap] = await Promise.all([tx.get(msgRef), tx.get(threadRef)]);
+      if (!msgSnap.exists) return; // original message event hasn't arrived (or was already pruned) - nothing to retract yet
+      tx.set(msgRef, { text: '[Message deleted]', kind: 'unsent', unsent: true }, { merge: true });
+      if (threadSnap.data()?.lastMessageAt?.isEqual?.(msgSnap.data()?.createdAt)) {
+        tx.set(threadRef, { lastMessageText: '[Message deleted]', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    });
+    return;
+  }
+
+  if (event.type !== 'message') return; // ignore postback/beacon/etc for now - nothing uses those yet
+
+  await upsertIdentity();
+
+  const { text, kind } = describeLineMessage(event.message);
+  // LINE's own message id, when present, doubles as a natural dedup key if
+  // this webhook call is ever retried (e.g. because our 200 arrived late) -
+  // re-writing the same doc id is a harmless no-op rather than a duplicate.
+  const messageId = event.message?.id || `${userId}-${event.timestamp}`;
+  const createdAt = eventAt || FieldValue.serverTimestamp();
+  const msgRef = threadRef.collection('messages').doc(messageId);
+
+  // A plain (non-transactional) .set() here would let a redelivered copy of
+  // this same message event resurrect an already-unsent message: this
+  // webhook returns a non-2xx (see anyFailed below) whenever any event in a
+  // batch fails, which makes LINE redeliver the whole batch - including
+  // events that already succeeded the first time. If the customer's unsend
+  // for this message was processed in the gap before that redelivery
+  // arrives, this write would otherwise blindly restore the original text
+  // and undo the tombstone the unsend branch above just set.
+  await firestore.runTransaction(async (tx) => {
+    const existing = await tx.get(msgRef);
+    if (existing.exists && existing.data()?.unsent) return;
+    tx.set(msgRef, {
+      id: messageId,
+      from: 'customer',
+      kind,
+      text,
+      // Reply tokens are single-use and expire a short time after the message
+      // arrives - not usable yet (no reply endpoint in this phase) but kept
+      // for when that's built, since it's free to store.
+      replyToken: event.replyToken || null,
+      createdAt,
+    });
+  });
+
+  // Runs as a transaction, and only overwrites the summary if this event is
+  // at least as new as whatever's already there. Without that check, two
+  // overlapping webhook calls for the same customer (or LINE redelivering an
+  // older event after a newer one already landed) could finish in either
+  // order - whichever write lands last would win, letting an older message
+  // clobber the summary with a stale preview/timestamp even though the
+  // individual message documents above are all stored correctly.
+  await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(threadRef);
+    if (!isEventNewer(snap.data()?.lastMessageAt, createdAt)) return;
+    tx.set(threadRef, {
+      lastMessageText: text,
+      lastMessageAt: createdAt,
+      lastMessageFrom: 'customer',
+      unread: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+// LINE webhook - incoming messages/events. Public endpoint (LINE calls this
+// directly, so no staff auth) - authenticated instead via the
+// x-line-signature header, an HMAC-SHA256 of the raw request body keyed with
+// the channel secret (see req.rawBody, captured by the express.json() verify
+// hook above).
+app.post('/api/line/webhook', async (req: any, res: any) => {
+  try {
+    const channelSecret = await getLineChannelSecret();
+    const signature = req.headers['x-line-signature'] as string | undefined;
+    if (!signature || !req.rawBody) {
+      console.error('[LINE] webhook missing signature or raw body');
+      return res.status(401).send('Missing signature');
+    }
+    const expected = crypto.createHmac('sha256', channelSecret).update(req.rawBody).digest('base64');
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const expBuf = Buffer.from(expected, 'utf8');
+    const valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+    if (!valid) {
+      console.error('[LINE] webhook signature mismatch');
+      return res.status(401).send('Invalid signature');
+    }
+
+    const events: any[] = req.body?.events || [];
+    let anyFailed = false;
+    for (const event of events) {
+      try {
+        await handleLineEvent(event);
+      } catch (err: any) {
+        anyFailed = true;
+        console.error('[LINE] Failed to handle event', event?.type, err?.message || err);
+      }
+    }
+
+    // Process events before responding, rather than acking immediately and
+    // handling them after (fire-and-forget) - this Cloud Run service throttles
+    // CPU after the response is sent unless "CPU is always allocated" is on,
+    // which would risk silently dropping in-flight Firestore writes. LINE's
+    // timeout is generous enough that a handful of writes per call (almost
+    // always one event per webhook call) comfortably finishes first.
+    if (anyFailed) {
+      // A non-2xx tells LINE to redeliver the whole batch rather than treating
+      // it as delivered - without this, a transient Firestore failure would
+      // log an error here and then vanish forever, since this webhook is the
+      // sole source of LINE conversation history. Safe to redeliver: every
+      // write is keyed by LINE's own message id (or a fallback derived from
+      // userId+timestamp), so re-processing an event that already succeeded
+      // in this same batch is a harmless overwrite, not a duplicate.
+      return res.status(500).send('Partial failure - see logs');
+    }
+    res.status(200).send('OK');
+  } catch (err: any) {
+    console.error('[LINE] webhook error:', err?.message || err);
+    if (!res.headersSent) res.status(500).send('Error');
+  }
+});
+
+// Mirrors the frontend's own staff check (isStaff in src/App.tsx).
+// requireStaffAuth above only confirms the caller is signed in with *some*
+// Google account - it doesn't check they're Pattaya Rent A Car staff, so on
+// its own it's not enough to gate customer LINE conversation data behind.
+// (The same gap exists on other endpoints that use requireStaffAuth; fixing
+// it there is tracked separately. It's fixed here because these two
+// endpoints are new in this PR.)
+function isStaffEmail(email: string | null | undefined): boolean {
+  const e = (email || '').toLowerCase().trim();
+  return e.endsWith('@pattayarentacar.com') || e === 'info@pattayarentacar.com';
+}
+
+// List LINE conversation threads, most recently active first - shaped to
+// mirror what GET /api/mail/threads returns, so a future Mail Inbox UI can
+// treat both similarly.
+app.get('/api/line/threads', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
+    const snap = await firestore.collection('line_threads').orderBy('lastMessageAt', 'desc').limit(100).get();
+    const threads = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ threads });
+  } catch (err: any) {
+    console.error('[LINE] threads list error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to load LINE threads' });
+  }
+});
+
+// Get one LINE thread's full message history.
+app.get('/api/line/threads/:userId', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
+    const { userId } = req.params;
+    const threadSnap = await firestore.collection('line_threads').doc(userId).get();
+    if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
+    // Most recent 200, oldest-first for display: ordering desc-then-limit
+    // keeps the newest messages when a thread has grown past 200 (asc+limit
+    // would silently return only the oldest ones and hide anything recent),
+    // then the array is reversed back to chronological order for the UI.
+    const messagesSnap = await firestore
+      .collection('line_threads').doc(userId).collection('messages')
+      .orderBy('createdAt', 'desc').limit(200).get();
+    const messages = messagesSnap.docs.map(d => d.data()).reverse();
+    res.json({ thread: { id: threadSnap.id, ...threadSnap.data() }, messages });
+  } catch (err: any) {
+    console.error('[LINE] thread detail error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to load LINE thread' });
   }
 });
 
