@@ -1956,7 +1956,11 @@ export const MailInbox: React.FC = () => {
                         Car Photos
                       </button>
                       {showVehicleMenu && (
-                        <div className="absolute bottom-full left-0 mb-2 w-72 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-20 py-1">
+                        // Fixed + inset-x-4 on mobile so this always stays within the
+                        // screen regardless of where the "Car Photos" button lands in
+                        // the wrapped toolbar row - md:absolute reverts to the tighter
+                        // button-anchored popover once there's room for it.
+                        <div className="fixed inset-x-4 bottom-24 max-h-[50vh] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-[250] py-1 md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-72 md:max-h-72 md:z-20">
                           {vehiclesWithPhotos.map(v => {
                             const photoCount = Math.min(v.realImages.length, MAX_PHOTOS_PER_VEHICLE);
                             return (
@@ -1987,7 +1991,11 @@ export const MailInbox: React.FC = () => {
                         Get Quote
                       </button>
                       {showQuoteMenu && (
-                        <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-black/10 bg-white shadow-xl z-20 p-3">
+                        // Same mobile-safe fixed positioning as the Car Photos menu above -
+                        // this one used to overflow off the right edge of the screen on
+                        // mobile (it's the rightmost toolbar button, so a left-anchored
+                        // fixed-width popover ran off screen; vehicle names got clipped).
+                        <div className="fixed inset-x-4 bottom-24 max-h-[70vh] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-[250] p-3 md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-80 md:max-h-none md:overflow-visible md:z-20">
                           {!quoteVehicle ? (
                             <div className="max-h-64 overflow-y-auto -m-3 py-1">
                               {quotableVehicles.map(v => (
