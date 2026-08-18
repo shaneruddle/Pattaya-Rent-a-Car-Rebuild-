@@ -2557,10 +2557,11 @@ async function getLineAccessToken(): Promise<string> {
   return cachedLineAccessToken;
 }
 
-// Fetches a LINE user's profile (display name + photo). Only called once per
-// customer, when their thread doc is first created, rather than on every
-// message, to avoid burning API calls unnecessarily.
-async function fetchLineProfile(userId: string): Promise<{ displayName: string; pictureUrl: string | null }> {
+// Fetches a LINE user's profile (display name + photo). Only called when the
+// thread doc doesn't already have a successfully-fetched profile (see
+// profileFetched below), rather than on every message, to avoid burning API
+// calls unnecessarily.
+async function fetchLineProfile(userId: string): Promise<{ displayName: string; pictureUrl: string | null; fetched: boolean }> {
   try {
     const token = await getLineAccessToken();
     const resp = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
@@ -2568,10 +2569,14 @@ async function fetchLineProfile(userId: string): Promise<{ displayName: string; 
     });
     if (!resp.ok) throw new Error(`LINE profile fetch failed: ${resp.status}`);
     const data: any = await resp.json();
-    return { displayName: data.displayName || userId, pictureUrl: data.pictureUrl || null };
+    return { displayName: data.displayName || userId, pictureUrl: data.pictureUrl || null, fetched: true };
   } catch (err: any) {
+    // fetched: false is the important part - it tells the caller not to mark
+    // this customer's profile as done, so the next event for them retries
+    // this lookup instead of leaving them permanently labeled by their raw
+    // LINE user ID just because Secret Manager or LINE's API hiccuped once.
     console.warn('[LINE] Failed to fetch profile for', userId, err?.message || err);
-    return { displayName: userId, pictureUrl: null };
+    return { displayName: userId, pictureUrl: null, fetched: false };
   }
 }
 
@@ -2592,6 +2597,18 @@ function describeLineMessage(message: any): { text: string; kind: string } {
   }
 }
 
+// True unless we can positively prove `incoming` is not newer than
+// `existing` - i.e. both are real Firestore Timestamps and incoming is <=
+// existing. A missing/non-Timestamp value on either side means we can't
+// prove staleness, so this defaults to "apply the write" rather than
+// silently dropping data. Shared by every place below that needs to ignore
+// an out-of-order/redelivered webhook event without ignoring a legitimate
+// write that just happens to arrive without a comparable timestamp.
+function isEventNewer(existing: unknown, incoming: unknown): boolean {
+  if (!(incoming instanceof Timestamp) || !(existing instanceof Timestamp)) return true;
+  return incoming.toMillis() > existing.toMillis();
+}
+
 async function handleLineEvent(event: any): Promise<void> {
   const userId = event?.source?.userId;
   // Group/room chats are disabled on this OA ("Allow bot to join group
@@ -2601,46 +2618,96 @@ async function handleLineEvent(event: any): Promise<void> {
   if (!userId || event?.source?.type !== 'user') return;
 
   const threadRef = firestore.collection('line_threads').doc(userId);
+  const eventAt = event.timestamp ? Timestamp.fromMillis(event.timestamp) : null;
+
+  // Brings the thread's identity (display name/photo) and following status
+  // up to date for a follow or message event. Used by both, so a customer's
+  // profile gets fetched (and retried on prior failure - see profileFetched)
+  // regardless of whether their first contact was a follow or straight into
+  // a message. The profile fetch happens outside the transaction below
+  // (transactions can retry on contention, and retrying a network call to
+  // LINE's API as a side effect of that would be wasteful); the transaction
+  // then re-checks event ordering before writing, since the network call
+  // introduces a gap where a newer event could have landed in the meantime.
+  async function upsertIdentity() {
+    const existing = (await threadRef.get()).data();
+    if (!isEventNewer(existing?.identityEventAt, eventAt)) return;
+    const profile = existing?.profileFetched ? null : await fetchLineProfile(userId);
+    await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(threadRef);
+      if (!isEventNewer(snap.data()?.identityEventAt, eventAt)) return;
+      tx.set(threadRef, {
+        userId,
+        ...(profile ? { displayName: profile.displayName, pictureUrl: profile.pictureUrl, profileFetched: profile.fetched } : {}),
+        following: true,
+        identityEventAt: eventAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        // Only stamped the first time this thread doc is written, via merge
+        // semantics - an existing createdAt is never touched by a later
+        // upsertIdentity call.
+        ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      }, { merge: true });
+    });
+  }
 
   if (event.type === 'follow') {
-    const profile = await fetchLineProfile(userId);
-    await threadRef.set({
-      userId,
-      displayName: profile.displayName,
-      pictureUrl: profile.pictureUrl,
-      following: true,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    await upsertIdentity();
     return;
   }
 
   if (event.type === 'unfollow') {
     // Customer blocked the OA - can't push messages to them anymore. Keep
-    // their history, just flag it so a future UI can show that.
-    await threadRef.set({ following: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    // their history, just flag it so a future UI can show that. Same
+    // ordering guard as upsertIdentity, so an old follow redelivered after
+    // this unfollow can't flip following back to true (or vice versa).
+    await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(threadRef);
+      if (!isEventNewer(snap.data()?.identityEventAt, eventAt)) return;
+      tx.set(threadRef, {
+        following: false,
+        identityEventAt: eventAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+    return;
+  }
+
+  if (event.type === 'unsend') {
+    // Customer deleted a message they'd already sent. LINE still delivers
+    // the original content as its own event first, so the message document
+    // should already exist - mark it retracted rather than deleting it
+    // outright, so the doc id stays stable/idempotent and staff can see that
+    // something was sent and withdrawn rather than the thread just skipping
+    // a message. Only the previewed lastMessageText is refreshed, and only
+    // when the unsent message was in fact the current preview - recomputing
+    // the true latest surviving message would need a query Firestore can't
+    // serve efficiently without excluding docs that predate the `unsent`
+    // field (which is all of them so far), so an unsend of an older message
+    // simply leaves the (still-correct) newer preview alone.
+    const messageId = event.unsend?.messageId;
+    if (!messageId) return;
+    const msgRef = threadRef.collection('messages').doc(messageId);
+    await firestore.runTransaction(async (tx) => {
+      const [msgSnap, threadSnap] = await Promise.all([tx.get(msgRef), tx.get(threadRef)]);
+      if (!msgSnap.exists) return; // original message event hasn't arrived (or was already pruned) - nothing to retract yet
+      tx.set(msgRef, { text: '[Message deleted]', kind: 'unsent', unsent: true }, { merge: true });
+      if (threadSnap.data()?.lastMessageAt?.isEqual?.(msgSnap.data()?.createdAt)) {
+        tx.set(threadRef, { lastMessageText: '[Message deleted]', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    });
     return;
   }
 
   if (event.type !== 'message') return; // ignore postback/beacon/etc for now - nothing uses those yet
 
-  const threadSnap = await threadRef.get();
-  if (!threadSnap.exists) {
-    const profile = await fetchLineProfile(userId);
-    await threadRef.set({
-      userId,
-      displayName: profile.displayName,
-      pictureUrl: profile.pictureUrl,
-      following: true,
-      createdAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  }
+  await upsertIdentity();
 
   const { text, kind } = describeLineMessage(event.message);
   // LINE's own message id, when present, doubles as a natural dedup key if
   // this webhook call is ever retried (e.g. because our 200 arrived late) -
   // re-writing the same doc id is a harmless no-op rather than a duplicate.
   const messageId = event.message?.id || `${userId}-${event.timestamp}`;
-  const createdAt = event.timestamp ? Timestamp.fromMillis(event.timestamp) : FieldValue.serverTimestamp();
+  const createdAt = eventAt || FieldValue.serverTimestamp();
 
   await threadRef.collection('messages').doc(messageId).set({
     id: messageId,
@@ -2663,10 +2730,7 @@ async function handleLineEvent(event: any): Promise<void> {
   // individual message documents above are all stored correctly.
   await firestore.runTransaction(async (tx) => {
     const snap = await tx.get(threadRef);
-    const existingAt = snap.data()?.lastMessageAt;
-    if (createdAt instanceof Timestamp && existingAt instanceof Timestamp && existingAt.toMillis() >= createdAt.toMillis()) {
-      return;
-    }
+    if (!isEventNewer(snap.data()?.lastMessageAt, createdAt)) return;
     tx.set(threadRef, {
       lastMessageText: text,
       lastMessageAt: createdAt,
