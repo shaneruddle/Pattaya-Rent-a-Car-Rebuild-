@@ -1162,7 +1162,19 @@ export const MailInbox: React.FC = () => {
     const toLabel = `${format(parseISO(quoteTo), 'd MMM yyyy')}, ${quoteDropoffTime}`;
     const days = quoteDays;
     const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
-    setLineReplyText(prev => (prev ? `${prev}\n\n${sentence}` : sentence));
+    const combined = lineReplyText ? `${lineReplyText}\n\n${sentence}` : sentence;
+    // /api/line/reply rejects anything over 5000 chars (LINE's own hard
+    // limit on a text message) - the textarea's maxLength={5000} only
+    // guards direct typing, not this programmatic insert, so a draft
+    // already close to that limit plus the quote sentence could otherwise
+    // silently exceed it and only surface as a failed send. Refuse instead
+    // of truncating - cutting a customer-facing message off mid-sentence
+    // would look broken; staff can trim the draft and try again.
+    if (combined.length > 5000) {
+      toast.error('Draft is too long to insert this quote - trim the message first.');
+      return;
+    }
+    setLineReplyText(combined);
     resetQuotePicker();
   };
 
