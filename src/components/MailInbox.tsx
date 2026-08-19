@@ -123,6 +123,7 @@ interface LineMessage {
   from: 'customer' | 'staff';
   kind: string;
   text?: string;
+  imageUrls?: string[];
   createdAt?: FirestoreTimestampJSON | null;
   sentBy?: string;
 }
@@ -392,9 +393,14 @@ export const MailInbox: React.FC = () => {
 
   // LINE Official Account channel - fully separate state from the Gmail state
   // above (see LineThread/LineMessage comment). Simplified first pass: no
-  // search, no follow-up filter, no bulk select, no templates/attachments/
-  // quote picker, no customer-profile linking - just threads, messages, and
-  // a plain-text reply box.
+  // search, no follow-up filter, no bulk select, no templates, no
+  // customer-profile linking - just threads, messages, and a reply box.
+  // Get Quote and Car Photos were added later (see insertQuoteIntoLineReply /
+  // insertVehiclePhotosIntoLine below) - they share the picker state/refs
+  // with their Gmail equivalents (quoteMenuRef, vehicleMenuRef) since the two
+  // channels' toolbars are never mounted at the same time, but keep their own
+  // separate staged-content state (lineReplyText, lineReplyAttachments)
+  // rather than reusing Gmail's replyBody/replyAttachments.
   const [channel, setChannel] = useState<'gmail' | 'line'>('gmail');
   const [lineThreads, setLineThreads] = useState<LineThread[]>([]);
   const [lineThreadsLoading, setLineThreadsLoading] = useState(false);
@@ -404,6 +410,11 @@ export const MailInbox: React.FC = () => {
   const [lineMessagesLoading, setLineMessagesLoading] = useState(false);
   const [lineReplyText, setLineReplyText] = useState('');
   const [lineSending, setLineSending] = useState(false);
+  // Photos queued to send with the current LINE reply - mirrors
+  // replyAttachments above, but these are pushed as separate LINE image
+  // messages (imageUrls on /api/line/reply) rather than email MIME
+  // attachments, since LINE can't bundle an image into a text message.
+  const [lineReplyAttachments, setLineReplyAttachments] = useState<{ url: string; filename: string }[]>([]);
 
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
@@ -871,6 +882,10 @@ export const MailInbox: React.FC = () => {
     setSelectedLineUser(userId);
     setLineMessages([]);
     setLineReplyText('');
+    // Staged Car Photos for a different LINE conversation shouldn't silently
+    // carry over into this one either (same reasoning as the Get Quote reset
+    // just below).
+    setLineReplyAttachments([]);
     // An in-progress "Get Quote" lookup for a different LINE conversation
     // shouldn't silently carry over into this one (same reasoning as the
     // equivalent reset in openThread for Gmail).
@@ -912,43 +927,80 @@ export const MailInbox: React.FC = () => {
   const handleLineSend = async () => {
     if (lineSending) return; // guards a duplicate submit (e.g. a second Enter) while one is already in flight
     const text = lineReplyText.trim();
+    const images = lineReplyAttachments.map(a => a.url);
     const targetUserId = selectedLineUserId;
-    if (!text || !targetUserId) return;
+    if ((!text && images.length === 0) || !targetUserId) return;
     setLineSending(true);
     try {
       const res = await authedFetch('/api/line/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: targetUserId, text }),
+        body: JSON.stringify({
+          userId: targetUserId,
+          ...(text ? { text } : {}),
+          ...(images.length > 0 ? { imageUrls: images } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.warning) toast.warning(data.warning);
-      else toast.success('Reply sent');
+
+      // A send spanning >5 messages (text plus several photos) can fail
+      // partway through - the server reports exactly what it actually
+      // delivered via partialSuccess/deliveredText/deliveredImageUrls (see
+      // /api/line/reply) rather than treating the whole send as failed. Only
+      // a response with nothing delivered at all is a plain failure with
+      // nothing to reconcile locally.
+      if (!res.ok && !data.partialSuccess) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const deliveredText: boolean = data.partialSuccess ? !!data.deliveredText : !!text;
+      const deliveredImageUrls: string[] = data.partialSuccess ? (data.deliveredImageUrls || []) : images;
+
+      if (!res.ok) {
+        toast.error(data.error || 'Part of this send did not reach the customer - the rest is still queued to resend.');
+      } else if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success('Reply sent');
+      }
       // Only touch the open conversation's message list / draft if staff are
       // still looking at the thread this reply was sent to - they may have
       // switched to a different one while the request was in flight.
       if (selectedLineUserIdRef.current === targetUserId) {
-        setLineMessages(prev => [
-          ...prev,
-          { id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null },
-        ]);
-        setLineReplyText('');
+        setLineMessages(prev => {
+          const next = [...prev];
+          if (deliveredText) {
+            next.push({ id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null });
+          }
+          if (deliveredImageUrls.length > 0) {
+            next.push({ id: data.imageMessageId || `local-img-${prev.length}`, from: 'staff', kind: 'image', imageUrls: deliveredImageUrls, createdAt: null });
+          }
+          return next;
+        });
+        // Only clear what was actually delivered - on a partial failure,
+        // undelivered photos stay staged so staff can just hit Send again
+        // rather than re-picking them.
+        if (deliveredText) setLineReplyText('');
+        if (deliveredImageUrls.length > 0) {
+          setLineReplyAttachments(prev => prev.filter(a => !deliveredImageUrls.includes(a.url)));
+        }
       }
       // Also refreshes lastMessageAt (approximated client-side, in the same
       // {_seconds, _nanoseconds} shape the server sends - see
       // FirestoreTimestampJSON above) and re-sorts, so this conversation
       // moves back to the top of the list immediately rather than sitting
       // under its old customer-message time until the next manual refresh.
-      setLineThreads(prev => sortLineThreads(prev.map(t => (t.id === targetUserId
-        ? {
-            ...t,
-            lastMessageText: text,
-            lastMessageFrom: 'staff',
-            lastMessageAt: { _seconds: Math.floor(Date.now() / 1000), _nanoseconds: 0 },
-            unread: false,
-          }
-        : t))));
+      if (deliveredText || deliveredImageUrls.length > 0) {
+        const summaryText = deliveredText ? text : '[Photo]';
+        setLineThreads(prev => sortLineThreads(prev.map(t => (t.id === targetUserId
+          ? {
+              ...t,
+              lastMessageText: summaryText,
+              lastMessageFrom: 'staff',
+              lastMessageAt: { _seconds: Math.floor(Date.now() / 1000), _nanoseconds: 0 },
+              unread: false,
+            }
+          : t))));
+      }
     } catch (err: any) {
       console.error('Failed to send LINE reply:', err);
       toast.error(err.message || 'Failed to send reply');
@@ -988,6 +1040,55 @@ export const MailInbox: React.FC = () => {
 
   const removeReplyAttachment = (url: string) => {
     setReplyAttachments(prev => prev.filter(a => a.url !== url));
+  };
+
+  // Frontend convenience cap for staged LINE photos - re-enforced server-side
+  // (see MAX_LINE_REPLY_IMAGES in server.ts). Higher than MAX_PHOTOS_PER_VEHICLE
+  // since staff can queue more than one vehicle's photos before sending.
+  const MAX_LINE_REPLY_IMAGES = 8;
+
+  const removeLineReplyAttachment = (url: string) => {
+    setLineReplyAttachments(prev => prev.filter(a => a.url !== url));
+  };
+
+  // LINE only accepts JPEG/PNG image messages (see isAllowedLineImageUrl in
+  // server.ts). The fleet uploader accepts any image/* though - live
+  // realImages data is clean today (verified: all current entries are
+  // .jpg/.jpeg/.png), but several vehicles' mainImage is already .avif,
+  // showing the pipeline handles other formats and a future realImages
+  // upload could easily be one too. Filtering here keeps the picker from
+  // ever staging a photo the server will always reject - which, since the
+  // server validates every imageUrl in a request, would otherwise fail the
+  // *entire* send, including any LINE-compatible photos staged alongside it
+  // (Codex review, PR #19).
+  const isLineCompatiblePhoto = (url: string) => /\.(jpe?g|png)(\?|$)/i.test(url);
+
+  // LINE equivalent of insertVehiclePhotos above - stages into
+  // lineReplyAttachments instead of replyAttachments, since these get sent as
+  // separate LINE image messages (imageUrls on /api/line/reply) on Send
+  // rather than as email MIME attachments.
+  const insertVehiclePhotosIntoLine = (vehicle: WebsiteCar) => {
+    const photos = (vehicle.realImages || []).filter(isLineCompatiblePhoto).slice(0, MAX_PHOTOS_PER_VEHICLE);
+    setShowVehicleMenu(false);
+    if (photos.length === 0) {
+      toast.error(`${vehicle.name} has no LINE-compatible photos (JPEG/PNG only)`);
+      return;
+    }
+    setLineReplyAttachments(prev => {
+      const existingUrls = new Set(prev.map(a => a.url));
+      const additions = photos
+        .filter(url => !existingUrls.has(url))
+        .map((url, i) => ({ url, filename: filenameFromImageUrl(url, vehicle.name, i) }));
+      if (additions.length === 0) {
+        toast.info(`${vehicle.name}'s photos are already attached`);
+        return prev;
+      }
+      if (prev.length + additions.length > MAX_LINE_REPLY_IMAGES) {
+        toast.error(`Can't send more than ${MAX_LINE_REPLY_IMAGES} photos in one LINE message`);
+        return prev;
+      }
+      return [...prev, ...additions];
+    });
   };
 
   const todayISO = format(new Date(), 'yyyy-MM-dd');
@@ -2561,10 +2662,28 @@ export const MailInbox: React.FC = () => {
                     lineMessages.map(m => (
                       <div key={m.id} className={cn('flex', m.from === 'staff' ? 'justify-end' : 'justify-start')}>
                         <div className={cn(
-                          'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words',
+                          'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm',
                           m.from === 'staff' ? 'bg-brand-orange text-white' : 'bg-black/5 text-[#1A1A1A]'
                         )}>
-                          {m.kind === 'text' ? (m.text || '') : `[${m.kind || 'unsupported message'}]`}
+                          {m.kind === 'image' && m.imageUrls && m.imageUrls.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {m.imageUrls.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block w-20 h-20 rounded-lg overflow-hidden shrink-0"
+                                >
+                                  <img src={url} alt="" className="w-full h-full object-cover" />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">
+                              {m.kind === 'text' ? (m.text || '') : `[${m.kind || 'unsupported message'}]`}
+                            </p>
+                          )}
                           {m.createdAt && (
                             <div className={cn(
                               'text-[10px] mt-1',
@@ -2588,6 +2707,49 @@ export const MailInbox: React.FC = () => {
                       is ever mounted at a time (channel is mutually
                       exclusive), so sharing quoteMenuRef is safe. */}
                   <div className="px-4 pt-3 flex items-center gap-2">
+                    {/* Shares vehicleMenuRef/showVehicleMenu with the Gmail
+                        "Car Photos" button for the same mutual-exclusion
+                        reason as quoteMenuRef above. Stages into
+                        lineReplyAttachments (sent as separate LINE image
+                        messages on Send) rather than replyAttachments (Gmail
+                        MIME attachments) - see insertVehiclePhotosIntoLine. */}
+                    <div className="relative" ref={vehicleMenuRef}>
+                      <button
+                        onClick={() => setShowVehicleMenu(v => !v)}
+                        disabled={vehiclesWithPhotos.length === 0}
+                        className="h-9 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                        title="Send a vehicle's real photos"
+                      >
+                        <Car size={14} />
+                        Car Photos
+                      </button>
+                      {showVehicleMenu && (
+                        <div className="fixed inset-x-4 bottom-24 max-h-[50vh] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-[250] py-1 md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-72 md:max-h-72 md:z-20">
+                          {vehiclesWithPhotos.map(v => {
+                            // Counted against LINE-compatible photos only (see
+                            // isLineCompatiblePhoto) - not just realImages.length -
+                            // so this never advertises more than Send can actually
+                            // deliver.
+                            const compatiblePhotos = (v.realImages || []).filter(isLineCompatiblePhoto);
+                            const photoCount = Math.min(compatiblePhotos.length, MAX_PHOTOS_PER_VEHICLE);
+                            return (
+                              <button
+                                key={v.id}
+                                onClick={() => insertVehiclePhotosIntoLine(v)}
+                                className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{v.name}</span>
+                                <span className="shrink-0 text-[10px] text-[#1A1A1A]/40">
+                                  {photoCount === 0
+                                    ? 'no LINE photos'
+                                    : `${photoCount} photo${photoCount === 1 ? '' : 's'}${compatiblePhotos.length > MAX_PHOTOS_PER_VEHICLE ? ` of ${compatiblePhotos.length}` : ''}`}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <div className="relative" ref={quoteMenuRef}>
                       <button
                         onClick={() => setShowQuoteMenu(v => !v)}
@@ -2743,6 +2905,25 @@ export const MailInbox: React.FC = () => {
                       )}
                     </div>
                   </div>
+                  {lineReplyAttachments.length > 0 && (
+                    <div className="px-4 pt-2 flex flex-wrap gap-2">
+                      {lineReplyAttachments.map(a => (
+                        <div
+                          key={a.url}
+                          className="relative group w-14 h-14 rounded-lg overflow-hidden border border-black/10 bg-black/5"
+                        >
+                          <img src={a.url} alt={a.filename} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => removeLineReplyAttachment(a.url)}
+                            title={`Remove ${a.filename}`}
+                            className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/60 opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <X size={14} className="text-white" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="p-4 flex items-center gap-3">
                     <textarea
                       value={lineReplyText}
@@ -2760,7 +2941,7 @@ export const MailInbox: React.FC = () => {
                     />
                     <button
                       onClick={handleLineSend}
-                      disabled={lineSending || !lineReplyText.trim()}
+                      disabled={lineSending || (!lineReplyText.trim() && lineReplyAttachments.length === 0)}
                       className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
                     >
                       {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
