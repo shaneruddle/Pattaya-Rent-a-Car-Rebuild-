@@ -3040,14 +3040,29 @@ app.post('/api/line/reply', async (req: any, res: any) => {
 
     for (let i = 0; i < outgoingMessages.length; i += LINE_PUSH_MAX_MESSAGES_PER_CALL) {
       const chunk = outgoingMessages.slice(i, i + LINE_PUSH_MAX_MESSAGES_PER_CALL);
-      const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ to: userId, messages: chunk }),
-      });
+      let pushResp: Response;
+      try {
+        pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ to: userId, messages: chunk }),
+        });
+      } catch (fetchErr: any) {
+        // A transport-level failure (connection reset, DNS, timeout, etc.)
+        // throws rather than resolving with a non-ok response - handled the
+        // same way as the !pushResp.ok branch below (set pushError and
+        // break) so a chunk that already succeeded still gets persisted and
+        // reported via partialSuccess instead of the whole request falling
+        // through to the outer catch, which has no delivery-tracking
+        // information and would report a full failure even though an
+        // earlier chunk reached the customer (Codex review round 2, PR #19).
+        console.error('[LINE] push request failed:', fetchErr?.message || fetchErr);
+        pushError = { friendly: 'Could not reach LINE to send the message - please try again.' };
+        break;
+      }
 
       if (!pushResp.ok) {
         const detail = await pushResp.text().catch(() => '');
