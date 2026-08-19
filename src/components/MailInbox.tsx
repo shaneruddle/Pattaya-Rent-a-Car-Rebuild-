@@ -845,6 +845,26 @@ export const MailInbox: React.FC = () => {
     selectedLineUserIdRef.current = userId;
     setSelectedLineUserId(userId);
   };
+  // Scrolled to on every lineMessages change - lands on the newest message
+  // both after a thread's history first loads and after a reply is
+  // appended, since messages come back oldest-first from the server and
+  // this overflow container would otherwise sit at the top.
+  const lineMessagesEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    lineMessagesEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [lineMessages]);
+
+  // Used by the mobile Back action below - deselecting isn't just a state
+  // reset, it also has to invalidate lineThreadRequestIdRef. Without that,
+  // an openLineThread call already in flight for the thread staff just
+  // backed out of would still pass its own request-id guard when it
+  // resolves, clearing that thread's unread flag and firing the read PATCH
+  // even though its messages were never actually shown.
+  const closeLineThread = () => {
+    lineThreadRequestIdRef.current++;
+    setLineMessagesLoading(false);
+    setSelectedLineUser(null);
+  };
 
   const openLineThread = useCallback(async (userId: string) => {
     const requestId = ++lineThreadRequestIdRef.current;
@@ -2468,7 +2488,7 @@ export const MailInbox: React.FC = () => {
             ) : (
               <>
                 <div className="p-4 border-b border-black/10 flex items-center gap-3 shrink-0">
-                  <button className="md:hidden p-1" onClick={() => setSelectedLineUser(null)}>
+                  <button className="md:hidden p-1" onClick={closeLineThread}>
                     <ChevronLeft size={20} />
                   </button>
                   <h2 className="font-bold text-[#1A1A1A] truncate flex-1">
@@ -2506,6 +2526,7 @@ export const MailInbox: React.FC = () => {
                       </div>
                     ))
                   )}
+                  <div ref={lineMessagesEndRef} />
                 </div>
                 <div className="p-4 border-t border-black/10 flex items-center gap-3 shrink-0">
                   <textarea
