@@ -942,41 +942,65 @@ export const MailInbox: React.FC = () => {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.warning) toast.warning(data.warning);
-      else toast.success('Reply sent');
+
+      // A send spanning >5 messages (text plus several photos) can fail
+      // partway through - the server reports exactly what it actually
+      // delivered via partialSuccess/deliveredText/deliveredImageUrls (see
+      // /api/line/reply) rather than treating the whole send as failed. Only
+      // a response with nothing delivered at all is a plain failure with
+      // nothing to reconcile locally.
+      if (!res.ok && !data.partialSuccess) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const deliveredText: boolean = data.partialSuccess ? !!data.deliveredText : !!text;
+      const deliveredImageUrls: string[] = data.partialSuccess ? (data.deliveredImageUrls || []) : images;
+
+      if (!res.ok) {
+        toast.error(data.error || 'Part of this send did not reach the customer - the rest is still queued to resend.');
+      } else if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success('Reply sent');
+      }
       // Only touch the open conversation's message list / draft if staff are
       // still looking at the thread this reply was sent to - they may have
       // switched to a different one while the request was in flight.
       if (selectedLineUserIdRef.current === targetUserId) {
         setLineMessages(prev => {
           const next = [...prev];
-          if (text) {
+          if (deliveredText) {
             next.push({ id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null });
           }
-          if (images.length > 0) {
-            next.push({ id: data.imageMessageId || `local-img-${prev.length}`, from: 'staff', kind: 'image', imageUrls: images, createdAt: null });
+          if (deliveredImageUrls.length > 0) {
+            next.push({ id: data.imageMessageId || `local-img-${prev.length}`, from: 'staff', kind: 'image', imageUrls: deliveredImageUrls, createdAt: null });
           }
           return next;
         });
-        setLineReplyText('');
-        setLineReplyAttachments([]);
+        // Only clear what was actually delivered - on a partial failure,
+        // undelivered photos stay staged so staff can just hit Send again
+        // rather than re-picking them.
+        if (deliveredText) setLineReplyText('');
+        if (deliveredImageUrls.length > 0) {
+          setLineReplyAttachments(prev => prev.filter(a => !deliveredImageUrls.includes(a.url)));
+        }
       }
       // Also refreshes lastMessageAt (approximated client-side, in the same
       // {_seconds, _nanoseconds} shape the server sends - see
       // FirestoreTimestampJSON above) and re-sorts, so this conversation
       // moves back to the top of the list immediately rather than sitting
       // under its old customer-message time until the next manual refresh.
-      const summaryText = text || '[Photo]';
-      setLineThreads(prev => sortLineThreads(prev.map(t => (t.id === targetUserId
-        ? {
-            ...t,
-            lastMessageText: summaryText,
-            lastMessageFrom: 'staff',
-            lastMessageAt: { _seconds: Math.floor(Date.now() / 1000), _nanoseconds: 0 },
-            unread: false,
-          }
-        : t))));
+      if (deliveredText || deliveredImageUrls.length > 0) {
+        const summaryText = deliveredText ? text : '[Photo]';
+        setLineThreads(prev => sortLineThreads(prev.map(t => (t.id === targetUserId
+          ? {
+              ...t,
+              lastMessageText: summaryText,
+              lastMessageFrom: 'staff',
+              lastMessageAt: { _seconds: Math.floor(Date.now() / 1000), _nanoseconds: 0 },
+              unread: false,
+            }
+          : t))));
+      }
     } catch (err: any) {
       console.error('Failed to send LINE reply:', err);
       toast.error(err.message || 'Failed to send reply');
@@ -1027,14 +1051,29 @@ export const MailInbox: React.FC = () => {
     setLineReplyAttachments(prev => prev.filter(a => a.url !== url));
   };
 
+  // LINE only accepts JPEG/PNG image messages (see isAllowedLineImageUrl in
+  // server.ts). The fleet uploader accepts any image/* though - live
+  // realImages data is clean today (verified: all current entries are
+  // .jpg/.jpeg/.png), but several vehicles' mainImage is already .avif,
+  // showing the pipeline handles other formats and a future realImages
+  // upload could easily be one too. Filtering here keeps the picker from
+  // ever staging a photo the server will always reject - which, since the
+  // server validates every imageUrl in a request, would otherwise fail the
+  // *entire* send, including any LINE-compatible photos staged alongside it
+  // (Codex review, PR #19).
+  const isLineCompatiblePhoto = (url: string) => /\.(jpe?g|png)(\?|$)/i.test(url);
+
   // LINE equivalent of insertVehiclePhotos above - stages into
   // lineReplyAttachments instead of replyAttachments, since these get sent as
   // separate LINE image messages (imageUrls on /api/line/reply) on Send
   // rather than as email MIME attachments.
   const insertVehiclePhotosIntoLine = (vehicle: WebsiteCar) => {
-    const photos = (vehicle.realImages || []).slice(0, MAX_PHOTOS_PER_VEHICLE);
+    const photos = (vehicle.realImages || []).filter(isLineCompatiblePhoto).slice(0, MAX_PHOTOS_PER_VEHICLE);
     setShowVehicleMenu(false);
-    if (photos.length === 0) return;
+    if (photos.length === 0) {
+      toast.error(`${vehicle.name} has no LINE-compatible photos (JPEG/PNG only)`);
+      return;
+    }
     setLineReplyAttachments(prev => {
       const existingUrls = new Set(prev.map(a => a.url));
       const additions = photos
@@ -2687,7 +2726,12 @@ export const MailInbox: React.FC = () => {
                       {showVehicleMenu && (
                         <div className="fixed inset-x-4 bottom-24 max-h-[50vh] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-[250] py-1 md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-72 md:max-h-72 md:z-20">
                           {vehiclesWithPhotos.map(v => {
-                            const photoCount = Math.min(v.realImages.length, MAX_PHOTOS_PER_VEHICLE);
+                            // Counted against LINE-compatible photos only (see
+                            // isLineCompatiblePhoto) - not just realImages.length -
+                            // so this never advertises more than Send can actually
+                            // deliver.
+                            const compatiblePhotos = (v.realImages || []).filter(isLineCompatiblePhoto);
+                            const photoCount = Math.min(compatiblePhotos.length, MAX_PHOTOS_PER_VEHICLE);
                             return (
                               <button
                                 key={v.id}
@@ -2696,8 +2740,9 @@ export const MailInbox: React.FC = () => {
                               >
                                 <span className="truncate">{v.name}</span>
                                 <span className="shrink-0 text-[10px] text-[#1A1A1A]/40">
-                                  {photoCount} photo{photoCount === 1 ? '' : 's'}
-                                  {v.realImages.length > MAX_PHOTOS_PER_VEHICLE ? ` of ${v.realImages.length}` : ''}
+                                  {photoCount === 0
+                                    ? 'no LINE photos'
+                                    : `${photoCount} photo${photoCount === 1 ? '' : 's'}${compatiblePhotos.length > MAX_PHOTOS_PER_VEHICLE ? ` of ${compatiblePhotos.length}` : ''}`}
                                 </span>
                               </button>
                             );
