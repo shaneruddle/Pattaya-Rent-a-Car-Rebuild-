@@ -871,6 +871,10 @@ export const MailInbox: React.FC = () => {
     setSelectedLineUser(userId);
     setLineMessages([]);
     setLineReplyText('');
+    // An in-progress "Get Quote" lookup for a different LINE conversation
+    // shouldn't silently carry over into this one (same reasoning as the
+    // equivalent reset in openThread for Gmail).
+    resetQuotePicker();
     setLineMessagesLoading(true);
     try {
       const res = await authedFetch(`/api/line/threads/${userId}`);
@@ -1114,6 +1118,22 @@ export const MailInbox: React.FC = () => {
     });
   };
 
+  // Resets whatever "Get Quote" picker state was in progress. Shared by
+  // insertQuoteIntoReply/insertQuoteIntoLineReply below once a quote's been
+  // inserted, and by openLineThread further down when switching to a
+  // different LINE conversation (same reasoning as the equivalent inline
+  // reset in openThread above: not customer data, but stale/confusing
+  // enough to be worth clearing across threads).
+  const resetQuotePicker = () => {
+    setShowQuoteMenu(false);
+    setQuoteVehicle(null);
+    setQuoteFrom('');
+    setQuoteTo('');
+    setQuotePickupTime(QUOTE_DEFAULT_TIME);
+    setQuoteDropoffTime(QUOTE_DEFAULT_TIME);
+    invalidatePendingQuote();
+  };
+
   const insertQuoteIntoReply = () => {
     if (!quoteResult?.quotable || !quoteVehicle) return;
     // parseISO (not `new Date(...)`) for these date-only strings: `new
@@ -1129,13 +1149,21 @@ export const MailInbox: React.FC = () => {
     const days = quoteDays;
     const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
     insertIntoReplyBody(sentence);
-    setShowQuoteMenu(false);
-    setQuoteVehicle(null);
-    setQuoteFrom('');
-    setQuoteTo('');
-    setQuotePickupTime(QUOTE_DEFAULT_TIME);
-    setQuoteDropoffTime(QUOTE_DEFAULT_TIME);
-    invalidatePendingQuote();
+    resetQuotePicker();
+  };
+
+  // LINE's reply box is a plain controlled textarea with no cursor-position
+  // ref like Gmail's replyTextareaRef, so this appends rather than inserting
+  // at a cursor position - the same fallback insertIntoReplyBody itself uses
+  // when its own ref isn't mounted yet.
+  const insertQuoteIntoLineReply = () => {
+    if (!quoteResult?.quotable || !quoteVehicle) return;
+    const fromLabel = `${format(parseISO(quoteFrom), 'd MMM')}, ${quotePickupTime}`;
+    const toLabel = `${format(parseISO(quoteTo), 'd MMM yyyy')}, ${quoteDropoffTime}`;
+    const days = quoteDays;
+    const sentence = `For ${days} day${days === 1 ? '' : 's'} (${fromLabel} - ${toLabel}), a ${quoteVehicle.name} would be THB ${quoteResult.totalPrice?.toLocaleString()} total (THB ${quoteResult.perDay?.toLocaleString()}/day).`;
+    setLineReplyText(prev => (prev ? `${prev}\n\n${sentence}` : sentence));
+    resetQuotePicker();
   };
 
   const handleSuggestReply = async () => {
@@ -2539,29 +2567,194 @@ export const MailInbox: React.FC = () => {
                   )}
                   <div ref={lineMessagesEndRef} />
                 </div>
-                <div className="p-4 border-t border-black/10 flex items-center gap-3 shrink-0">
-                  <textarea
-                    value={lineReplyText}
-                    onChange={e => setLineReplyText(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleLineSend();
-                      }
-                    }}
-                    placeholder="Type a message..."
-                    rows={1}
-                    maxLength={5000}
-                    className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
-                  />
-                  <button
-                    onClick={handleLineSend}
-                    disabled={lineSending || !lineReplyText.trim()}
-                    className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
-                  >
-                    {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Send
-                  </button>
+                <div className="border-t border-black/10 shrink-0">
+                  {/* Shares the same quote-picker state/handlers as the Gmail
+                      "Get Quote" button above - deliberate, since a price
+                      quote isn't customer- or channel-specific data, only
+                      where it gets inserted differs (insertQuoteIntoLineReply
+                      vs insertQuoteIntoReply). Only one of the two toolbars
+                      is ever mounted at a time (channel is mutually
+                      exclusive), so sharing quoteMenuRef is safe. */}
+                  <div className="px-4 pt-3 flex items-center gap-2">
+                    <div className="relative" ref={quoteMenuRef}>
+                      <button
+                        onClick={() => setShowQuoteMenu(v => !v)}
+                        disabled={quotableVehicles.length === 0}
+                        className="h-9 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                        title="Look up a live price quote"
+                      >
+                        <Tag size={14} />
+                        Get Quote
+                      </button>
+                      {showQuoteMenu && (
+                        // Same mobile-safe fixed positioning as the Gmail "Get
+                        // Quote" popover - fixed + inset-x-4 keeps it on
+                        // screen on mobile regardless of where this button
+                        // lands; md:absolute reverts to a button-anchored
+                        // popover once there's room for it.
+                        <div className="fixed inset-x-4 bottom-24 max-h-[70vh] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-xl z-[250] p-3 md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-80 md:max-h-none md:overflow-visible md:z-20">
+                          {!quoteVehicle ? (
+                            <div className="max-h-64 overflow-y-auto -m-3 py-1">
+                              {quotableVehicles.map(v => (
+                                <button
+                                  key={v.id}
+                                  onClick={() => {
+                                    setQuoteVehicle(v);
+                                    invalidatePendingQuote();
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-xs font-medium text-[#1A1A1A]/80 hover:bg-brand-orange/10 hover:text-brand-orange transition-colors flex items-center justify-between gap-2"
+                                >
+                                  <span className="truncate">{v.name}</span>
+                                  <span className="shrink-0 text-[10px] text-[#1A1A1A]/40">{v.type}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              <button
+                                onClick={() => {
+                                  setQuoteVehicle(null);
+                                  invalidatePendingQuote();
+                                }}
+                                className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 hover:text-brand-orange text-left"
+                              >
+                                &larr; {quoteVehicle.name} ({quoteVehicle.type})
+                              </button>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    From
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={quoteFrom}
+                                    min={todayISO}
+                                    onChange={e => {
+                                      const next = e.target.value;
+                                      setQuoteFrom(next);
+                                      invalidatePendingQuote();
+                                      if (quoteTo && next >= quoteTo) setQuoteTo('');
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    To
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={quoteTo}
+                                    min={quoteFrom || todayISO}
+                                    onChange={e => {
+                                      setQuoteTo(e.target.value);
+                                      invalidatePendingQuote();
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    <Clock size={10} /> Pickup time
+                                  </label>
+                                  <select
+                                    value={quotePickupTime}
+                                    onChange={e => {
+                                      setQuotePickupTime(e.target.value);
+                                      invalidatePendingQuote();
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange bg-white"
+                                  >
+                                    {QUOTE_TIME_OPTIONS.map(time => (
+                                      <option key={time} value={time}>{time}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#1A1A1A]/40 mb-1">
+                                    <Clock size={10} /> Drop-off time
+                                  </label>
+                                  <select
+                                    value={quoteDropoffTime}
+                                    onChange={e => {
+                                      setQuoteDropoffTime(e.target.value);
+                                      invalidatePendingQuote();
+                                    }}
+                                    className="w-full border border-black/10 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-brand-orange bg-white"
+                                  >
+                                    {QUOTE_TIME_OPTIONS.map(time => (
+                                      <option key={time} value={time}>{time}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-[#1A1A1A]/40 -mt-1">
+                                Times match the live booking site's pickup/drop-off hours and affect the price (whole days, +half day if returned more than 2h late).
+                              </p>
+                              <button
+                                onClick={getPriceQuote}
+                                disabled={!canGetQuote || quoteLoading}
+                                className="w-full py-2.5 rounded-lg bg-brand-orange text-white font-bold text-[11px] uppercase tracking-widest disabled:opacity-40 flex items-center justify-center gap-2"
+                              >
+                                {quoteLoading ? <Loader2 size={13} className="animate-spin" /> : <Tag size={13} />}
+                                {quoteLoading ? 'Calculating...' : 'Get Price'}
+                              </button>
+                              {quoteError && <p className="text-[11px] text-red-600">{quoteError}</p>}
+                              {quoteResult && quoteResult.quotable && (
+                                <div className="rounded-lg bg-brand-orange/5 border border-brand-orange/20 p-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/40">
+                                    {quoteDays} day{quoteDays === 1 ? '' : 's'}
+                                  </p>
+                                  <p className="text-lg font-bold text-[#1A1A1A]">
+                                    THB {quoteResult.totalPrice?.toLocaleString()}
+                                  </p>
+                                  <p className="text-[11px] text-[#1A1A1A]/50">
+                                    THB {quoteResult.perDay?.toLocaleString()}/day
+                                  </p>
+                                  <button
+                                    onClick={insertQuoteIntoLineReply}
+                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all"
+                                  >
+                                    Insert into reply
+                                  </button>
+                                </div>
+                              )}
+                              {quoteResult && !quoteResult.quotable && (
+                                <div className="rounded-lg bg-red-50 border border-red-100 p-3">
+                                  <p className="text-[11px] font-bold text-red-600 uppercase tracking-widest">Not quotable</p>
+                                  <p className="text-[11px] text-[#1A1A1A]/60 mt-1">{describeQuoteReason(quoteResult.reason)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-4 flex items-center gap-3">
+                    <textarea
+                      value={lineReplyText}
+                      onChange={e => setLineReplyText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleLineSend();
+                        }
+                      }}
+                      placeholder="Type a message..."
+                      rows={1}
+                      maxLength={5000}
+                      className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                    />
+                    <button
+                      onClick={handleLineSend}
+                      disabled={lineSending || !lineReplyText.trim()}
+                      className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
+                    >
+                      {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      Send
+                    </button>
+                  </div>
                 </div>
               </>
             )}
