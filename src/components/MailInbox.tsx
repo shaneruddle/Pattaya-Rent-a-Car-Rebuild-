@@ -932,16 +932,22 @@ export const MailInbox: React.FC = () => {
   // from the text draft.
   const handleLineSuggestReply = async () => {
     if (!selectedLineUserId) return;
+    const targetUserId = selectedLineUserId;
     setLineSuggestingReply(true);
     try {
-      const res = await authedFetch(`/api/line/threads/${selectedLineUserId}/suggest-reply`, { method: 'POST' });
+      const res = await authedFetch(`/api/line/threads/${targetUserId}/suggest-reply`, { method: 'POST' });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
       if (data.draft) {
-        setLineReplyText(data.draft);
+        // Only apply the draft if staff are still looking at the thread it
+        // was drafted for - they may have switched conversations while the
+        // request was in flight (same guard handleLineSend uses below).
+        if (selectedLineUserIdRef.current === targetUserId) {
+          setLineReplyText(data.draft);
+        }
       } else {
         toast.error('No suggestion returned');
       }
@@ -2735,7 +2741,7 @@ export const MailInbox: React.FC = () => {
                       vs insertQuoteIntoReply). Only one of the two toolbars
                       is ever mounted at a time (channel is mutually
                       exclusive), so sharing quoteMenuRef is safe. */}
-                  <div className="px-4 pt-3 flex items-center gap-2">
+                  <div className="px-4 pt-3 flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleLineSuggestReply}
                       disabled={lineSuggestingReply}
