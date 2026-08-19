@@ -2863,6 +2863,28 @@ app.get('/api/line/threads/:userId', async (req: any, res: any) => {
   }
 });
 
+// Marks a LINE thread read server-side (mirrors the Gmail bulk mark-read
+// endpoint) - opening a conversation clears `unread` locally right away in
+// the UI, but without this write it silently reverts the next time the
+// thread list is refreshed or another staff session opens it, since GET
+// /api/line/threads/:userId only reads the thread, it never updates it.
+app.patch('/api/line/threads/:userId/read', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
+    const { userId } = req.params;
+    const threadRef = firestore.collection('line_threads').doc(userId);
+    const threadSnap = await threadRef.get();
+    if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
+    await threadRef.set({ unread: false }, { merge: true });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[LINE] mark read error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to mark LINE thread as read' });
+  }
+});
+
 // Sends a staff reply to a LINE customer and records it alongside their
 // messages so the thread stays a complete history. Uses the Push Message
 // API rather than the Reply API - a reply token is only valid for a short
