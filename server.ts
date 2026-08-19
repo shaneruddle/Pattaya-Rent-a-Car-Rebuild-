@@ -2903,12 +2903,52 @@ app.patch('/api/line/threads/:userId/read', async (req: any, res: any) => {
   }
 });
 
+// LINE Messaging API image message constraints: JPEG/PNG only, HTTPS with
+// TLS 1.2+, previewImageUrl <=1MB, originalContentUrl <=10MB. This app always
+// sends the same URL for both (see the /api/line/reply handler below), so
+// the tighter 1MB preview limit is what's actually enforced - every fleet
+// photo checked in an Aug 2026 sweep (72 images across website_cars) was well
+// under it (largest ~805KB), but a future oversized upload must fail loudly
+// here rather than silently violate LINE's limit and get the whole push
+// rejected.
+const LINE_IMAGE_MAX_BYTES = 1 * 1024 * 1024;
+const MAX_LINE_REPLY_IMAGES = 8;
+// LINE's push endpoint accepts at most 5 messages per call - larger sends
+// (text + several photos) are split into sequential push calls below.
+const LINE_PUSH_MAX_MESSAGES_PER_CALL = 5;
+
+// Fleet photos are hosted either on this app's own Firebase Storage bucket
+// (see ALLOWED_ATTACHMENT_HOST/BUCKET above) or, for older vehicles carried
+// over from the previous site, an S3 bucket (Bubble/appforest) - both are
+// trusted staff-content sources. Restricting to these (rather than accepting
+// any https URL the client sends) keeps this staff-authenticated endpoint
+// from being usable to push an arbitrary image straight to a real customer.
+function isAllowedLineImageUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' || !/\.(jpe?g|png)$/i.test(parsed.pathname)) return false;
+  if (parsed.hostname === ALLOWED_ATTACHMENT_HOST) {
+    const bucketMatch = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\//);
+    return !!bucketMatch && bucketMatch[1] === ALLOWED_ATTACHMENT_BUCKET;
+  }
+  if (parsed.hostname === 's3.amazonaws.com') {
+    return parsed.pathname.startsWith('/appforest_uf/');
+  }
+  return false;
+}
+
 // Sends a staff reply to a LINE customer and records it alongside their
 // messages so the thread stays a complete history. Uses the Push Message
 // API rather than the Reply API - a reply token is only valid for a short
 // window after the customer's message arrives, which doesn't fit an inbox
 // where staff might answer minutes, hours, or days later. Confirmed the
 // account's plan/quota supports this (verified/paid, higher volume).
+// Optionally carries staged "Car Photos" (imageUrls) alongside or instead of
+// text - see MailInbox's Car Photos picker for LINE.
 app.post('/api/line/reply', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   // A real Timestamp (not FieldValue.serverTimestamp(), which only resolves
@@ -2927,16 +2967,45 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
     if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
 
-    const { userId, text } = req.body || {};
+    const { userId, text, imageUrls } = req.body || {};
     if (typeof userId !== 'string' || !userId.trim()) {
       return res.status(400).json({ error: 'userId is required' });
     }
-    if (typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ error: 'text is required' });
+    const hasText = typeof text === 'string' && text.trim().length > 0;
+    const images: string[] = Array.isArray(imageUrls) ? imageUrls : [];
+    if (!hasText && images.length === 0) {
+      return res.status(400).json({ error: 'text or imageUrls is required' });
     }
     // LINE rejects a text message outright past this length.
-    if (text.length > 5000) {
+    if (hasText && text.length > 5000) {
       return res.status(400).json({ error: 'Message is too long (5000 character limit)' });
+    }
+    if (images.length > 0) {
+      if (images.length > MAX_LINE_REPLY_IMAGES) {
+        return res.status(400).json({ error: `Too many photos (max ${MAX_LINE_REPLY_IMAGES})` });
+      }
+      for (const url of images) {
+        if (typeof url !== 'string' || !isAllowedLineImageUrl(url)) {
+          return res.status(400).json({ error: 'One or more photo URLs are not allowed' });
+        }
+      }
+      // The frontend only ever offers known-small fleet photos, but that's a
+      // client-side convenience, not a guarantee - re-verify size here too
+      // (same reasoning as the attachment size check in /api/mail/reply).
+      for (const url of images) {
+        try {
+          const headResp = await fetch(url, { method: 'HEAD' });
+          const len = parseInt(headResp.headers.get('content-length') || '', 10);
+          if (!headResp.ok || !Number.isFinite(len) || len <= 0) {
+            return res.status(400).json({ error: 'Could not verify a photo before sending' });
+          }
+          if (len > LINE_IMAGE_MAX_BYTES) {
+            return res.status(400).json({ error: `A photo is too large to send over LINE (max ${LINE_IMAGE_MAX_BYTES / 1024 / 1024}MB)` });
+          }
+        } catch {
+          return res.status(400).json({ error: 'Could not verify a photo before sending' });
+        }
+      }
     }
 
     const threadRef = firestore.collection('line_threads').doc(userId);
@@ -2952,47 +3021,77 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     }
 
     const token = await getLineAccessToken();
-    const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ to: userId, messages: [{ type: 'text', text }] }),
-    });
+    const outgoingMessages: any[] = [];
+    if (hasText) outgoingMessages.push({ type: 'text', text });
+    for (const url of images) outgoingMessages.push({ type: 'image', originalContentUrl: url, previewImageUrl: url });
 
-    if (!pushResp.ok) {
-      const detail = await pushResp.text().catch(() => '');
-      console.error('[LINE] push message failed:', pushResp.status, detail);
-      // The most common real-world rejection here is the customer having
-      // blocked the OA or never having added it (403) - surface that
-      // plainly, since it's the one thing staff can actually act on
-      // (there's nothing to send to until the customer re-follows).
-      const friendlyError = pushResp.status === 403
-        ? 'This customer has blocked the account or is not a friend of it - the message could not be delivered.'
-        : `LINE rejected the message (${pushResp.status})`;
-      return res.status(502).json({ error: friendlyError });
+    for (let i = 0; i < outgoingMessages.length; i += LINE_PUSH_MAX_MESSAGES_PER_CALL) {
+      const chunk = outgoingMessages.slice(i, i + LINE_PUSH_MAX_MESSAGES_PER_CALL);
+      const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ to: userId, messages: chunk }),
+      });
+
+      if (!pushResp.ok) {
+        const detail = await pushResp.text().catch(() => '');
+        console.error('[LINE] push message failed:', pushResp.status, detail);
+        // The most common real-world rejection here is the customer having
+        // blocked the OA or never having added it (403) - surface that
+        // plainly, since it's the one thing staff can actually act on
+        // (there's nothing to send to until the customer re-follows).
+        const friendlyError = pushResp.status === 403
+          ? 'This customer has blocked the account or is not a friend of it - the message could not be delivered.'
+          : `LINE rejected the message (${pushResp.status})`;
+        // A send with more than 5 messages spans multiple push calls above -
+        // if an earlier chunk already succeeded, the customer already has
+        // those messages even though this response reports failure overall.
+        return res.status(502).json({
+          error: i === 0 ? friendlyError : `${friendlyError} (some earlier messages in this send may have already been delivered)`,
+        });
+      }
     }
 
-    // The push already succeeded - the customer has this message regardless
-    // of what happens below. A failure past this point only affects our own
-    // record of the conversation, so it's reported back as a warning rather
-    // than an error (the reply itself worked and shouldn't read as failed).
-    const messageId = `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // The push(es) already succeeded - the customer has these messages
+    // regardless of what happens below. A failure past this point only
+    // affects our own record of the conversation, so it's reported back as a
+    // warning rather than an error (the reply itself worked and shouldn't
+    // read as failed).
+    const messageId = hasText ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
+    const imageMessageId = images.length > 0 ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-img` : null;
     try {
-      await threadRef.collection('messages').doc(messageId).set({
-        id: messageId,
-        from: 'staff',
-        kind: 'text',
-        text,
-        sentBy: decoded.email,
-        createdAt: sentAt,
-      });
+      if (hasText && messageId) {
+        await threadRef.collection('messages').doc(messageId).set({
+          id: messageId,
+          from: 'staff',
+          kind: 'text',
+          text,
+          sentBy: decoded.email,
+          createdAt: sentAt,
+        });
+      }
+      if (images.length > 0 && imageMessageId) {
+        await threadRef.collection('messages').doc(imageMessageId).set({
+          id: imageMessageId,
+          from: 'staff',
+          kind: 'image',
+          imageUrls: images,
+          sentBy: decoded.email,
+          // A hair after the text message's timestamp (when both are sent
+          // together) so this always sorts after it in the thread's
+          // chronological order rather than tying on the same Timestamp.
+          createdAt: hasText ? Timestamp.fromMillis(sentAt.toMillis() + 1) : sentAt,
+        });
+      }
+      const summaryText = hasText ? text : '[Photo]';
       await firestore.runTransaction(async (tx) => {
         const snap = await tx.get(threadRef);
         if (!isEventNewer(snap.data()?.lastMessageAt, sentAt)) return;
         tx.set(threadRef, {
-          lastMessageText: text,
+          lastMessageText: summaryText,
           lastMessageAt: sentAt,
           lastMessageFrom: 'staff',
           unread: false,
@@ -3004,7 +3103,7 @@ app.post('/api/line/reply', async (req: any, res: any) => {
       return res.json({ success: true, warning: "Message was sent to the customer but could not be saved to this thread's history." });
     }
 
-    res.json({ success: true, messageId });
+    res.json({ success: true, messageId, imageMessageId });
   } catch (err: any) {
     console.error('[LINE] reply error:', err?.message || err);
     res.status(500).json({ error: err?.message || 'Failed to send LINE reply' });
