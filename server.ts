@@ -2868,16 +2868,34 @@ app.get('/api/line/threads/:userId', async (req: any, res: any) => {
 // the UI, but without this write it silently reverts the next time the
 // thread list is refreshed or another staff session opens it, since GET
 // /api/line/threads/:userId only reads the thread, it never updates it.
+//
+// The client sends back the lastMessageAt it saw on that GET (as
+// {asOfSeconds, asOfNanoseconds} - Firestore Timestamps have no toJSON(),
+// so that's how it comes through the JSON response). This write only
+// clears `unread` if the thread's lastMessageAt is still exactly that
+// value: a customer message can arrive (via handleLineEvent) after the
+// staff's GET but before this PATCH lands, which sets unread: true for
+// that new message - clearing unconditionally would silently swallow it.
 app.patch('/api/line/threads/:userId/read', async (req: any, res: any) => {
   if (!requireStaffAuth(req, res)) return;
   try {
     const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
     if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
     const { userId } = req.params;
+    const { asOfSeconds, asOfNanoseconds } = req.body || {};
     const threadRef = firestore.collection('line_threads').doc(userId);
-    const threadSnap = await threadRef.get();
-    if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
-    await threadRef.set({ unread: false }, { merge: true });
+    let notFound = false;
+    await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(threadRef);
+      if (!snap.exists) { notFound = true; return; }
+      const current = snap.data()?.lastMessageAt;
+      const matchesAsOf = current instanceof Timestamp
+        ? typeof asOfSeconds === 'number' && current.seconds === asOfSeconds && current.nanoseconds === (asOfNanoseconds || 0)
+        : !current && asOfSeconds === undefined;
+      if (!matchesAsOf) return; // a newer message has landed since the client fetched this thread - leave its unread flag alone
+      tx.set(threadRef, { unread: false }, { merge: true });
+    });
+    if (notFound) return res.status(404).json({ error: 'Thread not found' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('[LINE] mark read error:', err?.message || err);
