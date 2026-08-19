@@ -3025,6 +3025,19 @@ app.post('/api/line/reply', async (req: any, res: any) => {
     if (hasText) outgoingMessages.push({ type: 'text', text });
     for (const url of images) outgoingMessages.push({ type: 'image', originalContentUrl: url, previewImageUrl: url });
 
+    // Tracks what actually reached LINE, chunk by chunk. A send with more
+    // than 5 messages (text plus several photos) spans multiple push calls,
+    // and a later chunk can fail after an earlier one already succeeded -
+    // persisting/reporting only what's recorded here (rather than blanket
+    // hasText/images) keeps thread history accurate to what the customer
+    // actually received, and tells the client exactly what still needs
+    // resending instead of a full-failure response that would otherwise
+    // silently drop an already-delivered chunk from history, or have the
+    // client resend something the customer already got (Codex review, PR #19).
+    let deliveredText = false;
+    const deliveredImageUrls: string[] = [];
+    let pushError: { friendly: string } | null = null;
+
     for (let i = 0; i < outgoingMessages.length; i += LINE_PUSH_MAX_MESSAGES_PER_CALL) {
       const chunk = outgoingMessages.slice(i, i + LINE_PUSH_MAX_MESSAGES_PER_CALL);
       const pushResp = await fetch('https://api.line.me/v2/bot/message/push', {
@@ -3046,24 +3059,27 @@ app.post('/api/line/reply', async (req: any, res: any) => {
         const friendlyError = pushResp.status === 403
           ? 'This customer has blocked the account or is not a friend of it - the message could not be delivered.'
           : `LINE rejected the message (${pushResp.status})`;
-        // A send with more than 5 messages spans multiple push calls above -
-        // if an earlier chunk already succeeded, the customer already has
-        // those messages even though this response reports failure overall.
-        return res.status(502).json({
-          error: i === 0 ? friendlyError : `${friendlyError} (some earlier messages in this send may have already been delivered)`,
-        });
+        pushError = { friendly: friendlyError };
+        break;
+      }
+
+      for (const m of chunk) {
+        if (m.type === 'text') deliveredText = true;
+        else if (m.type === 'image') deliveredImageUrls.push(m.originalContentUrl);
       }
     }
 
-    // The push(es) already succeeded - the customer has these messages
-    // regardless of what happens below. A failure past this point only
-    // affects our own record of the conversation, so it's reported back as a
-    // warning rather than an error (the reply itself worked and shouldn't
-    // read as failed).
-    const messageId = hasText ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
-    const imageMessageId = images.length > 0 ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-img` : null;
+    // Persists only what was actually delivered above - on full success
+    // that's everything (deliveredText/deliveredImageUrls then match
+    // hasText/images exactly); on a partial failure it's just the chunk(s)
+    // that landed before the failing one. A failure in this block only
+    // affects our own record of the conversation (the push(es) already
+    // reached the customer), so it's reported as a warning, not an error.
+    const messageId = deliveredText ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
+    const imageMessageId = deliveredImageUrls.length > 0 ? `staff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-img` : null;
+    let persistWarning: string | null = null;
     try {
-      if (hasText && messageId) {
+      if (deliveredText && messageId) {
         await threadRef.collection('messages').doc(messageId).set({
           id: messageId,
           from: 'staff',
@@ -3073,34 +3089,56 @@ app.post('/api/line/reply', async (req: any, res: any) => {
           createdAt: sentAt,
         });
       }
-      if (images.length > 0 && imageMessageId) {
+      if (deliveredImageUrls.length > 0 && imageMessageId) {
         await threadRef.collection('messages').doc(imageMessageId).set({
           id: imageMessageId,
           from: 'staff',
           kind: 'image',
-          imageUrls: images,
+          imageUrls: deliveredImageUrls,
           sentBy: decoded.email,
           // A hair after the text message's timestamp (when both are sent
           // together) so this always sorts after it in the thread's
           // chronological order rather than tying on the same Timestamp.
-          createdAt: hasText ? Timestamp.fromMillis(sentAt.toMillis() + 1) : sentAt,
+          createdAt: deliveredText ? Timestamp.fromMillis(sentAt.toMillis() + 1) : sentAt,
         });
       }
-      const summaryText = hasText ? text : '[Photo]';
-      await firestore.runTransaction(async (tx) => {
-        const snap = await tx.get(threadRef);
-        if (!isEventNewer(snap.data()?.lastMessageAt, sentAt)) return;
-        tx.set(threadRef, {
-          lastMessageText: summaryText,
-          lastMessageAt: sentAt,
-          lastMessageFrom: 'staff',
-          unread: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      });
+      if (deliveredText || deliveredImageUrls.length > 0) {
+        const summaryText = deliveredText ? text : '[Photo]';
+        await firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(threadRef);
+          if (!isEventNewer(snap.data()?.lastMessageAt, sentAt)) return;
+          tx.set(threadRef, {
+            lastMessageText: summaryText,
+            lastMessageAt: sentAt,
+            lastMessageFrom: 'staff',
+            unread: false,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+        });
+      }
     } catch (persistErr: any) {
       console.error('[LINE] reply sent but failed to persist:', persistErr?.message || persistErr);
-      return res.json({ success: true, warning: "Message was sent to the customer but could not be saved to this thread's history." });
+      persistWarning = "Part of this message was sent to the customer but could not be saved to this thread's history.";
+    }
+
+    if (pushError) {
+      // undeliveredImageUrls tells the client exactly which staged photos
+      // still need sending, so a retry doesn't resend the ones the customer
+      // already has.
+      const undeliveredImageUrls = images.filter(url => !deliveredImageUrls.includes(url));
+      return res.status(502).json({
+        error: (deliveredText || deliveredImageUrls.length > 0)
+          ? `${pushError.friendly} (an earlier part of this send was already delivered${persistWarning ? ', but not saved to history' : ' and saved to history'} - only the rest needs resending.)`
+          : pushError.friendly,
+        partialSuccess: deliveredText || deliveredImageUrls.length > 0,
+        deliveredText,
+        deliveredImageUrls,
+        undeliveredImageUrls,
+      });
+    }
+
+    if (persistWarning) {
+      return res.json({ success: true, messageId, imageMessageId, warning: persistWarning });
     }
 
     res.json({ success: true, messageId, imageMessageId });
