@@ -827,7 +827,22 @@ export const MailInbox: React.FC = () => {
     }
   }, [channel, fetchLineThreads]);
 
+  // Bumped on every openLineThread call so a slow response for a thread
+  // staff have since navigated away from can't clobber whatever thread is
+  // actually selected by the time it resolves (same pattern as
+  // quoteRequestIdRef above).
+  const lineThreadRequestIdRef = useRef(0);
+  // Live mirror of selectedLineUserId for handleLineSend below to read
+  // after an await - the plain state variable would only reflect whatever
+  // thread was selected when that particular handleLineSend closure was
+  // created, not a switch that happens while the request is in flight.
+  const selectedLineUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedLineUserIdRef.current = selectedLineUserId;
+  }, [selectedLineUserId]);
+
   const openLineThread = useCallback(async (userId: string) => {
+    const requestId = ++lineThreadRequestIdRef.current;
     setSelectedLineUserId(userId);
     setLineMessages([]);
     setLineReplyText('');
@@ -836,40 +851,56 @@ export const MailInbox: React.FC = () => {
       const res = await authedFetch(`/api/line/threads/${userId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (lineThreadRequestIdRef.current !== requestId) return; // a newer thread was opened meanwhile
       setLineMessages(data.messages || []);
       setLineThreads(prev => prev.map(t => (t.id === userId ? { ...t, unread: false } : t)));
+      // Best-effort - persists the read state server-side so it survives a
+      // list refresh or another staff session opening the same thread. A
+      // failure here just means it may show unread again later; it
+      // shouldn't block viewing or replying.
+      authedFetch(`/api/line/threads/${userId}/read`, { method: 'PATCH' }).catch(err => {
+        console.error('Failed to persist LINE read state:', err);
+      });
     } catch (err: any) {
+      if (lineThreadRequestIdRef.current !== requestId) return;
       console.error('Failed to load LINE conversation:', err);
       toast.error('Failed to load conversation');
     } finally {
-      setLineMessagesLoading(false);
+      if (lineThreadRequestIdRef.current === requestId) setLineMessagesLoading(false);
     }
   }, []);
 
   const selectedLineThread = lineThreads.find(t => t.id === selectedLineUserId) || null;
 
   const handleLineSend = async () => {
+    if (lineSending) return; // guards a duplicate submit (e.g. a second Enter) while one is already in flight
     const text = lineReplyText.trim();
-    if (!text || !selectedLineUserId) return;
+    const targetUserId = selectedLineUserId;
+    if (!text || !targetUserId) return;
     setLineSending(true);
     try {
       const res = await authedFetch('/api/line/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: selectedLineUserId, text }),
+        body: JSON.stringify({ userId: targetUserId, text }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.warning) toast.warning(data.warning);
       else toast.success('Reply sent');
-      setLineMessages(prev => [
-        ...prev,
-        { id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null },
-      ]);
-      setLineThreads(prev => prev.map(t => (t.id === selectedLineUserId
+      // Only touch the open conversation's message list / draft if staff are
+      // still looking at the thread this reply was sent to - they may have
+      // switched to a different one while the request was in flight.
+      if (selectedLineUserIdRef.current === targetUserId) {
+        setLineMessages(prev => [
+          ...prev,
+          { id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null },
+        ]);
+        setLineReplyText('');
+      }
+      setLineThreads(prev => prev.map(t => (t.id === targetUserId
         ? { ...t, lastMessageText: text, lastMessageFrom: 'staff' }
         : t)));
-      setLineReplyText('');
     } catch (err: any) {
       console.error('Failed to send LINE reply:', err);
       toast.error(err.message || 'Failed to send reply');
