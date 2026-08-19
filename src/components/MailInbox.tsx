@@ -5,7 +5,7 @@ import { ref, uploadBytes } from 'firebase/storage';
 import { Booking, Customer, EmailTemplate, WebsiteCar } from '../types';
 import { format, parseISO, differenceInHours } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car, Tag } from 'lucide-react';
+import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car, Tag, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
@@ -90,6 +90,56 @@ interface MailAttachment {
   filename: string;
   mimeType: string;
   size: number;
+}
+
+// Firestore Admin SDK Timestamp fields (lastMessageAt, createdAt, etc. on the
+// line_threads/messages docs) have no toJSON() - they come through
+// server.ts's res.json() as their raw enumerable instance shape.
+interface FirestoreTimestampJSON {
+  _seconds: number;
+  _nanoseconds: number;
+}
+
+// LINE Official Account thread/message shapes - see server.ts's
+// GET /api/line/threads, GET /api/line/threads/:userId and
+// POST /api/line/reply. Deliberately separate from MailThread/MailMessage
+// above rather than reshaped to fit them - the LINE data model (userId
+// instead of an email thread id, no subject, plain-text only) doesn't map
+// cleanly onto Gmail's, and keeping them apart is what lets this simplified
+// first pass live alongside the Gmail pane without touching any of its code.
+interface LineThread {
+  id: string; // LINE userId
+  displayName?: string;
+  pictureUrl?: string;
+  lastMessageText?: string;
+  lastMessageAt?: FirestoreTimestampJSON | null;
+  lastMessageFrom?: 'customer' | 'staff';
+  unread?: boolean;
+  following?: boolean;
+}
+
+interface LineMessage {
+  id: string;
+  from: 'customer' | 'staff';
+  kind: string;
+  text?: string;
+  createdAt?: FirestoreTimestampJSON | null;
+  sentBy?: string;
+}
+
+function lineTimestampToDate(ts: FirestoreTimestampJSON | null | undefined): Date | null {
+  if (!ts || typeof ts._seconds !== 'number') return null;
+  return new Date(ts._seconds * 1000 + Math.round((ts._nanoseconds || 0) / 1e6));
+}
+
+function formatLineTimestamp(ts: FirestoreTimestampJSON | null | undefined): string {
+  const date = lineTimestampToDate(ts);
+  if (!date) return '';
+  const now = new Date();
+  const isToday = date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return isToday ? format(date, 'HH:mm') : format(date, 'dd MMM');
 }
 
 // Shape of /api/pricing/quote's response (same endpoint the standalone Price
@@ -339,6 +389,21 @@ export const MailInbox: React.FC = () => {
   const [quoteResult, setQuoteResult] = useState<PriceQuoteResult | null>(null);
   const [quoteError, setQuoteError] = useState('');
   const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // LINE Official Account channel - fully separate state from the Gmail state
+  // above (see LineThread/LineMessage comment). Simplified first pass: no
+  // search, no follow-up filter, no bulk select, no templates/attachments/
+  // quote picker, no customer-profile linking - just threads, messages, and
+  // a plain-text reply box.
+  const [channel, setChannel] = useState<'gmail' | 'line'>('gmail');
+  const [lineThreads, setLineThreads] = useState<LineThread[]>([]);
+  const [lineThreadsLoading, setLineThreadsLoading] = useState(false);
+  const lineThreadsLoadedRef = useRef(false);
+  const [selectedLineUserId, setSelectedLineUserId] = useState<string | null>(null);
+  const [lineMessages, setLineMessages] = useState<LineMessage[]>([]);
+  const [lineMessagesLoading, setLineMessagesLoading] = useState(false);
+  const [lineReplyText, setLineReplyText] = useState('');
+  const [lineSending, setLineSending] = useState(false);
 
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
@@ -727,6 +792,89 @@ export const MailInbox: React.FC = () => {
       toast.error(err.message || 'Failed to send reply');
     } finally {
       setSending(false);
+    }
+  };
+
+  const sortLineThreads = (list: LineThread[]) =>
+    [...list].sort((a, b) => {
+      if (!!a.unread !== !!b.unread) return a.unread ? -1 : 1;
+      const aMs = lineTimestampToDate(a.lastMessageAt)?.getTime() || 0;
+      const bMs = lineTimestampToDate(b.lastMessageAt)?.getTime() || 0;
+      return bMs - aMs;
+    });
+
+  const fetchLineThreads = useCallback(async () => {
+    setLineThreadsLoading(true);
+    try {
+      const res = await authedFetch('/api/line/threads');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setLineThreads(sortLineThreads(data.threads || []));
+    } catch (err: any) {
+      console.error('Failed to load LINE threads:', err);
+      toast.error('Failed to load LINE conversations');
+    } finally {
+      setLineThreadsLoading(false);
+    }
+  }, []);
+
+  // Lazy-load LINE threads the first time staff switch to the tab, rather
+  // than fetching both channels up front on every Inbox mount.
+  useEffect(() => {
+    if (channel === 'line' && !lineThreadsLoadedRef.current) {
+      lineThreadsLoadedRef.current = true;
+      fetchLineThreads();
+    }
+  }, [channel, fetchLineThreads]);
+
+  const openLineThread = useCallback(async (userId: string) => {
+    setSelectedLineUserId(userId);
+    setLineMessages([]);
+    setLineReplyText('');
+    setLineMessagesLoading(true);
+    try {
+      const res = await authedFetch(`/api/line/threads/${userId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setLineMessages(data.messages || []);
+      setLineThreads(prev => prev.map(t => (t.id === userId ? { ...t, unread: false } : t)));
+    } catch (err: any) {
+      console.error('Failed to load LINE conversation:', err);
+      toast.error('Failed to load conversation');
+    } finally {
+      setLineMessagesLoading(false);
+    }
+  }, []);
+
+  const selectedLineThread = lineThreads.find(t => t.id === selectedLineUserId) || null;
+
+  const handleLineSend = async () => {
+    const text = lineReplyText.trim();
+    if (!text || !selectedLineUserId) return;
+    setLineSending(true);
+    try {
+      const res = await authedFetch('/api/line/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedLineUserId, text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.warning) toast.warning(data.warning);
+      else toast.success('Reply sent');
+      setLineMessages(prev => [
+        ...prev,
+        { id: data.messageId || `local-${prev.length}`, from: 'staff', kind: 'text', text, createdAt: null },
+      ]);
+      setLineThreads(prev => prev.map(t => (t.id === selectedLineUserId
+        ? { ...t, lastMessageText: text, lastMessageFrom: 'staff' }
+        : t)));
+      setLineReplyText('');
+    } catch (err: any) {
+      console.error('Failed to send LINE reply:', err);
+      toast.error(err.message || 'Failed to send reply');
+    } finally {
+      setLineSending(false);
     }
   };
 
@@ -1488,19 +1636,42 @@ export const MailInbox: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-[#1A1A1A]">Inbox</h1>
-            <p className="text-xs text-[#1A1A1A]/50">{INFO_MAILBOX}</p>
+            <p className="text-xs text-[#1A1A1A]/50">{channel === 'gmail' ? INFO_MAILBOX : 'LINE Official Account'}</p>
           </div>
         </div>
-        <button
-          onClick={() => fetchThreads(searchQuery)}
-          disabled={threadsLoading}
-          className="w-10 h-10 rounded-xl bg-white/60 border border-black/10 flex items-center justify-center hover:bg-white transition-all disabled:opacity-50"
-          title="Refresh"
-        >
-          <RefreshCw size={16} className={cn(threadsLoading && 'animate-spin')} />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-black/5">
+            <button
+              onClick={() => setChannel('gmail')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all',
+                channel === 'gmail' ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]/70'
+              )}
+            >
+              <MailOpen size={13} /> Gmail
+            </button>
+            <button
+              onClick={() => setChannel('line')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all',
+                channel === 'line' ? 'bg-white shadow-sm text-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]/70'
+              )}
+            >
+              <MessageCircle size={13} /> LINE
+            </button>
+          </div>
+          <button
+            onClick={() => (channel === 'gmail' ? fetchThreads(searchQuery) : fetchLineThreads())}
+            disabled={channel === 'gmail' ? threadsLoading : lineThreadsLoading}
+            className="w-10 h-10 rounded-xl bg-white/60 border border-black/10 flex items-center justify-center hover:bg-white transition-all disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw size={16} className={cn((channel === 'gmail' ? threadsLoading : lineThreadsLoading) && 'animate-spin')} />
+          </button>
+        </div>
       </div>
 
+      {channel === 'gmail' && (
       <div className="flex-1 flex gap-4 min-h-0">
         {leftCollapsed ? (
           <div className="hidden md:flex w-10 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex-col items-center pt-4">
@@ -2187,6 +2358,140 @@ export const MailInbox: React.FC = () => {
           </div>
         )}
       </div>
+      )}
+
+      {channel === 'line' && (
+        <div className="flex-1 flex gap-4 min-h-0">
+          <div className={cn(
+            'w-full md:w-80 shrink-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
+            selectedLineUserId && 'hidden md:flex'
+          )}>
+            <div className="p-4 border-b border-black/10 shrink-0">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A]/30">LINE Conversations</span>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {lineThreadsLoading ? (
+                <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
+              ) : lineThreads.length === 0 ? (
+                <div className="p-8 text-center text-sm text-[#1A1A1A]/40">No LINE conversations yet</div>
+              ) : (
+                lineThreads.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => openLineThread(t.id)}
+                    className={cn(
+                      'w-full flex items-start gap-3 p-4 border-b border-black/5 hover:bg-white/60 transition-all text-left',
+                      selectedLineUserId === t.id && 'bg-brand-orange/10'
+                    )}
+                  >
+                    <div className="w-9 h-9 rounded-full bg-[#06C755]/10 flex items-center justify-center shrink-0 overflow-hidden">
+                      {t.pictureUrl ? (
+                        <img src={t.pictureUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <MessageCircle size={16} className="text-[#06C755]" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn('text-sm truncate', t.unread ? 'font-bold text-[#1A1A1A]' : 'font-medium text-[#1A1A1A]/70')}>
+                          {t.displayName || t.id}
+                        </span>
+                        <span className="text-[10px] text-[#1A1A1A]/40 shrink-0">{formatLineTimestamp(t.lastMessageAt)}</span>
+                      </div>
+                      <p className={cn('text-xs truncate mt-0.5', t.unread ? 'font-semibold text-[#1A1A1A]' : 'text-[#1A1A1A]/50')}>
+                        {t.lastMessageFrom === 'staff' ? 'You: ' : ''}{t.lastMessageText || ''}
+                      </p>
+                      {t.following === false && (
+                        <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+                          Not following
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className={cn(
+            'flex-1 min-w-0 bg-white/40 backdrop-blur-xl rounded-2xl border border-black/10 flex flex-col min-h-0',
+            !selectedLineUserId && 'hidden md:flex'
+          )}>
+            {!selectedLineUserId ? (
+              <div className="flex-1 flex items-center justify-center text-sm text-[#1A1A1A]/40">
+                Select a conversation to view
+              </div>
+            ) : (
+              <>
+                <div className="p-4 border-b border-black/10 flex items-center gap-3 shrink-0">
+                  <button className="md:hidden p-1" onClick={() => setSelectedLineUserId(null)}>
+                    <ChevronLeft size={20} />
+                  </button>
+                  <h2 className="font-bold text-[#1A1A1A] truncate flex-1">
+                    {selectedLineThread?.displayName || selectedLineUserId}
+                  </h2>
+                </div>
+                {selectedLineThread?.following === false && (
+                  <div className="mx-4 mt-3 p-2.5 rounded-lg bg-red-50 border border-red-100 text-xs text-red-700 flex items-center gap-2 shrink-0">
+                    <AlertTriangle size={14} className="shrink-0" />
+                    This customer isn't following the account - a reply won't be delivered.
+                  </div>
+                )}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                  {lineMessagesLoading ? (
+                    <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-brand-orange" size={24} /></div>
+                  ) : lineMessages.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-[#1A1A1A]/40">No messages yet</div>
+                  ) : (
+                    lineMessages.map(m => (
+                      <div key={m.id} className={cn('flex', m.from === 'staff' ? 'justify-end' : 'justify-start')}>
+                        <div className={cn(
+                          'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words',
+                          m.from === 'staff' ? 'bg-brand-orange text-white' : 'bg-black/5 text-[#1A1A1A]'
+                        )}>
+                          {m.kind === 'text' ? (m.text || '') : `[${m.kind || 'unsupported message'}]`}
+                          {m.createdAt && (
+                            <div className={cn(
+                              'text-[10px] mt-1',
+                              m.from === 'staff' ? 'text-white/70' : 'text-[#1A1A1A]/40'
+                            )}>
+                              {formatLineTimestamp(m.createdAt)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="p-4 border-t border-black/10 flex items-center gap-3 shrink-0">
+                  <textarea
+                    value={lineReplyText}
+                    onChange={e => setLineReplyText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleLineSend();
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    rows={1}
+                    maxLength={5000}
+                    className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                  <button
+                    onClick={handleLineSend}
+                    disabled={lineSending || !lineReplyText.trim()}
+                    className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
+                  >
+                    {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Send
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
