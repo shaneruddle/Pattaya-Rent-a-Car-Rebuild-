@@ -931,9 +931,20 @@ export const MailInbox: React.FC = () => {
         ]);
         setLineReplyText('');
       }
-      setLineThreads(prev => prev.map(t => (t.id === targetUserId
-        ? { ...t, lastMessageText: text, lastMessageFrom: 'staff' }
-        : t)));
+      // Also refreshes lastMessageAt (approximated client-side, in the same
+      // {_seconds, _nanoseconds} shape the server sends - see
+      // FirestoreTimestampJSON above) and re-sorts, so this conversation
+      // moves back to the top of the list immediately rather than sitting
+      // under its old customer-message time until the next manual refresh.
+      setLineThreads(prev => sortLineThreads(prev.map(t => (t.id === targetUserId
+        ? {
+            ...t,
+            lastMessageText: text,
+            lastMessageFrom: 'staff',
+            lastMessageAt: { _seconds: Math.floor(Date.now() / 1000), _nanoseconds: 0 },
+            unread: false,
+          }
+        : t))));
     } catch (err: any) {
       console.error('Failed to send LINE reply:', err);
       toast.error(err.message || 'Failed to send reply');
