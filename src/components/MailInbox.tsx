@@ -836,14 +836,19 @@ export const MailInbox: React.FC = () => {
   // after an await - the plain state variable would only reflect whatever
   // thread was selected when that particular handleLineSend closure was
   // created, not a switch that happens while the request is in flight.
+  // Set synchronously at every place selectedLineUserId changes (not via a
+  // useEffect) - an effect only runs after React commits the render, which
+  // leaves a real window where a fast-resolving send from the previously
+  // selected thread could still read the old value here.
   const selectedLineUserIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    selectedLineUserIdRef.current = selectedLineUserId;
-  }, [selectedLineUserId]);
+  const setSelectedLineUser = (userId: string | null) => {
+    selectedLineUserIdRef.current = userId;
+    setSelectedLineUserId(userId);
+  };
 
   const openLineThread = useCallback(async (userId: string) => {
     const requestId = ++lineThreadRequestIdRef.current;
-    setSelectedLineUserId(userId);
+    setSelectedLineUser(userId);
     setLineMessages([]);
     setLineReplyText('');
     setLineMessagesLoading(true);
@@ -855,10 +860,18 @@ export const MailInbox: React.FC = () => {
       setLineMessages(data.messages || []);
       setLineThreads(prev => prev.map(t => (t.id === userId ? { ...t, unread: false } : t)));
       // Best-effort - persists the read state server-side so it survives a
-      // list refresh or another staff session opening the same thread. A
-      // failure here just means it may show unread again later; it
-      // shouldn't block viewing or replying.
-      authedFetch(`/api/line/threads/${userId}/read`, { method: 'PATCH' }).catch(err => {
+      // list refresh or another staff session opening the same thread. Tells
+      // the server which lastMessageAt this view is "as of" so it can skip
+      // the write if a newer customer message has landed in the meantime
+      // (see PATCH /api/line/threads/:userId/read) rather than clobbering
+      // that message's own unread flag. A failure here is non-fatal - it
+      // just means the thread may show unread again later.
+      const asOf = data.thread?.lastMessageAt;
+      authedFetch(`/api/line/threads/${userId}/read`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asOfSeconds: asOf?._seconds, asOfNanoseconds: asOf?._nanoseconds }),
+      }).catch(err => {
         console.error('Failed to persist LINE read state:', err);
       });
     } catch (err: any) {
@@ -2455,7 +2468,7 @@ export const MailInbox: React.FC = () => {
             ) : (
               <>
                 <div className="p-4 border-b border-black/10 flex items-center gap-3 shrink-0">
-                  <button className="md:hidden p-1" onClick={() => setSelectedLineUserId(null)}>
+                  <button className="md:hidden p-1" onClick={() => setSelectedLineUser(null)}>
                     <ChevronLeft size={20} />
                   </button>
                   <h2 className="font-bold text-[#1A1A1A] truncate flex-1">
