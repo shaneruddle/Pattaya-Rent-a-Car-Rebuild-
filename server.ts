@@ -2863,6 +2863,69 @@ app.get('/api/line/threads/:userId', async (req: any, res: any) => {
   }
 });
 
+// AI-drafted reply suggestion for a LINE thread. Staff review and edit
+// before sending - nothing here sends a message. Grounded only in the LINE
+// conversation transcript plus the FAQ knowledge base. Deliberately does
+// NOT pull customer profile/booking history/delivery-fee info the way
+// Gmail's suggest-reply does (see /api/mail/threads/:id/suggest-reply
+// above) - LINE customers are identified only by LINE userId/display
+// name, with no existing link to a customer/booking record by email, so
+// there's nothing reliable to match against (confirmed scope decision,
+// 19 Aug 2026).
+app.post('/api/line/threads/:userId/suggest-reply', async (req: any, res: any) => {
+  if (!requireStaffAuth(req, res)) return;
+  try {
+    const decoded = await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
+    if (!isStaffEmail(decoded.email)) return res.status(403).json({ error: 'Forbidden' });
+    const { userId } = req.params;
+    const threadSnap = await firestore.collection('line_threads').doc(userId).get();
+    if (!threadSnap.exists) return res.status(404).json({ error: 'Thread not found' });
+
+    const messagesSnap = await firestore
+      .collection('line_threads').doc(userId).collection('messages')
+      .orderBy('createdAt', 'desc').limit(200).get();
+    const messages = messagesSnap.docs.map(d => d.data()).reverse();
+    if (messages.length === 0) return res.status(404).json({ error: 'No messages in this thread yet' });
+
+    const transcript = messages.map((m: any) => {
+      const speaker = m.from === 'staff' ? 'Staff' : 'Customer';
+      const body = m.kind === 'text' ? (m.text || '') : `[${m.kind === 'image' ? 'Photo' : m.kind}]`;
+      return `${speaker}: ${body}`;
+    }).join('\n');
+
+    const faqSnap = await firestore.collection('faqs').get();
+    const faqs = faqSnap.docs
+      .map((d: any) => d.data())
+      .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+      .map((f: any) => ({ q: f.q, a: f.a }));
+
+    const promptParts = [
+      `You are drafting a reply message for staff at Pattaya Rent A Car, a car rental company, to send to a customer over LINE chat.`,
+      `Only use information given in this prompt - do not invent prices, dates, availability, or policies.`,
+      `Write in plain text only (no HTML, no markdown). Keep it short, warm, professional, and conversational, like a chat message rather than an email.`,
+      `\nConversation so far (oldest to newest):\n${transcript}`,
+    ];
+    if (faqs.length > 0) {
+      promptParts.push(`\nCompany FAQ knowledge base (use these for factual answers where relevant):\n${JSON.stringify(faqs)}`);
+    }
+    const prompt = promptParts.join('\n');
+
+    const anthropicKey = await getSecretValue('ANTHROPIC_API_KEY');
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 700,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const draft = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+
+    res.json({ draft });
+  } catch (err: any) {
+    console.error('[LINE] suggest-reply error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Marks a LINE thread read server-side (mirrors the Gmail bulk mark-read
 // endpoint) - opening a conversation clears `unread` locally right away in
 // the UI, but without this write it silently reverts the next time the

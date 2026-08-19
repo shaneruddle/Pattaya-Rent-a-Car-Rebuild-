@@ -415,6 +415,7 @@ export const MailInbox: React.FC = () => {
   // messages (imageUrls on /api/line/reply) rather than email MIME
   // attachments, since LINE can't bundle an image into a text message.
   const [lineReplyAttachments, setLineReplyAttachments] = useState<{ url: string; filename: string }[]>([]);
+  const [lineSuggestingReply, setLineSuggestingReply] = useState(false);
 
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
@@ -923,6 +924,34 @@ export const MailInbox: React.FC = () => {
   }, []);
 
   const selectedLineThread = lineThreads.find(t => t.id === selectedLineUserId) || null;
+
+  // Mirrors Gmail's handleSuggestReply (same endpoint pattern, same overwrite
+  // behavior - no confirmation prompt, matches Gmail exactly) but hits the
+  // LINE-specific endpoint and overwrites lineReplyText. Staged Car Photos
+  // attachments are untouched either way since they're tracked separately
+  // from the text draft.
+  const handleLineSuggestReply = async () => {
+    if (!selectedLineUserId) return;
+    setLineSuggestingReply(true);
+    try {
+      const res = await authedFetch(`/api/line/threads/${selectedLineUserId}/suggest-reply`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.draft) {
+        setLineReplyText(data.draft);
+      } else {
+        toast.error('No suggestion returned');
+      }
+    } catch (err: any) {
+      console.error('Failed to suggest LINE reply:', err);
+      toast.error(err.message || 'Failed to suggest a reply');
+    } finally {
+      setLineSuggestingReply(false);
+    }
+  };
 
   const handleLineSend = async () => {
     if (lineSending) return; // guards a duplicate submit (e.g. a second Enter) while one is already in flight
@@ -2707,6 +2736,15 @@ export const MailInbox: React.FC = () => {
                       is ever mounted at a time (channel is mutually
                       exclusive), so sharing quoteMenuRef is safe. */}
                   <div className="px-4 pt-3 flex items-center gap-2">
+                    <button
+                      onClick={handleLineSuggestReply}
+                      disabled={lineSuggestingReply}
+                      className="h-9 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                      title="Draft a reply with AI - review before sending"
+                    >
+                      {lineSuggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Suggest reply
+                    </button>
                     {/* Shares vehicleMenuRef/showVehicleMenu with the Gmail
                         "Car Photos" button for the same mutual-exclusion
                         reason as quoteMenuRef above. Stages into
