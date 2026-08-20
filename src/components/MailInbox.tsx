@@ -2981,11 +2981,12 @@ export const MailInbox: React.FC = () => {
                       placeholder="Type a message..."
                       rows={1}
                       maxLength={5000}
-                      className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                      disabled={lineSuggestingReply}
+                      className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30 disabled:opacity-60"
                     />
                     <button
                       onClick={handleLineSend}
-                      disabled={lineSending || (!lineReplyText.trim() && lineReplyAttachments.length === 0)}
+                      disabled={lineSending || lineSuggestingReply || (!lineReplyText.trim() && lineReplyAttachments.length === 0)}
                       className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
                     >
                       {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
