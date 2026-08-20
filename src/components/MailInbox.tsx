@@ -1293,7 +1293,10 @@ export const MailInbox: React.FC = () => {
   // at a cursor position - the same fallback insertIntoReplyBody itself uses
   // when its own ref isn't mounted yet.
   const insertQuoteIntoLineReply = () => {
-    if (!quoteResult?.quotable || !quoteVehicle) return;
+    // Locked while an AI suggestion is in flight - otherwise the request
+    // could resolve after this insert and silently clobber the quote text
+    // staff just added, same as the composer lock on the textarea/Send.
+    if (!quoteResult?.quotable || !quoteVehicle || lineSuggestingReply) return;
     const fromLabel = `${format(parseISO(quoteFrom), 'd MMM')}, ${quotePickupTime}`;
     const toLabel = `${format(parseISO(quoteTo), 'd MMM yyyy')}, ${quoteDropoffTime}`;
     const days = quoteDays;
@@ -2931,7 +2934,8 @@ export const MailInbox: React.FC = () => {
                                   </p>
                                   <button
                                     onClick={insertQuoteIntoLineReply}
-                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all"
+                                    disabled={lineSuggestingReply}
+                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     Insert into reply
                                   </button>
