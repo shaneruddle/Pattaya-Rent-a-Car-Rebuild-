@@ -415,6 +415,7 @@ export const MailInbox: React.FC = () => {
   // messages (imageUrls on /api/line/reply) rather than email MIME
   // attachments, since LINE can't bundle an image into a text message.
   const [lineReplyAttachments, setLineReplyAttachments] = useState<{ url: string; filename: string }[]>([]);
+  const [lineSuggestingReply, setLineSuggestingReply] = useState(false);
 
   // Templates rarely change, so fetch them once rather than per-thread.
   useEffect(() => {
@@ -924,6 +925,42 @@ export const MailInbox: React.FC = () => {
 
   const selectedLineThread = lineThreads.find(t => t.id === selectedLineUserId) || null;
 
+  // Mirrors Gmail's handleSuggestReply (same endpoint pattern, same overwrite
+  // behavior - no confirmation prompt, matches Gmail exactly) but hits the
+  // LINE-specific endpoint and overwrites lineReplyText. Staged Car Photos
+  // attachments are untouched either way since they're tracked separately
+  // from the text draft.
+  const handleLineSuggestReply = async () => {
+    // Also guarded against a send in flight - the reverse of the composer
+    // lock, so the two requests can't race and clobber each other's result.
+    if (!selectedLineUserId || lineSending) return;
+    const targetUserId = selectedLineUserId;
+    setLineSuggestingReply(true);
+    try {
+      const res = await authedFetch(`/api/line/threads/${targetUserId}/suggest-reply`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.draft) {
+        // Only apply the draft if staff are still looking at the thread it
+        // was drafted for - they may have switched conversations while the
+        // request was in flight (same guard handleLineSend uses below).
+        if (selectedLineUserIdRef.current === targetUserId) {
+          setLineReplyText(data.draft);
+        }
+      } else {
+        toast.error('No suggestion returned');
+      }
+    } catch (err: any) {
+      console.error('Failed to suggest LINE reply:', err);
+      toast.error(err.message || 'Failed to suggest a reply');
+    } finally {
+      setLineSuggestingReply(false);
+    }
+  };
+
   const handleLineSend = async () => {
     if (lineSending) return; // guards a duplicate submit (e.g. a second Enter) while one is already in flight
     const text = lineReplyText.trim();
@@ -1258,7 +1295,10 @@ export const MailInbox: React.FC = () => {
   // at a cursor position - the same fallback insertIntoReplyBody itself uses
   // when its own ref isn't mounted yet.
   const insertQuoteIntoLineReply = () => {
-    if (!quoteResult?.quotable || !quoteVehicle) return;
+    // Locked while an AI suggestion is in flight - otherwise the request
+    // could resolve after this insert and silently clobber the quote text
+    // staff just added, same as the composer lock on the textarea/Send.
+    if (!quoteResult?.quotable || !quoteVehicle || lineSuggestingReply) return;
     const fromLabel = `${format(parseISO(quoteFrom), 'd MMM')}, ${quotePickupTime}`;
     const toLabel = `${format(parseISO(quoteTo), 'd MMM yyyy')}, ${quoteDropoffTime}`;
     const days = quoteDays;
@@ -2706,7 +2746,16 @@ export const MailInbox: React.FC = () => {
                       vs insertQuoteIntoReply). Only one of the two toolbars
                       is ever mounted at a time (channel is mutually
                       exclusive), so sharing quoteMenuRef is safe. */}
-                  <div className="px-4 pt-3 flex items-center gap-2">
+                  <div className="px-4 pt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleLineSuggestReply}
+                      disabled={lineSuggestingReply || lineSending}
+                      className="h-9 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
+                      title="Draft a reply with AI - review before sending"
+                    >
+                      {lineSuggestingReply ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Suggest reply
+                    </button>
                     {/* Shares vehicleMenuRef/showVehicleMenu with the Gmail
                         "Car Photos" button for the same mutual-exclusion
                         reason as quoteMenuRef above. Stages into
@@ -2887,7 +2936,8 @@ export const MailInbox: React.FC = () => {
                                   </p>
                                   <button
                                     onClick={insertQuoteIntoLineReply}
-                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all"
+                                    disabled={lineSuggestingReply}
+                                    className="mt-2 w-full py-2 rounded-lg border border-brand-orange text-brand-orange font-bold text-[10px] uppercase tracking-widest hover:bg-brand-orange hover:text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     Insert into reply
                                   </button>
@@ -2937,11 +2987,12 @@ export const MailInbox: React.FC = () => {
                       placeholder="Type a message..."
                       rows={1}
                       maxLength={5000}
-                      className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                      disabled={lineSuggestingReply}
+                      className="flex-1 resize-none rounded-xl border border-black/10 bg-white/70 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange/30 disabled:opacity-60"
                     />
                     <button
                       onClick={handleLineSend}
-                      disabled={lineSending || (!lineReplyText.trim() && lineReplyAttachments.length === 0)}
+                      disabled={lineSending || lineSuggestingReply || (!lineReplyText.trim() && lineReplyAttachments.length === 0)}
                       className="h-10 px-5 rounded-xl bg-brand-orange text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
                     >
                       {lineSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
