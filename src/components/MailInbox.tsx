@@ -931,7 +931,9 @@ export const MailInbox: React.FC = () => {
   // attachments are untouched either way since they're tracked separately
   // from the text draft.
   const handleLineSuggestReply = async () => {
-    if (!selectedLineUserId) return;
+    // Also guarded against a send in flight - the reverse of the composer
+    // lock, so the two requests can't race and clobber each other's result.
+    if (!selectedLineUserId || lineSending) return;
     const targetUserId = selectedLineUserId;
     setLineSuggestingReply(true);
     try {
@@ -2747,7 +2749,7 @@ export const MailInbox: React.FC = () => {
                   <div className="px-4 pt-3 flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleLineSuggestReply}
-                      disabled={lineSuggestingReply}
+                      disabled={lineSuggestingReply || lineSending}
                       className="h-9 px-4 rounded-xl border border-black/10 bg-white/60 text-[#1A1A1A]/70 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white hover:text-brand-orange transition-all disabled:opacity-40"
                       title="Draft a reply with AI - review before sending"
                     >
