@@ -1110,7 +1110,7 @@ export const Timeline: React.FC<TimelineProps> = ({ cars = [], bookings = [], cu
     const durationMs = end.getTime() - start.getTime();
 
     const newStart = new Date(date);
-    newStart.setHours(slot === 'AM' ? 8 : 14, 0, 0, 0);
+    newStart.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), start.getMilliseconds());
     const newEnd = new Date(newStart.getTime() + durationMs);
 
     try {
