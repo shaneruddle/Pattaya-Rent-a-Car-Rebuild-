@@ -334,7 +334,9 @@ async function startServer() {
   });
 
   app.get("/api/debug/firestore/inspect", async (req, res) => {
+    if (!requireStaffAuth(req, res)) return;
     try {
+      await admin.auth().verifyIdToken((req.headers['authorization'] as string).slice(7));
       const collections = ['cars', 'bookings', 'enquiries', 'pricing', 'faqs', 'users', 'customers'];
       const results: any = {
         currentDatabase: dbId || '(default)',
