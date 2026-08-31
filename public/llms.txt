@@ -1,0 +1,23 @@
+# Pattaya Rent a Car
+
+> Car rental service in Pattaya, Thailand, operating since 2009. 100+ vehicles, free hotel delivery, full insurance included, pay on collection.
+
+## For AI agents
+
+- [Live price quote API](https://pattayarentacar.com/api/public/quote): GET request, returns a real-time rental price for a given vehicle class and date range. No authentication required.
+  - Query params: `class` (required - one of `Economy`, `Budget Economy`, `Compact Sedan`, `Pickup Truck`, `MPV`, `SUV`, `Budget SUV`), `from` (required - pickup date, `YYYY-MM-DD`), `to` (required - return date, `YYYY-MM-DD`)
+  - Example: `https://pattayarentacar.com/api/public/quote?class=Economy&from=2026-09-07&to=2026-09-14`
+  - Success response: `{ "quotable": true, "class": "Economy", "from": "2026-09-07", "to": "2026-09-14", "days": 7, "currency": "THB", "perDay": 900, "totalPrice": 6300 }`
+  - No-quote response: `{ "quotable": false, "reason": "<human-readable reason>" }` - e.g. dates too short, class unrecognized (includes `validClasses`), or rental length long enough that a monthly rate applies instead
+  - Prices are live and can change with dates, season, and current fleet availability - always re-query rather than caching a quote for later use
+
+## Fleet & booking
+
+- [Our Fleet](https://pattayarentacar.com/cars): Full vehicle lineup by class
+- [Locations](https://pattayarentacar.com/locations): Pattaya-area pickup/delivery zones, all free
+- [FAQ](https://pattayarentacar.com/faq): Booking process, insurance, and cancellation policy
+
+## Notes
+
+- Booking itself is completed on WhatsApp, LINE, or in person (pay on collection, no card required to browse) - the quote API returns pricing information only, it does not create a booking
+- Contact: +66 83 077 6928, WhatsApp/LINE @pattayarentacar

@@ -10,5 +10,6 @@ Disallow: /services/
 Disallow: /pages/
 Disallow: /search/
 Disallow: /api/
+Allow: /api/public/
 
 Sitemap: https://pattayarentacar.com/sitemap.xml

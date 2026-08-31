@@ -643,157 +643,219 @@ app.get("/api/debug/pricing/availability", async (req, res) => {
     }
   });
 
-// Pricing engine quote endpoint. Reads pricing_config/current, computes occupancy live, applies tier x season x availability with floor.
-app.get("/api/pricing/quote", async (req, res) => {
+// Shared pricing calculation - reads pricing_config/current, computes occupancy live,
+// applies tier x season x availability with floor. Extracted so /api/pricing/quote
+// (full internal detail, used by the booking site) and /api/public/quote (trimmed,
+// for external/agent consumption) share one implementation instead of two copies
+// that could drift. Behavior/output for the internal caller is unchanged from before
+// this refactor - only the code location moved.
+async function computePricingQuote(carClass: string, fromISO: string, toISO: string, rawDurationParam?: string) {
   if (!firestore) {
-    return res.status(503).json({ error: "Service temporarily unavailable - database initializing" });
+    const err: any = new Error("Service temporarily unavailable - database initializing");
+    err.status = 503;
+    throw err;
   }
-  const carClass = req.query.class as string;
-  const fromISO = req.query.from as string;
-  const toISO = req.query.to as string;
   if (!carClass || !fromISO || !toISO) {
-    return res.status(400).json({ error: "Required query params: class, from (YYYY-MM-DD), to (YYYY-MM-DD)" });
+    const err: any = new Error("Required query params: class, from (YYYY-MM-DD), to (YYYY-MM-DD)");
+    err.status = 400;
+    throw err;
   }
+
+  const dayInt = (iso: string) => { const [y,m,d] = iso.slice(0,10).split('-').map(Number); return y*10000+m*100+d; };
+
+  // Load config
+  const cfgSnap = await firestore.collection('pricing_config').doc('current').get();
+  if (!cfgSnap.exists) {
+    const err: any = new Error("pricing_config/current not found");
+    err.status = 500;
+    throw err;
+  }
+  const cfg = cfgSnap.data();
+
+  // Guard 1: class must be configured (Motorbike etc. fall through)
+  const cls = cfg.classes ? cfg.classes[carClass] : null;
+  if (!cls) {
+    return { quotable: false, reason: "class_not_configured", class: carClass, validClasses: Object.keys(cfg.classes || {}) };
+  }
+
+  // Rental length (date-only): 26th -> 29th = 3 days
+  const aMs = new Date(fromISO.slice(0,10) + 'T00:00:00Z').getTime();
+  const bMs = new Date(toISO.slice(0,10) + 'T00:00:00Z').getTime();
+  const days = Math.round((bMs - aMs) / 86400000);
+
+  // Guard 2: sane length
+  if (!days || days < 1) {
+    return { quotable: false, reason: "invalid_dates", days };
+  }
+
+  // Guard 2b: minimum rental length (config-driven; absent or 0 -> no minimum)
+  const minDays = cfg.thresholds.minRentalDays || 0;
+  if (minDays > 0 && days < minDays) {
+    return { quotable: false, reason: "below_min_days", days, minDays };
+  }
+
+  // Guard 3: 30+ days -> redirect, no quote
+  if (days >= cfg.thresholds.monthlyRedirectFromDays) {
+    return { quotable: false, reason: "monthly_redirect", days, message: cfg.redirectMessage };
+  }
+
+  // Billable duration: prefer the client-supplied duration (accounts for pickup/drop-off
+  // time-of-day, rounded to half-day increments client-side). Falls back to the whole
+  // calendar-day count if absent/invalid. Only affects tier selection and the final total -
+  // season, availability window, min-days and monthly-redirect guards keep using calendar `days`.
+  const parsedDuration = rawDurationParam !== undefined ? parseFloat(rawDurationParam) : NaN;
+  const billableDays = (Number.isFinite(parsedDuration) && parsedDuration > 0) ? parsedDuration : days;
+
+  // Tier
+  const hasMonthly = cls.monthly != null && cls.monthlyFromDays != null && billableDays >= cls.monthlyFromDays;
+  const isWeekly = !hasMonthly && billableDays >= cfg.thresholds.weeklyFromDays;
+  const tierRate = hasMonthly ? cls.monthly : (isWeekly ? cls.weekly : cls.daily);
+  const tierName = hasMonthly ? "monthly" : (isWeekly ? "weekly" : "daily");
+
+  // Season (recurring month-day, by START date; handles year-end wrap)
+  const xs = fromISO.slice(0,10).split('-').map(Number);
+  const x = xs[1]*100 + xs[2];
+  let season = cfg.defaultSeason;
+  for (const s of cfg.seasons) {
+    const lo = s.fromMonth*100 + s.fromDay, hi = s.toMonth*100 + s.toDay;
+    if (lo <= hi) { if (x >= lo && x <= hi) { season = s.season; break; } }
+    else { if (x >= lo || x <= hi) { season = s.season; break; } }
+  }
+  const seasonMult = cfg.seasonMultipliers[season];
+
+  // Availability window: the occupancy dial only applies to near-term bookings (config-driven).
+  // Outside the window, occupancy reflects "how early it is" not demand, so we disable it (mult = 1.0).
+  const windowDays = (cfg.availabilityWindowDays != null) ? cfg.availabilityWindowDays : 14;
+  const todayMs = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00Z').getTime();
+  const startMs = new Date(fromISO.slice(0,10) + 'T00:00:00Z').getTime();
+  const leadDays = Math.round((startMs - todayMs) / 86400000);
+  const availabilityActive = leadDays <= windowDays;
+
+  // Availability (live) - same proven logic as the availability diagnostic
+  const rf = dayInt(fromISO), rt = dayInt(toISO);
+  let N: number | null = null, B: number | null = null, bookedPct: number | null = null, availMult = 1.0;
+  if (availabilityActive) {
+    const carsSnap = await firestore.collection('cars')
+      .where('type', '==', carClass).where('isActive', '==', true).get();
+    const classCarIds = new Set<string>();
+    carsSnap.docs.forEach((d: any) => classCarIds.add(d.id));
+    N = classCarIds.size;
+
+    // Guard 4: no fleet -> can't quote (avoid divide-by-zero)
+    if (!N || N <= 0) {
+      return { quotable: false, reason: "no_active_fleet", class: carClass };
+    }
+
+    const fromDayStart = fromISO.slice(0,10) + 'T00:00:00.000Z';
+    const bookingsSnap = await firestore.collection('bookings').where('endDate', '>', fromDayStart).get();
+    const occupiedCarIds = new Set<string>();
+    bookingsSnap.docs.forEach((doc: any) => {
+      const b = doc.data();
+      const cid = b.carId;
+      if (!cid || cid === '' || cid === 'unassigned') return;
+      if (!classCarIds.has(cid)) return;
+      const occupying = b.isMaintenance === true || b.status === 'Paid' || b.status === 'Pending';
+      if (!occupying) return;
+      if (!b.startDate || !b.endDate) return;
+      if (!(dayInt(b.startDate) < rt && dayInt(b.endDate) > rf)) return;
+      occupiedCarIds.add(cid);
+    });
+    B = Math.min(occupiedCarIds.size, N);
+    bookedPct = (B / N) * 100;
+
+    let availMultInner = cfg.availabilityLadder[cfg.availabilityLadder.length - 1].mult;
+    for (const r of cfg.availabilityLadder) {
+      if (bookedPct >= r.minBookedPct) { availMultInner = r.mult; break; }
+    }
+    availMult = availMultInner;
+  }
+
+  // Formula: tier x season x availability, clamp UP to per-day floor, then round per-day UP to nearest 50.
+  const effectiveDaily = tierRate * seasonMult * availMult;
+  const flooredDaily = Math.max(effectiveDaily, cls.floor);
+  const floorApplied = flooredDaily > effectiveDaily;
+  const roundedDaily = Math.ceil(flooredDaily / 50) * 50;   // round UP to nearest 50
+  const totalPrice = roundedDaily * billableDays;                    // total derives from rounded per-day (reconciles)
+
+  return {
+    quotable: true,
+    class: carClass,
+    from: fromISO,
+    to: toISO,
+    days,
+    billableDays,
+    tier: tierName,
+    tierRate,
+    season,
+    seasonMult,
+    availabilityActive,
+    leadDays,
+    fleetSize_N: N,
+    occupiedCount_B: B,
+    bookedPct: bookedPct !== null ? Math.round(bookedPct * 10) / 10 : null,
+    availMult,
+    effectiveDaily: Math.round(effectiveDaily * 100) / 100,
+    perDay: roundedDaily,
+    floorApplied,
+    totalPrice
+  };
+}
+
+// Pricing engine quote endpoint (internal/booking-site use). Full detail, unchanged behavior.
+app.get("/api/pricing/quote", async (req, res) => {
   try {
-    const dayInt = (iso: string) => { const [y,m,d] = iso.slice(0,10).split('-').map(Number); return y*10000+m*100+d; };
+    const result = await computePricingQuote(
+      req.query.class as string,
+      req.query.from as string,
+      req.query.to as string,
+      req.query.durationDays as string | undefined
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message, code: error.code });
+  }
+});
 
-    // Load config
-    const cfgSnap = await firestore.collection('pricing_config').doc('current').get();
-    if (!cfgSnap.exists) {
-      return res.status(500).json({ error: "pricing_config/current not found" });
-    }
-    const cfg = cfgSnap.data();
-
-    // Guard 1: class must be configured (Motorbike etc. fall through)
-    const cls = cfg.classes ? cfg.classes[carClass] : null;
-    if (!cls) {
-      return res.json({ quotable: false, reason: "class_not_configured", class: carClass });
-    }
-
-    // Rental length (date-only): 26th -> 29th = 3 days
-    const aMs = new Date(fromISO.slice(0,10) + 'T00:00:00Z').getTime();
-    const bMs = new Date(toISO.slice(0,10) + 'T00:00:00Z').getTime();
-    const days = Math.round((bMs - aMs) / 86400000);
-
-    // Guard 2: sane length
-    if (!days || days < 1) {
-      return res.json({ quotable: false, reason: "invalid_dates", days });
-    }
-
-    // Guard 2b: minimum rental length (config-driven; absent or 0 -> no minimum)
-    const minDays = cfg.thresholds.minRentalDays || 0;
-    if (minDays > 0 && days < minDays) {
-      return res.json({ quotable: false, reason: "below_min_days", days, minDays });
-    }
-
-    // Guard 3: 30+ days -> redirect, no quote
-    if (days >= cfg.thresholds.monthlyRedirectFromDays) {
-      return res.json({ quotable: false, reason: "monthly_redirect", days, message: cfg.redirectMessage });
-    }
-
-    // Billable duration: prefer the client-supplied duration (accounts for pickup/drop-off
-    // time-of-day, rounded to half-day increments client-side). Falls back to the whole
-    // calendar-day count if absent/invalid. Only affects tier selection and the final total -
-    // season, availability window, min-days and monthly-redirect guards keep using calendar `days`.
-    const rawDuration = req.query.durationDays;
-    const parsedDuration = rawDuration !== undefined ? parseFloat(rawDuration as string) : NaN;
-    const billableDays = (Number.isFinite(parsedDuration) && parsedDuration > 0) ? parsedDuration : days;
-
-    // Tier
-    const hasMonthly = cls.monthly != null && cls.monthlyFromDays != null && billableDays >= cls.monthlyFromDays;
-    const isWeekly = !hasMonthly && billableDays >= cfg.thresholds.weeklyFromDays;
-    const tierRate = hasMonthly ? cls.monthly : (isWeekly ? cls.weekly : cls.daily);
-    const tierName = hasMonthly ? "monthly" : (isWeekly ? "weekly" : "daily");
-
-    // Season (recurring month-day, by START date; handles year-end wrap)
-    const xs = fromISO.slice(0,10).split('-').map(Number);
-    const x = xs[1]*100 + xs[2];
-    let season = cfg.defaultSeason;
-    for (const s of cfg.seasons) {
-      const lo = s.fromMonth*100 + s.fromDay, hi = s.toMonth*100 + s.toDay;
-      if (lo <= hi) { if (x >= lo && x <= hi) { season = s.season; break; } }
-      else { if (x >= lo || x <= hi) { season = s.season; break; } }
-    }
-    const seasonMult = cfg.seasonMultipliers[season];
-
-    // Availability window: the occupancy dial only applies to near-term bookings (config-driven).
-    // Outside the window, occupancy reflects "how early it is" not demand, so we disable it (mult = 1.0).
-    const windowDays = (cfg.availabilityWindowDays != null) ? cfg.availabilityWindowDays : 14;
-    const todayMs = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00Z').getTime();
-    const startMs = new Date(fromISO.slice(0,10) + 'T00:00:00Z').getTime();
-    const leadDays = Math.round((startMs - todayMs) / 86400000);
-    const availabilityActive = leadDays <= windowDays;
-
-    // Availability (live) — same proven logic as the availability diagnostic
-    const rf = dayInt(fromISO), rt = dayInt(toISO);
-    let N: number | null = null, B: number | null = null, bookedPct: number | null = null, availMult = 1.0;
-    if (availabilityActive) {
-      const carsSnap = await firestore.collection('cars')
-        .where('type', '==', carClass).where('isActive', '==', true).get();
-      const classCarIds = new Set<string>();
-      carsSnap.docs.forEach((d: any) => classCarIds.add(d.id));
-      N = classCarIds.size;
-
-      // Guard 4: no fleet -> can't quote (avoid divide-by-zero)
-      if (!N || N <= 0) {
-        return res.json({ quotable: false, reason: "no_active_fleet", class: carClass });
-      }
-
-      const fromDayStart = fromISO.slice(0,10) + 'T00:00:00.000Z';
-      const bookingsSnap = await firestore.collection('bookings').where('endDate', '>', fromDayStart).get();
-      const occupiedCarIds = new Set<string>();
-      bookingsSnap.docs.forEach((doc: any) => {
-        const b = doc.data();
-        const cid = b.carId;
-        if (!cid || cid === '' || cid === 'unassigned') return;
-        if (!classCarIds.has(cid)) return;
-        const occupying = b.isMaintenance === true || b.status === 'Paid' || b.status === 'Pending';
-        if (!occupying) return;
-        if (!b.startDate || !b.endDate) return;
-        if (!(dayInt(b.startDate) < rt && dayInt(b.endDate) > rf)) return;
-        occupiedCarIds.add(cid);
+// Public quote endpoint - for external consumers (AI agents, price-comparison tools).
+// Same live pricing logic as /api/pricing/quote, trimmed to just what an outside
+// caller needs: no occupancy %, season, tier, or floor internals. Documented at /llms.txt.
+const PUBLIC_QUOTE_REASONS: Record<string, string> = {
+  class_not_configured: "Unknown vehicle class.",
+  invalid_dates: "Invalid date range - check the from/to dates.",
+  below_min_days: "Rental period is shorter than our minimum rental length.",
+  monthly_redirect: "For rentals of this length, please contact us directly for a monthly rate.",
+  no_active_fleet: "No vehicles currently available in this class for these dates.",
+};
+app.get("/api/public/quote", async (req, res) => {
+  try {
+    const result: any = await computePricingQuote(
+      req.query.class as string,
+      req.query.from as string,
+      req.query.to as string,
+      req.query.durationDays as string | undefined
+    );
+    if (!result.quotable) {
+      return res.json({
+        quotable: false,
+        class: req.query.class,
+        from: req.query.from,
+        to: req.query.to,
+        reason: PUBLIC_QUOTE_REASONS[result.reason] || "Unable to generate a quote for these parameters.",
+        ...(result.validClasses ? { validClasses: result.validClasses } : {}),
       });
-      B = Math.min(occupiedCarIds.size, N);
-      bookedPct = (B / N) * 100;
-
-      let availMultInner = cfg.availabilityLadder[cfg.availabilityLadder.length - 1].mult;
-      for (const r of cfg.availabilityLadder) {
-        if (bookedPct >= r.minBookedPct) { availMultInner = r.mult; break; }
-      }
-      availMult = availMultInner;
     }
-
-    // Formula: tier x season x availability, clamp UP to per-day floor, then round per-day UP to nearest 50.
-    const effectiveDaily = tierRate * seasonMult * availMult;
-    const flooredDaily = Math.max(effectiveDaily, cls.floor);
-    const floorApplied = flooredDaily > effectiveDaily;
-    const roundedDaily = Math.ceil(flooredDaily / 50) * 50;   // round UP to nearest 50
-    const totalPrice = roundedDaily * billableDays;                    // total derives from rounded per-day (reconciles)
-
     res.json({
       quotable: true,
-      class: carClass,
-      from: fromISO,
-      to: toISO,
-      days,
-      billableDays,
-      tier: tierName,
-      tierRate,
-      season,
-      seasonMult,
-      availabilityActive,
-      leadDays,
-      fleetSize_N: N,
-      occupiedCount_B: B,
-      bookedPct: bookedPct !== null ? Math.round(bookedPct * 10) / 10 : null,
-      availMult,
-      effectiveDaily: Math.round(effectiveDaily * 100) / 100,
-      perDay: roundedDaily,
-      floorApplied,
-      totalPrice
+      class: result.class,
+      from: result.from,
+      to: result.to,
+      days: result.days,
+      currency: "THB",
+      perDay: result.perDay,
+      totalPrice: result.totalPrice,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message, code: error.code });
+    res.status(error.status || 400).json({ error: error.message });
   }
 });
 
@@ -3402,6 +3464,16 @@ app.get('/api/mail/unread-count', async (req: any, res: any) => {
     const filePath = path.join(process.cwd(), 'public', 'sitemap.xml');
     if (fs.existsSync(filePath)) {
       res.type('application/xml').sendFile(filePath);
+    } else {
+      res.status(404).send('Not Found');
+    }
+  });
+
+  // AI-agent discovery doc (llmstxt.org convention) - documents the public quote API.
+  app.get('/llms.txt', (req, res) => {
+    const filePath = path.join(process.cwd(), 'public', 'llms.txt');
+    if (fs.existsSync(filePath)) {
+      res.type('text/plain').sendFile(filePath);
     } else {
       res.status(404).send('Not Found');
     }
