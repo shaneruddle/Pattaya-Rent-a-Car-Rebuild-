@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, doc, updateDoc, serverTimestamp, getDocs
 import { upsertCustomer, updateCustomer, findExistingByEmail } from '../lib/customerService';
 import { db, handleFirestoreError, OperationType, logSystemActivity, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
+import { processTemplate, htmlToPlainText, sendEmailHeaders } from '../lib/emailUtils';
 import { NATIONALITY_OPTIONS, suggestNationalityFromPhone } from '../lib/nationalityUtils';
 import { Booking, Car } from '../types';
 import { format, parseISO, isValid, formatDistanceToNow, isToday, addDays } from 'date-fns';
@@ -581,7 +581,7 @@ Do you wish to proceed with the booking ?`,
       };
       const res = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await sendEmailHeaders(),
         body: JSON.stringify({
           to: enquiry.email,
           templateId: 'email_reply',
@@ -653,7 +653,7 @@ Do you wish to proceed with the booking ?`,
       };
       const res = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await sendEmailHeaders(),
         body: JSON.stringify({
           to: enquiry.email,
           templateId: 'follow_up_reminder',

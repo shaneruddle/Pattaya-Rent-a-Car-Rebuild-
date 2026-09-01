@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { TrendingUp, ExternalLink, Send, Loader2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePricing } from '../contexts/PricingContext';
+import { sendEmailHeaders } from '../lib/emailUtils';
 
 const CLASSES = ['Economy', 'Budget Economy', 'Compact Sedan', 'MPV', 'Pickup Truck', 'SUV', 'Budget SUV'];
 
@@ -94,7 +95,7 @@ export const CompetitorPricing: React.FC = () => {
       const html = buildReportHtml();
       const resp = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await sendEmailHeaders(),
         body: JSON.stringify({
           to: 'shaneruddle@gmail.com',
           subject: `Competitor Pricing Report  ${fromDate} to ${toDate}`,

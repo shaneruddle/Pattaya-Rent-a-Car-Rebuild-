@@ -1,4 +1,27 @@
 import DOMPurify from 'dompurify';
+import { auth } from '../firebase';
+
+/**
+ * Headers for a POST to /api/send-email.
+ *
+ * The server only honours a caller-supplied `to` when it can verify a Firebase
+ * ID token; otherwise it routes the mail to the company inbox regardless of what
+ * was asked for. Any staff send aimed at a customer must therefore carry this
+ * header, or it will silently be delivered to info@ instead of the customer.
+ * Degrades to Content-Type alone when nobody is signed in, which is the correct
+ * behaviour for the public enquiry forms.
+ */
+export const sendEmailHeaders = async (): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  } catch {
+    // Not signed in, or the token refresh failed — send unauthenticated and let
+    // the server route to the company inbox rather than failing the send.
+  }
+  return headers;
+};
 
 /**
  * Sanitizes HTML content while allowing basic tags for email styling.
@@ -195,7 +218,7 @@ export const sendTemplatedEmail = async (
   try {
     const response = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await sendEmailHeaders(),
       body: JSON.stringify({
         to,
         templateId,

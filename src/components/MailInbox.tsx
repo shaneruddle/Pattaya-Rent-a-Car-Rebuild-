@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import { Inbox, RefreshCw, Send, User, Loader2, ChevronLeft, ChevronRight, MailOpen, Check, Sparkles, Search, X, LayoutTemplate, AlertTriangle, ShieldCheck, Clock, Paperclip, ImagePlus, Car, Tag, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
-import { processTemplate, htmlToPlainText } from '../lib/emailUtils';
+import { processTemplate, htmlToPlainText, sendEmailHeaders } from '../lib/emailUtils';
 import { NATIONALITY_OPTIONS, suggestNationalityFromPhone } from '../lib/nationalityUtils';
 
 const INFO_MAILBOX = 'info@pattayarentacar.com';
@@ -1467,7 +1467,7 @@ export const MailInbox: React.FC = () => {
 
       const res = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await sendEmailHeaders(),
         body: JSON.stringify({
           to: customerEmail,
           templateId: 'follow_up_reminder',

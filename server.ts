@@ -955,6 +955,28 @@ app.get("/api/delivery/quote", async (req, res) => {
       return res.status(200).json({ success: true });
     }
 
+    // ── Recipient trust gate ────────────────────────────────────────────────
+    // This route is public: the marketing site posts enquiries to it with no
+    // credentials. Without this gate a client-supplied `to` was passed straight
+    // to nodemailer, so anyone on the internet could send arbitrary HTML from
+    // the company Gmail account to any address — an open relay.
+    //
+    // A *verified* ID token (not merely a Bearer-shaped header, which
+    // requireStaffAuth alone would accept) is what earns the right to choose a
+    // recipient. Staff sending confirmations to customers authenticate; the
+    // public enquiry forms do not, and can only ever reach the company inbox.
+    let isVerifiedStaff = false;
+    const sendAuthHeader = req.headers['authorization'] as string | undefined;
+    if (sendAuthHeader?.startsWith('Bearer ')) {
+      try {
+        await admin.auth().verifyIdToken(sendAuthHeader.slice(7));
+        isVerifiedStaff = true;
+      } catch {
+        isVerifiedStaff = false; // treat a bad token as an anonymous caller
+      }
+    }
+    const COMPANY_INBOX = 'info@pattayarentacar.com';
+
     // ── Email threading helpers ──────────────────────────────────────────────
     // A booking's `enquiryMessageId` field, once set, anchors the customer-facing
     // thread: the FIRST email ever sent for that booking gets its Message-ID stored
@@ -1099,9 +1121,11 @@ app.get("/api/delivery/quote", async (req, res) => {
     `;
 
       // Routing guard — same ternary logic as existing finalTo below
-      const tmplFinalTo = !to ? 'info@pattayarentacar.com'
+      // Anonymous callers can never choose a recipient — see the trust gate above.
+      const tmplFinalTo = !isVerifiedStaff ? COMPANY_INBOX
+        : !to ? COMPANY_INBOX
         : skipFinalToOverride ? to
-        : renderedSubject.toLowerCase().includes('enquiry') ? 'info@pattayarentacar.com'
+        : renderedSubject.toLowerCase().includes('enquiry') ? COMPANY_INBOX
         : to;
 
       // Use already-fetched dynamicReplyTo / dynamicFromName from above
@@ -1160,11 +1184,14 @@ app.get("/api/delivery/quote", async (req, res) => {
       });
 
             // Route: empty to → info@ always; skipFinalToOverride → use to directly; enquiry subject → info@; else → to
-      const finalTo = !to
-        ? "info@pattayarentacar.com"
-        : (!skipFinalToOverride && subject?.toLowerCase().includes('enquiry'))
-          ? "info@pattayarentacar.com"
-          : to;
+      // Anonymous callers can never choose a recipient — see the trust gate above.
+      const finalTo = !isVerifiedStaff
+        ? COMPANY_INBOX
+        : !to
+          ? COMPANY_INBOX
+          : (!skipFinalToOverride && subject?.toLowerCase().includes('enquiry'))
+            ? COMPANY_INBOX
+            : to;
 
       const legacyInReplyTo = await lookupInReplyTo(resolvedBookingId);
 
