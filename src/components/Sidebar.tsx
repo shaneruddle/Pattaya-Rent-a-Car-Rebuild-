@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, CalendarDays, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Inbox, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2, BarChart2, TrendingUp, Wallet, LayoutDashboard, Tag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, LogOut, Car as CarIcon, CalendarPlus, Calendar, CalendarDays, CalendarClock, DollarSign, Database, ExternalLink, Users, Globe, Activity, Mail, Inbox, Shield, Zap, ShieldCheck, Image as ImageIcon, X, RefreshCw, Megaphone, FileText, HelpCircle, Building2, BarChart2, TrendingUp, Wallet, LayoutDashboard, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Car } from '../types';
 import { logOut, storage, db, auth } from '../firebase';
@@ -13,8 +13,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   isMobile?: boolean;
   onNewBooking?: () => void;
-  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail';
-  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail') => void;
+  currentView: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail' | 'long_term_rentals';
+  onViewChange: (view: 'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail' | 'long_term_rentals') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNewBooking, currentView, onViewChange }) => {
@@ -373,6 +373,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
                       )}
                     >
                       <CarIcon size={18} /> Fleet Manager
+                    </button>
+                    <button
+                      onClick={() => {
+                        onViewChange('long_term_rentals');
+                        if (isMobile) setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full h-12 rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-3 px-6 transition-all",
+                        currentView === 'long_term_rentals'
+                          ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20"
+                          : "text-[#1A1A1A]/60 hover:bg-white/40 border border-transparent hover:border-black/20"
+                      )}
+                    >
+                      <CalendarClock size={18} /> Long Term Rentals
                     </button>
                     <button
                       onClick={() => {
@@ -880,7 +894,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, isAdmin, isMobile, onNew
             >
               <CarIcon size={20} />
             </button>
-            <button 
+            <button
+              onClick={() => onViewChange('long_term_rentals')}
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                currentView === 'long_term_rentals' ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-[#1A1A1A]/40 hover:bg-white/40 border border-transparent hover:border-black/20"
+              )}
+              title="Long Term Rentals"
+            >
+              <CalendarClock size={20} />
+            </button>
+            <button
               onClick={() => onViewChange('crm')}
               className={cn(
                 "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",

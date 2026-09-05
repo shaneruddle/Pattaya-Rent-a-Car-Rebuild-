@@ -34,6 +34,7 @@ import { TeamCalendar } from './components/TeamCalendar';
 import { MailInbox } from './components/MailInbox';
 import { EmailTemplates } from './components/EmailTemplates';
 import { Rentals } from './components/Rentals';
+import { LongTermRentalManager } from './components/LongTermRentalManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -129,7 +130,7 @@ function AppContent() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail'>(
+  const [currentView, setCurrentView] = useState<'company_settings' | 'timeline_cars' | 'timeline_bikes' | 'finance' | 'finance_overview' | 'booking' | 'pricing' | 'fleet' | 'crm' | 'website_fleet' | 'bookings' | 'rentals' | 'logs' | 'enquiries' | 'user_management' | 'new_rental' | 'marketing_blog' | 'marketing_calendar' | 'marketing_faq' | 'image_management' | 'email_templates' | 'vehicle_report' | 'calendar' | 'competitor_pricing' | 'bike_price_quote' | 'mail' | 'long_term_rentals'>(
     (window.innerWidth < 768) ? 'timeline_cars' : (getInitialView() as any)
   );
   const [financePreFill, setFinancePreFill] = useState<any>(null);
@@ -811,6 +812,8 @@ function AppContent() {
                 <PricingManager />
               ) : currentView === 'fleet' ? (
                 <FleetManager />
+              ) : currentView === 'long_term_rentals' ? (
+                <LongTermRentalManager />
               ) : currentView === 'bookings' ? (
                 <Bookings bookings={bookings} cars={cars.filter(c => c.isActive !== false)} onRefresh={() => fetchData(true)} />
               ) : currentView === 'rentals' ? (

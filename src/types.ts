@@ -212,6 +212,27 @@ export interface PricingGrid {
   updatedAt?: string;
 }
 
+// One fleet vehicle currently advertised for long-term rent (Long Term
+// Rentals section). `published` listings are pulled into the marketing
+// site's /long-term-rental/ page at build time; unpublished ones are
+// staff-only. carName/carType/plateNumber are a snapshot of the picked
+// `cars` doc at save time, not a live join.
+export interface LongTermListing {
+  id?: string;
+  carId: string;
+  carName: string;
+  carType: string;
+  plateNumber: string;
+  monthlyPrice: number;
+  minMonths: number;
+  notes: string;
+  published: boolean;
+  displayOrder: number;
+  updatedAt?: any;
+  updatedBy?: string;
+  createdAt?: any;
+}
+
 export interface WebsiteCar {
   id: string;
   name: string;
