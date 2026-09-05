@@ -9,18 +9,19 @@ import { cn } from '../lib/utils';
 // Same repository_dispatch pattern the CMS admin panel uses to rebuild the
 // marketing site after a content change (reads the shared GitHub PAT from
 // app_settings/deploy  one Firebase project, so the same doc both apps use).
-async function triggerMarketingDeploy(): Promise<void> {
+async function triggerMarketingDeploy(): Promise<boolean> {
   try {
     const snap = await getDoc(doc(db, 'app_settings', 'deploy'));
     const pat = snap.data()?.githubPat as string | undefined;
-    if (!pat) return;
-    await fetch('https://api.github.com/repos/shaneruddle/PRAC-Marketing-Site/dispatches', {
+    if (!pat) return false;
+    const res = await fetch('https://api.github.com/repos/shaneruddle/PRAC-Marketing-Site/dispatches', {
       method: 'POST',
       headers: { Authorization: `Bearer ${pat}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ event_type: 'cms_publish' }),
     });
+    return res.ok;
   } catch {
-    // silent  deploy failure never blocks a save
+    return false;
   }
 }
 
@@ -133,13 +134,14 @@ export const LongTermRentalManager: React.FC = () => {
         'Long Term Rentals',
         { listingId: id }
       );
-      if (formData.published) await triggerMarketingDeploy();
+      const deployed = formData.published ? await triggerMarketingDeploy() : true;
       setListings(prev => {
         const merged = { id, ...data } as LongTermListing;
         const next = isNew ? [...prev, merged] : prev.map(l => (l.id === id ? merged : l));
         return next.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
       });
-      toast.success(formData.published ? 'Listing published  site rebuild triggered' : 'Listing saved (not published)');
+      if (!deployed) toast.error('Site rebuild FAILED - saved, but not live yet. Check the GitHub token in app_settings/deploy.');
+    else toast.success(formData.published ? 'Listing published  site rebuild triggered' : 'Listing saved (not published)');
       setShowModal(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'long_term_listings');
@@ -153,9 +155,10 @@ export const LongTermRentalManager: React.FC = () => {
     try {
       await deleteDoc(doc(db, 'long_term_listings', listing.id!));
       await logSystemActivity('Delete Long-Term Listing', `Removed ${listing.carName}`, 'Long Term Rentals', { listingId: listing.id });
-      if (listing.published) await triggerMarketingDeploy();
+      const deployed = listing.published ? await triggerMarketingDeploy() : true;
       setListings(prev => prev.filter(l => l.id !== listing.id));
-      toast.success('Listing removed');
+      if (!deployed) toast.error('Site rebuild FAILED - saved, but not live yet. Check the GitHub token in app_settings/deploy.');
+    else toast.success('Listing removed');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `long_term_listings/${listing.id}`);
     }
@@ -165,9 +168,10 @@ export const LongTermRentalManager: React.FC = () => {
     const nextPublished = !listing.published;
     try {
       await setDoc(doc(db, 'long_term_listings', listing.id!), { published: nextPublished, updatedAt: serverTimestamp() }, { merge: true });
-      await triggerMarketingDeploy();
+      const deployed = await triggerMarketingDeploy();
       setListings(prev => prev.map(l => (l.id === listing.id ? { ...l, published: nextPublished } : l)));
-      toast.success(nextPublished ? 'Live on site  rebuild triggered' : 'Taken off the site  rebuild triggered');
+      if (!deployed) toast.error('Site rebuild FAILED - saved, but not live yet. Check the GitHub token in app_settings/deploy.');
+    else toast.success(nextPublished ? 'Live on site  rebuild triggered' : 'Taken off the site  rebuild triggered');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `long_term_listings/${listing.id}`);
     }
