@@ -977,6 +977,40 @@ app.get("/api/delivery/quote", async (req, res) => {
     }
     const COMPANY_INBOX = 'info@pattayarentacar.com';
 
+    // ── Narrow anonymous exception: the customer's own booking confirmation ──
+    // The trust gate above forces every unauthenticated send to COMPANY_INBOX,
+    // which also broke the one legitimate anonymous case: BookingEngine.tsx (the
+    // public booking widget) sends 'customer_auto_enquiry_response' to the email
+    // the visitor just typed into the form, with no staff session to attach a
+    // token. Since Sept 1 that confirmation has been landing in the company
+    // inbox instead of the customer's, alongside the (correct) staff notification.
+    //
+    // Rather than trust the client-supplied `to` on its word, require it to match
+    // the `email` field already stored on the booking doc the same request just
+    // created (server-side read via admin SDK), and require that doc to be fresh —
+    // this is the customer confirming their own just-submitted booking, not an
+    // arbitrary recipient, and not a stale bookingId replayed later. It does not
+    // reopen the original hole: arbitrary templateIds and the legacy subject/html
+    // path are unaffected and still forced to COMPANY_INBOX for anonymous callers.
+    const ANON_BOOKING_CONFIRMATION_TEMPLATE = 'customer_auto_enquiry_response';
+    const ANON_BOOKING_MATCH_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+    const anonCallerMayEmailBookingCustomer = async (bkId?: string, requestedTo?: string): Promise<boolean> => {
+      if (!bkId || !requestedTo) return false;
+      try {
+        const snap = await firestore.collection('bookings').doc(bkId).get();
+        if (!snap.exists) return false;
+        const data = snap.data() as any;
+        const bookingEmail = String(data?.email || '').trim().toLowerCase();
+        if (!bookingEmail || bookingEmail !== requestedTo.trim().toLowerCase()) return false;
+        const createdAt: Date | undefined = data?.createdAt?.toDate?.();
+        if (!createdAt || Date.now() - createdAt.getTime() > ANON_BOOKING_MATCH_WINDOW_MS) return false;
+        return true;
+      } catch (e) {
+        console.warn('[Email] anonCallerMayEmailBookingCustomer lookup failed:', e);
+        return false;
+      }
+    };
+
     // ── Email threading helpers ──────────────────────────────────────────────
     // A booking's `enquiryMessageId` field, once set, anchors the customer-facing
     // thread: the FIRST email ever sent for that booking gets its Message-ID stored
@@ -1121,8 +1155,14 @@ app.get("/api/delivery/quote", async (req, res) => {
     `;
 
       // Routing guard — same ternary logic as existing finalTo below
-      // Anonymous callers can never choose a recipient — see the trust gate above.
-      const tmplFinalTo = !isVerifiedStaff ? COMPANY_INBOX
+      // Anonymous callers can never choose a recipient, UNLESS this is the
+      // customer's own booking confirmation for the booking they just created
+      // (see anonCallerMayEmailBookingCustomer above) — see the trust gate above.
+      const isAnonBookingConfirmation = !isVerifiedStaff
+        && templateId === ANON_BOOKING_CONFIRMATION_TEMPLATE
+        && await anonCallerMayEmailBookingCustomer(resolvedBookingId, to);
+      const mayChooseRecipient = isVerifiedStaff || isAnonBookingConfirmation;
+      const tmplFinalTo = !mayChooseRecipient ? COMPANY_INBOX
         : !to ? COMPANY_INBOX
         : skipFinalToOverride ? to
         : renderedSubject.toLowerCase().includes('enquiry') ? COMPANY_INBOX
