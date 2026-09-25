@@ -545,6 +545,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
           '{{customer_name}}': bookingData.customerName,
           '{{customer_email}}': bookingData.email,
           '{{customer_phone}}': bookingData.mobileNumber,
+          '{{driver_age}}': bookingData.ageBand || 'N/A',
           '{{rental_period}}': `${format(selectedRange.from, 'dd MMM yyyy')} to ${format(selectedRange.to, 'dd MMM yyyy')}`,
           '{{duration}}': `${totalDays} ${totalDays === 1 ? 'day' : 'days'}`,
           '{{pickup_time}}': pickUpTime,
