@@ -64,6 +64,10 @@ const timeOptions = Array.from({ length: 24 }).flatMap((_, i) => {
   return totalMinutes >= 9 * 60 + 30 && totalMinutes <= 16 * 60 + 30;
 });
 
+// Driver age bands for car enquiries. The youngest band cannot submit (minimum driver age 23).
+const AGE_BANDS = ['Under 23', '23-34', '35-70', '70+'];
+const UNDER_AGE_BAND = 'Under 23';
+
 interface BookingEngineProps {
   onLoginClick: () => void;
 }
@@ -192,6 +196,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     email: '',
     mobile: '',
     nationality: '',
+    ageBand: '',
     comments: '',
     requireDelivery: false,
     deliveryAddress: '',
@@ -437,6 +442,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
     // Below minimum rental period: submission blocked (price display already shows the minimum message)
     if (isBelowMinDays(selectedCar)) return;
 
+    // Under minimum driver age: submission blocked (message shown under the age dropdown)
+    if (!isBikeMode && formData.ageBand === UNDER_AGE_BAND) return;
+
     const [pickH, pickM] = pickUpTime.split(':').map(Number);
     const [dropH, dropM] = dropOffTime.split(':').map(Number);
     const pickMinutes = pickH * 60 + pickM;
@@ -461,6 +469,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         requestedCarType: selectedCar.name,
         requestedCarClass: selectedCar.type,
         nationality:      formData.nationality || null,
+        ageBand:          isBikeMode ? null : (formData.ageBand || null),
         utmSource:        utmParams.source     || null,
         utmMedium:        utmParams.medium     || null,
         utmCampaign:      utmParams.campaign   || null,
@@ -1574,6 +1583,31 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
                       onChange={e => setFormData({...formData, mobile: e.target.value})}
                     />
 
+                    {/* Driver age - cars only */}
+                    {!isBikeMode && (
+                      <div className="space-y-3">
+                        <select
+                          required
+                          className={cn(
+                            "w-full px-6 py-4 bg-black/5 rounded-2xl focus:outline-none focus:bg-black/10 transition-all font-bold uppercase tracking-widest text-[10px]",
+                            formData.ageBand ? "text-black" : "text-black/40"
+                          )}
+                          value={formData.ageBand}
+                          onChange={e => setFormData({...formData, ageBand: e.target.value})}
+                        >
+                          <option value="" disabled>Driver Age</option>
+                          {AGE_BANDS.map(band => (
+                            <option key={band} value={band}>{band}</option>
+                          ))}
+                        </select>
+                        {formData.ageBand === UNDER_AGE_BAND && (
+                          <div className="px-6 py-4 rounded-2xl bg-red-50 text-red-600 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                            Sorry, drivers must be 23 or over to rent with us. Please call us on {config.phone} if you have questions.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <textarea 
                       placeholder={t('bookingModal.comments')} 
                       className="w-full px-6 py-4 bg-black/5 rounded-2xl focus:outline-none focus:bg-black/10 transition-all font-bold uppercase tracking-widest text-[10px] h-40 resize-none"
@@ -1698,9 +1732,9 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
 
                     <button 
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || (!isBikeMode && formData.ageBand === UNDER_AGE_BAND)}
                       className={cn(
-                        "w-full text-white py-5 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg",
+                        "w-full text-white py-5 rounded-full font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed",
                         isBikeMode ? "bg-brand-blue shadow-brand-blue/20" : "bg-brand-orange shadow-brand-orange/20"
                       )}
                     >

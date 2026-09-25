@@ -98,6 +98,7 @@ export interface Booking {
   email?: string;
   mobileNumber?: string;
   nationality?: string;
+  ageBand?: string; // driver age band chosen on the website enquiry form (cars only)
   comments?: string;
   startDate: string; // ISO string
   endDate: string; // ISO string
