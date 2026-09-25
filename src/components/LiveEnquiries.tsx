@@ -28,7 +28,8 @@ import {
   ShieldCheck,
   Copy,
   Globe,
-  Zap
+  Zap,
+  User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -1001,6 +1002,11 @@ However, we can offer the following alternative...`,
                           >
                             Suggest: {suggestNationalityFromPhone(enquiry.mobileNumber)}
                           </button>
+                        )}
+                        {enquiry.ageBand && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-black/40">
+                            <User size={12} /> Age {enquiry.ageBand}
+                          </div>
                         )}
                         {(enquiry.utmSource || enquiry.bookingSource) && (
                           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-orange/60">
