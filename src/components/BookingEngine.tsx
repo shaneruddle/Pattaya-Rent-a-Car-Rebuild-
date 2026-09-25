@@ -121,7 +121,7 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
       case 'about':
         return {
           title: `About Us | ${config.companyName}`,
-          description: `Learn about ${config.companyName}. Established since 2005, we provide quality vehicles and exceptional service.`
+          description: `Learn about ${config.companyName}. Established since 2010, we provide quality vehicles and exceptional service.`
         };
       case 'contact':
         return {
@@ -150,12 +150,12 @@ export const BookingEngine: React.FC<BookingEngineProps> = ({ onLoginClick }) =>
         };
       case 'rent-a-bike':
         return {
-          title: `${config.companyName} | Trusted Motorbike Rental in Pattaya Since 2005`,
+          title: `${config.companyName} | Trusted Motorbike Rental in Pattaya Since 2010`,
           description: "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today."
         };
       default:
         return {
-          title: `${config.companyName} | Trusted Rental Service in Pattaya Since 2005`,
+          title: `${config.companyName} | Trusted Rental Service in Pattaya Since 2010`,
           description: isBikeMode ? "Rent a motorbike in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect bike today." : "Rent a car in Pattaya with Thailand's most trusted service. First-class insurance, free delivery, and 24/7 support. Book your perfect car today."
         };
     }
